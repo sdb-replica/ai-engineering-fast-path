@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Your AI Lab — Day 1 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 1 of 100</span>
+  <h1>Build Your AI Lab</h1>
+  <p class="outcome">Tonight you'll be able to: run PyTorch on your Mac and prove your GPU works.</p>
+
+  <h2>The one idea</h2>
+  <p>Every model you'll ever touch — from a tiny classifier to a frontier LLM — is just <strong>tensors</strong> (multi-dimensional arrays) plus math on tensors. PyTorch is the workshop where all of it happens.</p>
+  <p>Tonight isn't glamorous: we're provisioning the lab. Every lesson after this assumes it's ready. Ninety-nine lessons of compounding start with one boring, load-bearing setup.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p style="margin:0">This is <code>terraform apply</code> for your learning environment. Nobody brags about it &mdash; nothing ships without it.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 560 190" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+      <!-- tensor A -->
+      <g>
+        <rect x="20" y="40" width="110" height="110" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+        <text x="75" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#0a54c2">tensor a</text>
+        <rect x="35" y="55" width="38" height="38" rx="6" fill="#0a7aff" opacity="0.85"/>
+        <rect x="77" y="55" width="38" height="38" rx="6" fill="#0a7aff" opacity="0.55"/>
+        <rect x="35" y="97" width="38" height="38" rx="6" fill="#0a7aff" opacity="0.55"/>
+        <rect x="77" y="97" width="38" height="38" rx="6" fill="#0a7aff" opacity="0.85"/>
+        <text x="35" y="52" font-size="11" fill="#0a54c2">1</text>
+        <text x="117" y="52" font-size="11" fill="#0a54c2">2</text>
+        <text x="75" y="170" text-anchor="middle" font-size="12" fill="#555">shape [2, 2]</text>
+      </g>
+      <!-- op -->
+      <text x="170" y="105" text-anchor="middle" font-size="26" font-weight="700" fill="#1c1c1e">@</text>
+      <!-- tensor B -->
+      <g>
+        <rect x="210" y="40" width="110" height="110" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+        <text x="265" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#0a54c2">tensor b</text>
+        <rect x="225" y="55" width="38" height="38" rx="6" fill="#7a5cff" opacity="0.85"/>
+        <rect x="267" y="55" width="38" height="38" rx="6" fill="#7a5cff" opacity="0.55"/>
+        <rect x="225" y="97" width="38" height="38" rx="6" fill="#7a5cff" opacity="0.55"/>
+        <rect x="267" y="97" width="38" height="38" rx="6" fill="#7a5cff" opacity="0.85"/>
+        <text x="265" y="170" text-anchor="middle" font-size="12" fill="#555">shape [2, 2]</text>
+      </g>
+      <!-- arrow -->
+      <text x="360" y="105" text-anchor="middle" font-size="26" fill="#22a355">&#8594;</text>
+      <!-- result -->
+      <g>
+        <rect x="400" y="40" width="110" height="110" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+        <text x="455" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#177245">a @ b</text>
+        <rect x="415" y="55" width="38" height="38" rx="6" fill="#22a355" opacity="0.9"/>
+        <rect x="457" y="55" width="38" height="38" rx="6" fill="#22a355" opacity="0.6"/>
+        <rect x="415" y="97" width="38" height="38" rx="6" fill="#22a355" opacity="0.6"/>
+        <rect x="457" y="97" width="38" height="38" rx="6" fill="#22a355" opacity="0.9"/>
+        <text x="455" y="170" text-anchor="middle" font-size="12" fill="#555">shape [2, 2]</text>
+      </g>
+    </svg>
+    <div class="caption">Matrix multiply (<code>@</code>): two [2,2] tensors in, one [2,2] tensor out. This single operation powers every neural network.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>On your MacBook, in Terminal. <strong>Step 1 — create the lab:</strong></p>
+  <pre><code>python3 -m venv ~/ai-lab
+source ~/ai-lab/bin/activate
+pip install --upgrade pip
+pip install torch</code></pre>
+  <p>Plain <code>pip install torch</code> covers Apple Silicon (MPS GPU) and Intel Macs (CPU fallback). No CUDA needed &mdash; ever &mdash; for this challenge.</p>
+  <p><strong>Step 2 — meet your first tensor.</strong> Still in the venv, run <code>python3</code> and type:</p>
+  <pre><code>import torch
+print(torch.__version__)
+print("MPS (Apple GPU) available:", torch.backends.mps.is_available())
+
+device = "mps" if torch.backends.mps.is_available() else "cpu"
+a = torch.tensor([[1., 2.], [3., 4.]], device=device)
+b = torch.tensor([[5., 6.], [7., 8.]], device=device)
+print(a + b)
+print(a @ b)  # @ = matrix multiply</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>2.x.x
+MPS (Apple GPU) available: True
+tensor([[ 6.,  8.],
+        [10., 12.]])
+tensor([[19., 22.],
+        [43., 50.]])</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p style="margin:0">Get the above running and see those two matrices print. You now have a working AI lab &mdash; and you've executed the operation at the heart of all deep learning.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p style="margin:0">Just the install plus the MPS check printing <code>True</code>. The tensor math can wait for tomorrow.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p style="margin:0">Tensors are more than arrays &mdash; what <em>shape</em> actually means, and why getting it wrong is 90% of beginner bugs.</p>
+  </div>
+
+  <div class="footer">Streak: 1 day &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
