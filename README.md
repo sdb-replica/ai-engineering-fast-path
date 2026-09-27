@@ -8,6 +8,8 @@ Each day has its own folder:
 
 - `lesson.html` — the visual lesson (diagrams, analogies, code with expected
   output). Open it in any browser; it works offline.
+- `lesson.md` — the same lesson as Markdown (renders natively here on GitHub).
+- `diagram.svg` — the day's diagram as a standalone image.
 - `code.py` — the day's runnable code. Run it with the day's environment.
 
 ## Setup (once)
@@ -21,6 +23,6 @@ pip install torch numpy
 
 ## Lessons
 
-| Day | Lesson | Code |
-|-----|--------|------|
-| 1 | [Build Your AI Lab](day-001-build-your-ai-lab/lesson.html) | [code.py](day-001-build-your-ai-lab/code.py) |
+| Day | Lesson (visual) | Lesson (markdown) | Code |
+|-----|-----------------|-------------------|------|
+| 1 | [Build Your AI Lab](day-001-build-your-ai-lab/lesson.html) | [lesson.md](day-001-build-your-ai-lab/lesson.md) | [code.py](day-001-build-your-ai-lab/code.py) |
