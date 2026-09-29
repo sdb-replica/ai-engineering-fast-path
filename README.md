@@ -27,3 +27,4 @@ pip install torch numpy
 |-----|-----------------|-------------------|------|
 | 1 | [Build Your AI Lab](day-001-build-your-ai-lab/lesson.html) | [lesson.md](day-001-build-your-ai-lab/lesson.md) | [code.py](day-001-build-your-ai-lab/code.py) |
 | 2 | [Tensors: The Universal Container](day-002-tensors-the-universal-container/lesson.html) | [lesson.md](day-002-tensors-the-universal-container/lesson.md) | [code.py](day-002-tensors-the-universal-container/code.py) |
+| 3 | [Tensor Ops & Broadcasting](day-003-tensor-ops-broadcasting/lesson.html) | [lesson.md](day-003-tensor-ops-broadcasting/lesson.md) | [code.py](day-003-tensor-ops-broadcasting/code.py) |
