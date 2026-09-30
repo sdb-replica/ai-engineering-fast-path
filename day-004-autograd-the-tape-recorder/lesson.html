@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autograd: The Tape Recorder — Day 4 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 4 of 100</span>
+  <h1>Autograd: The Tape Recorder</h1>
+  <p class="outcome">Tonight you'll be able to: explain what <code>requires_grad</code> does, read a <code>grad_fn</code> chain, and compute exact gradients with <code>.backward()</code> — the machinery under every training loop.</p>
+
+  <h2>The one idea</h2>
+  <p>Days 1–3 gave you tensors and ops. Today's question: how does PyTorch <em>learn</em>? One mechanism: <strong>autograd, the tape recorder</strong>. Mark a tensor with <code>requires_grad=True</code> and PyTorch starts recording: every op on that tensor stamps a <strong>receipt</strong> — a <code>grad_fn</code> — linking the output back to its inputs. Run ten ops and you've built a one-way graph of everything that happened: the computation tape.</p>
+  <p>Call <code>z.backward()</code> and PyTorch replays the tape <strong>in reverse</strong>. It starts at the output with one fact — "the output moved by 1" — and walks backward, asking each receipt: "how much did each of your inputs move the output?" That number is the <strong>gradient</strong>: a sensitivity knob. <code>dz/dx = 3</code> means nudging <code>x</code> up by 0.01 nudges <code>z</code> up by about 0.03. The chain rule is just this question asked receipt by receipt, multiplied together — no calculus homework required.</p>
+  <p>Three house rules, learned once:</p>
+  <ul>
+    <li><strong>Only leaves collect grads.</strong> Intermediate tensors (<code>y</code>, <code>z</code>) get receipts but no <code>.grad</code> — the leaves (your <code>x</code>, <code>w</code>, <code>b</code>) are where gradients land.</li>
+    <li><strong>Grads accumulate.</strong> Call <code>.backward()</code> twice without <code>zero_grad()</code> and the grads <em>add</em>. Optimizers reset every step — forget it and your updates silently double.</li>
+    <li><strong>Backward needs a single number.</strong> <code>.backward()</code> starts from one scalar — that's why a training loop always ends in one scalar loss. (Tomorrow: where that number comes from.)</li>
+  </ul>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Distributed request tracing — for math.</strong> Serve a request through five microservices and each hop emits a span, parent linked to child; the whole trace is a DAG of <em>who called whom</em>. A tensor op is a span: <code>grad_fn</code> is the span metadata, the computation graph is the trace. And <code>.backward()</code>? That's the incident-review walk: start at the final response, walk the trace <em>backward</em>, and ask every span "how much did you contribute to this outcome?" — exactly how you'd attribute a p99 latency spike to one downstream call.</p>
+    <p>No tracing in prod means mystery outages. No autograd means hand-deriving every gradient — the way ML was done before 2015. The tape is the observability layer that makes learning possible.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 560" font-family="-apple-system, system-ui, 'Segoe UI', sans-serif" role="img" aria-label="Computation tape for z = w*x + b: forward pass stamps grad_fn receipts; backward pass replays them right-to-left, filling gradients on the leaves">
+      <defs>
+        <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0 0 L8 4.5 L0 9 z" fill="#1c1c1e"/>
+        </marker>
+        <marker id="arrG" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0 0 L8 4.5 L0 9 z" fill="#22a355"/>
+        </marker>
+      </defs>
+
+      <text x="20" y="28" font-size="14" font-weight="700" fill="currentColor">The tape for z = w·x + b</text>
+      <text x="20" y="46" font-size="11" fill="#777">Dark arrows = forward (build the value, stamp receipts). Green dashed = backward (replay receipts, attribute the change).</text>
+
+      <!-- LEAVES -->
+      <rect x="20" y="170" width="140" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+      <text x="90" y="194" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">x · leaf</text>
+      <text x="90" y="212" font-size="11" text-anchor="middle" fill="currentColor">value 2.0 · requires_grad</text>
+      <text x="90" y="256" font-size="11" font-weight="700" text-anchor="middle" fill="#22a355">→ x.grad = 3.0</text>
+
+      <rect x="20" y="300" width="140" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+      <text x="90" y="324" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">w · leaf</text>
+      <text x="90" y="342" font-size="11" text-anchor="middle" fill="currentColor">value 3.0 · requires_grad</text>
+      <text x="90" y="386" font-size="11" font-weight="700" text-anchor="middle" fill="#22a355">→ w.grad = 2.0</text>
+
+      <!-- INTERMEDIATES -->
+      <rect x="270" y="235" width="150" height="64" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+      <text x="345" y="259" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">y = w·x → 6.0</text>
+      <text x="345" y="279" font-size="10.5" text-anchor="middle" fill="#5a3fd4">receipt: MulBackward0</text>
+
+      <rect x="510" y="235" width="150" height="64" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+      <text x="585" y="259" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">z = y+b → 7.0</text>
+      <text x="585" y="279" font-size="10.5" text-anchor="middle" fill="#5a3fd4">receipt: AddBackward0</text>
+      <text x="585" y="222" font-size="11" font-weight="700" text-anchor="middle" fill="#22a355">seed: dz/dz = 1</text>
+
+      <rect x="510" y="350" width="140" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+      <text x="580" y="374" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">b · leaf</text>
+      <text x="580" y="392" font-size="11" text-anchor="middle" fill="currentColor">value 1.0 · requires_grad</text>
+      <text x="580" y="436" font-size="11" font-weight="700" text-anchor="middle" fill="#22a355">→ b.grad = 1.0</text>
+
+      <!-- FORWARD arrows -->
+      <path d="M160 200 Q 220 200 262 246" stroke="#1c1c1e" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="212" y="212" font-size="16" font-weight="700" fill="currentColor">×</text>
+      <path d="M160 334 Q 220 334 262 290" stroke="#1c1c1e" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="212" y="330" font-size="16" font-weight="700" fill="currentColor">×</text>
+      <line x1="420" y1="267" x2="502" y2="267" stroke="#1c1c1e" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="458" y="258" font-size="16" font-weight="700" fill="currentColor">+</text>
+      <line x1="580" y1="350" x2="580" y2="307" stroke="#1c1c1e" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="590" y="332" font-size="16" font-weight="700" fill="currentColor">+</text>
+
+      <!-- BACKWARD arrows -->
+      <path d="M510 250 Q 465 226 428 250" stroke="#22a355" stroke-width="2" stroke-dasharray="5,4" fill="none" marker-end="url(#arrG)"/>
+      <text x="465" y="240" font-size="10.5" font-weight="700" text-anchor="middle" fill="#177245">dz/dy = 1</text>
+      <path d="M272 242 Q 175 145 163 178" stroke="#22a355" stroke-width="2" stroke-dasharray="5,4" fill="none" marker-end="url(#arrG)"/>
+      <text x="172" y="168" font-size="10.5" font-weight="700" text-anchor="middle" fill="#177245">dz/dx = w = 3</text>
+      <path d="M272 292 Q 175 372 163 358" stroke="#22a355" stroke-width="2" stroke-dasharray="5,4" fill="none" marker-end="url(#arrG)"/>
+      <text x="172" y="382" font-size="10.5" font-weight="700" text-anchor="middle" fill="#177245">dz/dw = x = 2</text>
+      <path d="M646 300 Q 664 326 649 348" stroke="#22a355" stroke-width="2" stroke-dasharray="5,4" fill="none" marker-end="url(#arrG)"/>
+      <text x="620" y="330" font-size="10.5" font-weight="700" text-anchor="middle" fill="#177245">dz/db = 1</text>
+
+      <!-- RECEIPTS strip -->
+      <line x1="20" y1="462" x2="660" y2="462" stroke="#e0e0e0" stroke-width="1.5"/>
+      <text x="20" y="484" font-size="12" font-weight="700" fill="currentColor">Each receipt is also the rule for going backward</text>
+      <rect x="20" y="494" width="312" height="52" rx="8" fill="#f7f7f8" stroke="#ddd" stroke-width="1"/>
+      <text x="34" y="514" font-size="11" font-weight="700" fill="currentColor">multiply → y = w·x</text>
+      <text x="34" y="533" font-size="10.5" fill="currentColor">backward: dy/dx = w, dy/dw = x — scale by the other input</text>
+      <rect x="348" y="494" width="312" height="52" rx="8" fill="#f7f7f8" stroke="#ddd" stroke-width="1"/>
+      <text x="362" y="514" font-size="11" font-weight="700" fill="currentColor">add → z = y + b</text>
+      <text x="362" y="533" font-size="10.5" fill="currentColor">backward: gradient passes straight through (dz/dy = 1, dz/db = 1)</text>
+    </svg>
+    <div class="caption">The computation tape for z = w·x + b. Forward: each op stamps a receipt (grad_fn). Backward: PyTorch replays the receipts right-to-left, attributing the output's change to every leaf.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Run this in your <code>~/ai-lab</code> venv — the same file ships as <code>code.py</code> in the repo. Watch <code>grad_fn</code>: every op on a recorded tensor stamps one.</p>
+  <pre><code>"""Day 4: Autograd -- the tape recorder.
+
+Every op on a requires_grad tensor stamps a receipt (grad_fn).
+z.backward() replays the tape in reverse, filling .grad on the
+leaves. Grads accumulate -- you own zero_grad().
+Run:  python3 code.py   (inside the ~/ai-lab venv)
+"""
+import torch
+
+device = "mps" if torch.backends.mps.is_available() else "cpu"
+print("using device:", device)
+
+print("\n--- 1. The tape: every op leaves a receipt ---")
+x = torch.tensor(2.0, requires_grad=True, device=device)  # leaf
+w = torch.tensor(3.0, requires_grad=True, device=device)  # leaf
+b = torch.tensor(1.0, requires_grad=True, device=device)  # leaf
+
+y = w * x              # 6.0 -- stamps MulBackward0
+z = y + b              # 7.0 -- stamps AddBackward0
+print("y.grad_fn:", type(y.grad_fn).__name__)
+print("z.grad_fn:", type(z.grad_fn).__name__)
+print("x is a leaf:", x.is_leaf, "| x.grad_fn:", x.grad_fn)
+
+z.backward()           # replay the tape from z back to the leaves
+print("dz/dx =", x.grad.item(), "(expected: w = 3)")
+print("dz/dw =", w.grad.item(), "(expected: x = 2)")
+print("dz/db =", b.grad.item(), "(expected: 1)")
+
+print("\n--- 2. Grads accumulate -- you own the reset ---")
+p = torch.tensor([1.0, 2.0, 3.0], requires_grad=True, device=device)
+(p ** 2).sum().backward()        # dL/dp = 2p -&gt; [2, 4, 6]
+print("after backward #1:", p.grad)
+(p ** 2).sum().backward()        # no reset: grads ADD -&gt; [4, 8, 12]
+print("after backward #2 (no zero):", p.grad)
+p.grad.zero_()                   # the reset optimizers do every step
+(p ** 2).sum().backward()
+print("after zero_ + backward:", p.grad)
+
+print("\n--- 3. Chain rule, the trading way ---")
+# Portfolio value from two positions: v = w1*r1 + w2*r2.
+# The gradient answers: which weight moves the value most per unit nudge?
+r = torch.tensor([0.02, -0.01], device=device)        # today's returns: fixed data
+w = torch.tensor([0.6, 0.4], requires_grad=True, device=device)
+v = (w * r).sum()                                    # 0.0080
+v.backward()                                         # dv/dw = r
+print(f"value: {v.item():.4f}")
+print("d value / d weights:", w.grad)
+print("-&gt; w[0] has twice the pull of w[1], and opposite sign")
+
+print("\n--- 4. Turn the recorder off ---")
+x = torch.tensor(2.0, requires_grad=True, device=device)
+with torch.no_grad():          # eval / inference: skip the tape entirely
+    y = x * 2
+print("inside no_grad, y.grad_fn:", y.grad_fn)
+z = x.detach() * 2             # detach: one tensor opts out, recorder keeps running
+print("detached,        z.grad_fn:", z.grad_fn)
+print("x.grad:", x.grad)       # None -- we never called backward here
+
+print("\n--- bonus: the tape is exact ---")
+# Finite-difference sanity check: autograd == numeric derivative.
+x = torch.tensor(2.0, requires_grad=True, device=device)
+w = torch.tensor(3.0, requires_grad=True, device=device)
+b = torch.tensor(1.0, requires_grad=True, device=device)
+(w * x + b).backward()
+eps = 1e-4
+fd = ((3.0 * (2.0 + eps) + 1.0) - (3.0 * (2.0 - eps) + 1.0)) / (2 * eps)
+print(f"autograd dz/dx: {x.grad.item():.4f}   finite-difference: {fd:.4f}")</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>using device: mps
+
+--- 1. The tape: every op leaves a receipt ---
+y.grad_fn: MulBackward0
+z.grad_fn: AddBackward0
+x is a leaf: True | x.grad_fn: None
+dz/dx = 3.0 (expected: w = 3)
+dz/dw = 2.0 (expected: x = 2)
+dz/db = 1.0 (expected: 1)
+
+--- 2. Grads accumulate -- you own the reset ---
+after backward #1: tensor([2., 4., 6.])
+after backward #2 (no zero): tensor([4., 8., 12.])
+after zero_ + backward: tensor([2., 4., 6.])
+
+--- 3. Chain rule, the trading way ---
+value: 0.0080
+d value / d weights: tensor([ 0.0200, -0.0100])
+-&gt; w[0] has twice the pull of w[1], and opposite sign
+
+--- 4. Turn the recorder off ---
+inside no_grad, y.grad_fn: None
+detached,        z.grad_fn: None
+x.grad: None
+
+--- bonus: the tape is exact ---
+autograd dz/dx: 3.0000   finite-difference: 3.0000</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p><strong>Done when:</strong> <code>code.py</code> runs and your prints match — section 1 grads are <code>3.0 / 2.0 / 1.0</code>, section 2's second backward doubles the grads until <code>zero_()</code>, and the bonus finite-difference line agrees to 4 decimals. Then in a REPL, <em>predict</em> <code>x.grad</code> for <code>z = x**2</code> at <code>x = 3</code> before running. (Answer: <code>6.0</code> — d(x²)/dx = 2x.)</p>
+    <p>Four days down. Systems beat motivation — same time tomorrow.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea" and the analogy (10 min), run sections 1 and 4 of <code>code.py</code> and inspect the <code>grad_fn</code> names (10 min). If you only remember one thing: <strong><code>.backward()</code> replays the op tape from output back to leaves — and grads accumulate, so you own <code>zero_grad()</code>.</strong></p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the scoreboard that every <code>.backward()</code> serves — how a model turns a prediction into a single number for "how wrong am I." The whole tape exists to shrink that number.</p>
+  </div>
+
+  <div class="footer">Streak: 4 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
