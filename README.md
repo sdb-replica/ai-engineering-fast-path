@@ -29,3 +29,4 @@ pip install torch numpy
 | 2 | [Tensors: The Universal Container](day-002-tensors-the-universal-container/lesson.html) | [lesson.md](day-002-tensors-the-universal-container/lesson.md) | [code.py](day-002-tensors-the-universal-container/code.py) |
 | 3 | [Tensor Ops & Broadcasting](day-003-tensor-ops-broadcasting/lesson.html) | [lesson.md](day-003-tensor-ops-broadcasting/lesson.md) | [code.py](day-003-tensor-ops-broadcasting/code.py) |
 | 4 | [Autograd: The Tape Recorder](day-004-autograd-the-tape-recorder/lesson.html) | [lesson.md](day-004-autograd-the-tape-recorder/lesson.md) | [code.py](day-004-autograd-the-tape-recorder/code.py) |
+| 5 | [Loss Functions: How a Model Knows It's Wrong](day-005-loss-functions/lesson.html) | [lesson.md](day-005-loss-functions/lesson.md) | [code.py](day-005-loss-functions/code.py) |

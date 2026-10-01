@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loss Functions: How a Model Knows It's Wrong — Day 5 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .formula { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px;
+             padding: 10px 14px; margin: 12px 0; font-family: ui-monospace, Menlo, monospace;
+             font-size: 0.9rem; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .formula { background: #1c1c1f; border-color: #333; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 5 of 100</span>
+  <h1>Loss Functions: How a Model Knows It's Wrong</h1>
+  <p class="outcome">Tonight you'll be able to: define a loss function, compute MSE and MAE in PyTorch, and explain why a single outlier punishes MSE ~74&times; harder than MAE.</p>
+
+  <h2>The one idea</h2>
+  <p>Every model needs a scorecard. A <strong>loss function</strong> turns &ldquo;how wrong was I?&rdquo; into <strong>one number</strong>. Training is just: make that number go down. Everything else — the autograd tape from Day 4, the optimizers in Day 18 — is machinery in service of shrinking this one scalar.</p>
+  <p>The raw material is the <strong>residual</strong>: prediction minus target, per example. For regression (predicting a number, like tomorrow's close), the two classics are:</p>
+  <div class="formula">MSE = mean((pred &minus; target)&sup2;) &nbsp;&nbsp;&bull;&nbsp;&nbsp; MAE = mean(|pred &minus; target|)</div>
+  <p>Mean squared error. Mean absolute error. That's the whole menu for tonight — and the difference between them is a real modeling decision, not trivia.</p>
+  <p>Why must a loss be <strong>smooth</strong>? You could score &ldquo;right vs wrong,&rdquo; but that's a step function — flat everywhere, no slope, no direction. Remember Day 4: autograd replays the tape to produce a <strong>gradient</strong>, a slope saying <em>which way is downhill</em>. A loss with no slope starves the whole machine. MSE's parabola gives exactly that: the correction signal <code>2 &times; residual / n</code> — bigger when you're more wrong, zero when you're exactly right.</p>
+  <p>MSE vs MAE, then, is a choice about how much you fear big misses. <strong>Squaring</strong> punishes large errors disproportionately — one bad print can dominate the entire loss and drag the model toward it. <strong>Absolute value</strong> charges linearly — it shrugs at outliers. Fitting on a tape with one fat-finger print in it? MSE rewrites your whole view around the glitch; MAE barely notices. Pick the loss that matches your beliefs about the noise.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>A loss function is the model's <strong>SLO error budget</strong>. You don't run reliability as &ldquo;up vs down&rdquo; — you quantify: error rate against the SLO, budget burned in basis points. Every deploy and every incident gets scored by that one number, and the whole org optimizes against it. A loss is the same deal: a single scalar everyone (the optimizer) agrees to spend down.</p>
+    <p>And the differentiability requirement is your alerting rule: a metric with no gradient is like a dashboard with no next action — interesting, but useless for driving decisions. The loss has to <em>point somewhere</em>, or training can't act on it.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 600 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Residuals and loss penalty curves">
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:9.5px;fill:#777}</style>
+<text x="20" y="18" class="t">A. Residuals = prediction &#8722; target</text>
+<line x1="20" y1="230" x2="270" y2="230" stroke="#999"/><line x1="20" y1="230" x2="20" y2="30" stroke="#999"/>
+<text x="255" y="246" class="sm">x</text><text x="8" y="40" class="sm">y</text>
+<line x1="26.2" y1="212.5" x2="263.8" y2="47.5" stroke="#e07b00" stroke-width="1.6"/>
+<line x1="51.2" y1="205.0" x2="51.2" y2="195.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="113.8" y1="150.0" x2="113.8" y2="165.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="176.2" y1="110.0" x2="176.2" y2="105.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="238.8" y1="45.0" x2="238.8" y2="60.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<circle cx="51.2" cy="205.0" r="4.5" fill="#0a7aff"/><rect x="46.8" y="190.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="113.8" cy="150.0" r="4.5" fill="#0a7aff"/><rect x="109.2" y="160.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="176.2" cy="110.0" r="4.5" fill="#0a7aff"/><rect x="171.8" y="100.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="238.8" cy="45.0" r="4.5" fill="#0a7aff"/><rect x="234.2" y="55.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="30" cy="258" r="4" fill="#0a7aff"/><text x="38" y="262">target</text>
+<rect x="100" y="254" width="8" height="8" fill="#e07b00"/><text x="112" y="262">prediction</text>
+<line x1="200" y1="258" x2="214" y2="258" stroke="#d62728" stroke-width="1.6" stroke-dasharray="4,3"/><text x="218" y="262">residual</text>
+<text x="320" y="18" class="t">B. How each loss charges for error</text>
+<line x1="320" y1="230" x2="580" y2="230" stroke="#999"/><line x1="450" y1="230" x2="450" y2="26" stroke="#bbb"/>
+<text x="560" y="246" class="sm">error</text><text x="322" y="40" class="sm">penalty</text>
+<polyline points="325.0,30.0 328.1,39.9 331.2,49.5 334.4,58.9 337.5,68.0 340.6,76.9 343.8,85.5 346.9,93.9 350.0,102.0 353.1,109.9 356.2,117.5 359.4,124.9 362.5,132.0 365.6,138.9 368.8,145.5 371.9,151.9 375.0,158.0 378.1,163.9 381.2,169.5 384.4,174.9 387.5,180.0 390.6,184.9 393.8,189.5 396.9,193.9 400.0,198.0 403.1,201.9 406.2,205.5 409.4,208.9 412.5,212.0 415.6,214.9 418.8,217.5 421.9,219.9 425.0,222.0 428.1,223.9 431.2,225.5 434.4,226.9 437.5,228.0 440.6,228.9 443.8,229.5 446.9,229.9 450.0,230.0 453.1,229.9 456.2,229.5 459.4,228.9 462.5,228.0 465.6,226.9 468.8,225.5 471.9,223.9 475.0,222.0 478.1,219.9 481.2,217.5 484.4,214.9 487.5,212.0 490.6,208.9 493.8,205.5 496.9,201.9 500.0,198.0 503.1,193.9 506.2,189.5 509.4,184.9 512.5,180.0 515.6,174.9 518.8,169.5 521.9,163.9 525.0,158.0 528.1,151.9 531.2,145.5 534.4,138.9 537.5,132.0 540.6,124.9 543.8,117.5 546.9,109.9 550.0,102.0 553.1,93.9 556.2,85.5 559.4,76.9 562.5,68.0 565.6,58.9 568.8,49.5 571.9,39.9 575.0,30.0" fill="none" stroke="#d62728" stroke-width="2.2"/>
+<polyline points="325.0,180.0 450.0,230.0 575.0,180.0" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="575.0" cy="30.0" r="4.5" fill="#d62728"/><text x="583.0" y="34.0" fill="#d62728" font-weight="700">16</text>
+<circle cx="575.0" cy="180.0" r="4.5" fill="#0a7aff"/><text x="583.0" y="184.0" fill="#0a7aff" font-weight="700">4</text>
+<line x1="575.0" y1="230" x2="575.0" y2="30.0" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="330" y="262" fill="#d62728">MSE: error&#178;</text>
+<text x="440" y="262" fill="#0a7aff">MAE: |error|</text>
+</svg>
+    <div class="caption">A: residuals between predictions (orange) and targets (blue). B: penalty per unit error — at error 4, MAE charges 4, MSE charges 16.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>In your <code>~/ai-lab</code> venv on the MacBook, save this as <code>code.py</code>. Toy setup: 4 hourly closes (scaled dollars), our model's guess for each. Compute both losses, inject one spike, then ask autograd (Day 4!) for the gradient — the downhill direction.</p>
+  <pre><code>import torch
+
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+print(f"Running on: {device}")
+
+target = torch.tensor([2.0, 3.1, 3.9, 5.2], device=device)
+pred   = torch.tensor([2.2, 2.8, 4.0, 4.9], device=device)
+
+residual = pred - target          # prediction - target
+mse = torch.mean(residual ** 2)
+mae = torch.mean(torch.abs(residual))
+
+print("residuals:", [f"{v:.2f}" for v in residual.cpu().tolist()])
+print(f"MSE (mean): {mse.item():.4f}   | sum: {torch.sum(residual**2).item():.4f}")
+print(f"MAE (mean): {mae.item():.4f}   | sum: {torch.sum(torch.abs(residual)).item():.4f}")
+
+# One outlier: the 4th print spikes to 9.0 (flash print / bad tick)
+target_outlier = torch.tensor([2.0, 3.1, 3.9, 9.0], device=device)
+r2 = pred - target_outlier
+mse2, mae2 = torch.mean(r2 ** 2), torch.mean(torch.abs(r2))
+print("--- one outlier: target[3] spikes to 9.0 ---")
+print("outlier residuals:", [f"{v:.2f}" for v in r2.cpu().tolist()])
+print(f"MSE: {mse2.item():.4f}   MAE: {mae2.item():.4f}")
+print(f"One outlier made MSE {(mse2/mse).item():.1f}x bigger, "
+      f"MAE only {(mae2/mae).item():.1f}x bigger.")
+
+# Why training can use a loss: it's smooth, so it has a slope
+pred_g = pred.clone().requires_grad_(True)
+loss = torch.mean((pred_g - target) ** 2)
+loss.backward()
+print("d(loss)/d(pred):", [f"{v:.2f}" for v in pred_g.grad.cpu().tolist()])
+print("The loss has a gradient -&gt; it points downhill. Tomorrow we follow it.")</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Running on: mps
+residuals: ['0.20', '-0.30', '0.10', '-0.30']
+MSE (mean): 0.0575   | sum: 0.2300
+MAE (mean): 0.2250   | sum: 0.9000
+--- one outlier: target[3] spikes to 9.0 ---
+outlier residuals: ['0.20', '-0.30', '0.10', '-4.10']
+MSE: 4.2375   MAE: 1.1750
+One outlier made MSE 73.7x bigger, MAE only 5.2x bigger.
+d(loss)/d(pred): ['0.10', '-0.15', '0.05', '-0.15']
+The loss has a gradient -&gt; it points downhill. Tomorrow we follow it.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p><code>code.py</code> runs clean on MPS. You can state in one sentence when you'd pick MAE over MSE (noisy tape, outliers you don't want to chase) — and you watched <code>loss.backward()</code> produce a real gradient. That gradient is the raw material for tomorrow.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study the diagram (5 min). Run <code>code.py</code> and look only at the <code>x bigger</code> line (10 min). Finish with one sentence: which loss fears outliers, and why? (5 min.)</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: gradient descent from scratch — the actual loop that spends the loss down. No framework, just tensors and one update rule.</p>
+  </div>
+
+  <div class="footer">Streak: 5 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

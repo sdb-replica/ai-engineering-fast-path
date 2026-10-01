@@ -1,0 +1,28 @@
+<svg viewBox="0 0 600 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Residuals and loss penalty curves">
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:9.5px;fill:#777}</style>
+<text x="20" y="18" class="t">A. Residuals = prediction − target</text>
+<line x1="20" y1="230" x2="270" y2="230" stroke="#999"/><line x1="20" y1="230" x2="20" y2="30" stroke="#999"/>
+<text x="255" y="246" class="sm">x</text><text x="8" y="40" class="sm">y</text>
+<line x1="26.2" y1="212.5" x2="263.8" y2="47.5" stroke="#e07b00" stroke-width="1.6"/>
+<line x1="51.2" y1="205.0" x2="51.2" y2="195.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="113.8" y1="150.0" x2="113.8" y2="165.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="176.2" y1="110.0" x2="176.2" y2="105.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<line x1="238.8" y1="45.0" x2="238.8" y2="60.0" stroke="#d62728" stroke-width="1.4" stroke-dasharray="4,3"/>
+<circle cx="51.2" cy="205.0" r="4.5" fill="#0a7aff"/><rect x="46.8" y="190.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="113.8" cy="150.0" r="4.5" fill="#0a7aff"/><rect x="109.2" y="160.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="176.2" cy="110.0" r="4.5" fill="#0a7aff"/><rect x="171.8" y="100.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="238.8" cy="45.0" r="4.5" fill="#0a7aff"/><rect x="234.2" y="55.5" width="9" height="9" fill="#e07b00"/>
+<circle cx="30" cy="258" r="4" fill="#0a7aff"/><text x="38" y="262">target</text>
+<rect x="100" y="254" width="8" height="8" fill="#e07b00"/><text x="112" y="262">prediction</text>
+<line x1="200" y1="258" x2="214" y2="258" stroke="#d62728" stroke-width="1.6" stroke-dasharray="4,3"/><text x="218" y="262">residual</text>
+<text x="320" y="18" class="t">B. How each loss charges for error</text>
+<line x1="320" y1="230" x2="580" y2="230" stroke="#999"/><line x1="450" y1="230" x2="450" y2="26" stroke="#bbb"/>
+<text x="560" y="246" class="sm">error</text><text x="322" y="40" class="sm">penalty</text>
+<polyline points="325.0,30.0 328.1,39.9 331.2,49.5 334.4,58.9 337.5,68.0 340.6,76.9 343.8,85.5 346.9,93.9 350.0,102.0 353.1,109.9 356.2,117.5 359.4,124.9 362.5,132.0 365.6,138.9 368.8,145.5 371.9,151.9 375.0,158.0 378.1,163.9 381.2,169.5 384.4,174.9 387.5,180.0 390.6,184.9 393.8,189.5 396.9,193.9 400.0,198.0 403.1,201.9 406.2,205.5 409.4,208.9 412.5,212.0 415.6,214.9 418.8,217.5 421.9,219.9 425.0,222.0 428.1,223.9 431.2,225.5 434.4,226.9 437.5,228.0 440.6,228.9 443.8,229.5 446.9,229.9 450.0,230.0 453.1,229.9 456.2,229.5 459.4,228.9 462.5,228.0 465.6,226.9 468.8,225.5 471.9,223.9 475.0,222.0 478.1,219.9 481.2,217.5 484.4,214.9 487.5,212.0 490.6,208.9 493.8,205.5 496.9,201.9 500.0,198.0 503.1,193.9 506.2,189.5 509.4,184.9 512.5,180.0 515.6,174.9 518.8,169.5 521.9,163.9 525.0,158.0 528.1,151.9 531.2,145.5 534.4,138.9 537.5,132.0 540.6,124.9 543.8,117.5 546.9,109.9 550.0,102.0 553.1,93.9 556.2,85.5 559.4,76.9 562.5,68.0 565.6,58.9 568.8,49.5 571.9,39.9 575.0,30.0" fill="none" stroke="#d62728" stroke-width="2.2"/>
+<polyline points="325.0,180.0 450.0,230.0 575.0,180.0" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="575.0" cy="30.0" r="4.5" fill="#d62728"/><text x="583.0" y="34.0" fill="#d62728" font-weight="700">16</text>
+<circle cx="575.0" cy="180.0" r="4.5" fill="#0a7aff"/><text x="583.0" y="184.0" fill="#0a7aff" font-weight="700">4</text>
+<line x1="575.0" y1="230" x2="575.0" y2="30.0" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="330" y="262" fill="#d62728">MSE: error²</text>
+<text x="440" y="262" fill="#0a7aff">MAE: |error|</text>
+</svg>
