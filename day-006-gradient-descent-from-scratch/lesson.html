@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gradient Descent From Scratch — Day 6 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 6 of 100</span>
+  <h1>Gradient Descent From Scratch</h1>
+  <p class="outcome">Tonight you'll be able to: hand-derive the gradient of MSE and watch a five-line loop fit a line to noisy data &mdash; no autograd, no framework</p>
+
+  <h2>The one idea</h2>
+  <p>Everything you will ever train &mdash; a line, an MLP, a frontier LLM &mdash; learns the same move: <strong>feel the slope of the loss, step downhill, repeat.</strong> Today you do it with your own two hands, on the simplest model in ML: a line, y = wx + b. Two knobs: the slope <code>w</code> and the intercept <code>b</code>.</p>
+<p>Day 5 gave you the loss &mdash; a single number that says how wrong the line is. But the loss can't tell you <em>which way</em> to turn the knobs. The <strong>gradient</strong> can. For each knob, the gradient measures the slope of the loss in that knob's direction: "if I nudge <code>w</code> up a hair, how fast does the loss change &mdash; and in which direction?" Since the slope always points uphill, stepping <em>against</em> it always lowers the loss (for a small enough step). Repeat a few hundred times and the knobs settle at the bottom of the bowl. That is learning &mdash; the entire field, in one sentence.</p>
+<p><strong>Just-in-time math, one bite:</strong> for MSE the slope has a closed form, and it's worth meeting once:</p>
+<p style="text-align:center"><code>dL/dw = mean(2&middot;(wx + b &minus; y)&middot;x)</code> &nbsp;&nbsp; <code>dL/db = mean(2&middot;(wx + b &minus; y))</code></p>
+<p>In words: each point's error, weighted by its <code>x</code>, averaged. File away the shape &mdash; <strong>"error times input"</strong> &mdash; because this pattern shows up in every gradient you will ever compute.</p>
+<p>The only new dial is the <strong>learning rate</strong> &mdash; the size of each step. Steep slope &rarr; big step, flat slope &rarr; small step, automatically. But if the rate itself is too big, you leap across the bowl and diverge; too small and you crawl. You'll see both in the code. Watching the loss curve while training is the first observability habit of ML &mdash; your dashboards instinct, applied to a new metric.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>This is a <strong>closed-loop controller</strong> &mdash; the same shape as a PID loop or TCP congestion control. Measure the error (loss). Compute a correction proportional to the slope (gradient). Apply it (step). Re-measure. A distributed-systems cousin: a load balancer's feedback loop that shifts traffic toward the least-loaded replica based on measured queue depth &mdash; the gradient is "which direction reduces the pain," the learning rate is the fraction of traffic you shift per round.</p>
+<p>Trading version: it's calibrating a strategy parameter against a backtest &mdash; tweak, measure P&amp;L, tweak again &mdash; except the gradient hands you the tweak <em>direction</em> instead of blind search.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 620 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Gradient descent on a bowl-shaped loss curve">
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0a7aff"/></marker><marker id="ahr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#d62728"/></marker></defs>
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:9.5px;fill:#777}</style>
+<text x="20" y="18" class="t">One weight, one bowl: L(w) with b held at its best value</text>
+<line x1="70" y1="350" x2="612" y2="350" stroke="#999"/>
+<line x1="70" y1="350" x2="70" y2="50" stroke="#999"/>
+<text x="70" y="366" class="sm" text-anchor="middle">w=0</text>
+<text x="205" y="366" class="sm" text-anchor="middle">w=1</text>
+<text x="340" y="366" class="sm" text-anchor="middle">w=2</text>
+<text x="475" y="366" class="sm" text-anchor="middle">w=3</text>
+<text x="610" y="366" class="sm" text-anchor="middle">w=4</text>
+<text x="62" y="353.5" class="sm" text-anchor="end">0</text>
+<text x="62" y="293.5" class="sm" text-anchor="end">2</text>
+<text x="62" y="233.5" class="sm" text-anchor="end">4</text>
+<text x="62" y="173.5" class="sm" text-anchor="end">6</text>
+<text x="62" y="113.5" class="sm" text-anchor="end">8</text>
+<text x="614" y="366" class="sm">w &#8594;</text>
+<text x="20" y="60" class="sm">loss</text>
+<polyline points="70.0,110.0 76.8,121.9 83.5,133.4 90.2,144.6 97.0,155.6 103.8,166.2 110.5,176.6 117.2,186.7 124.0,196.4 130.8,205.8 137.5,215.0 144.2,223.8 151.0,232.4 157.8,240.6 164.5,248.6 171.2,256.2 178.0,263.6 184.8,270.6 191.5,277.4 198.3,283.9 205.0,290.0 211.8,295.9 218.5,301.4 225.3,306.7 232.0,311.6 238.8,316.3 245.5,320.6 252.3,324.7 259.0,328.4 265.8,331.9 272.5,335.0 279.3,337.9 286.0,340.4 292.8,342.7 299.5,344.6 306.3,346.2 313.0,347.6 319.8,348.7 326.5,349.4 333.3,349.9 340.0,350.0 346.8,349.9 353.5,349.4 360.3,348.6 367.0,347.6 373.8,346.2 380.5,344.6 387.2,342.7 394.0,340.4 400.7,337.9 407.5,335.0 414.2,331.9 421.0,328.4 427.7,324.7 434.5,320.6 441.2,316.3 448.0,311.6 454.7,306.7 461.5,301.4 468.2,295.9 475.0,290.0 481.7,283.9 488.5,277.4 495.2,270.7 502.0,263.6 508.7,256.3 515.5,248.6 522.2,240.7 529.0,232.4 535.7,223.9 542.5,215.0 549.2,205.9 556.0,196.4 562.7,186.7 569.5,176.6 576.2,166.3 583.0,155.6 589.7,144.7 596.5,133.4 603.2,121.9 610.0,110.0" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<rect x="384" y="26" width="216" height="76" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+<text x="396" y="48" class="t" fill="#0a54c2">the update rule</text>
+<text x="396" y="70" font-size="13" font-weight="700" fill="#0a54c2">w &#8592; w &#8722; lr &#183; dL/dw</text>
+<text x="396" y="90" fill="#0a54c2">dL/dw = mean(2&#183;error&#183;x)</text>
+<line x1="110.5" y1="176.60000000000002" x2="146.5" y2="228.60000000000002" stroke="#d62728" stroke-width="2" marker-end="url(#ahr)"/>
+<text x="154.5" y="220.60000000000002">slope (gradient)</text>
+<text x="154.5" y="234.60000000000002">is steep &#8594; big step</text>
+<line x1="110.5" y1="176.6" x2="191.5" y2="277.4" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="191.5" y1="277.4" x2="245.5" y2="320.6" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="245.5" y1="320.6" x2="286.0" y2="340.4" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="286.0" y1="340.4" x2="313.0" y2="347.6" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="313.0" y1="347.6" x2="333.2" y2="349.9" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="333.2" y1="349.9" x2="340.0" y2="350.0" stroke="#0a7aff" stroke-width="1.8" marker-end="url(#ah)"/>
+<circle cx="110.5" cy="176.6" r="5" fill="#0a7aff"/>
+<circle cx="191.5" cy="277.4" r="5" fill="#0a7aff"/>
+<circle cx="245.5" cy="320.6" r="5" fill="#0a7aff"/>
+<circle cx="286.0" cy="340.4" r="5" fill="#0a7aff"/>
+<circle cx="313.0" cy="347.6" r="5" fill="#0a7aff"/>
+<circle cx="333.2" cy="349.9" r="5" fill="#0a7aff"/>
+<circle cx="340.0" cy="350.0" r="6.5" fill="#22a355"/>
+<text x="102.5" y="160.60000000000002" text-anchor="middle">w&#8320; = 0.3</text>
+<text x="340.0" y="330.0" text-anchor="middle">&#9733; minimum (w = 2.0)</text>
+<text x="300" y="318" text-anchor="middle" class="sm">steps shrink as the slope flattens</text>
+</svg>
+    <div class="caption">One weight, one bowl-shaped loss curve (b held at its best value). Each blue step moves w opposite the slope, scaled by the learning rate; steps shrink as the slope flattens. Red arrow: the gradient &mdash; the slope you're pushing against.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure Python, no torch &mdash; <em>you</em> are the autograd today. Data: 100 noisy points drawn from <code>y = 2x + 1</code>. Knobs start at <code>w = 0, b = 0</code>. Each epoch: predict (forward), score with MSE (loss), compute the two hand-derived gradients (backward), nudge both knobs downhill (step). Then we rerun the same loop with <code>lr = 1.5</code> to watch it explode.</p>
+  <pre><code>&quot;&quot;&quot;Day 6 — Gradient Descent From Scratch: tiny linear regression, no framework.
+
+One idea: gradient descent = feel the slope of the loss, step downhill, repeat.
+No torch.autograd today — we hand-derive dL/dw and dL/db for MSE and write the
+loop ourselves. This loop (forward -&gt; loss -&gt; backward -&gt; step) is the ancestor
+of every training loop in deep learning.
+
+Runs on any MacBook Python 3.11+; no torch, no numpy, no paid APIs.
+&quot;&quot;&quot;
+
+import random
+
+# --- Toy data: y = 2x + 1 plus noise (Day 5&#x27;s loss on Day 6&#x27;s data) ---
+random.seed(42)
+xs = [random.uniform(-2, 2) for _ in range(100)]
+ys = [2 * x + 1 + random.gauss(0, 0.5) for x in xs]
+n = len(xs)
+
+
+def mse(w, b):
+    return sum((w * x + b - y) ** 2 for x, y in zip(xs, ys)) / n
+
+
+# --- Gradient descent, hand-rolled ---
+w, b = 0.0, 0.0   # the knobs, initialized at zero
+lr = 0.1          # learning rate: step size
+
+print(&quot;=== Gradient descent, lr = 0.1 ===&quot;)
+for epoch in range(100):
+    # forward: predictions + loss (Day 5)
+    preds = [w * x + b for x in xs]
+    loss = sum((p - y) ** 2 for p, y in zip(preds, ys)) / n
+    # backward: hand-derived gradients of MSE. Note the shape:
+    #   dw = mean(2 * error * x)   -&gt;  &quot;error x input&quot;
+    #   db = mean(2 * error)
+    dw = sum(2 * (p - y) * x for p, y, x in zip(preds, ys, xs)) / n
+    db = sum(2 * (p - y) for p, y in zip(preds, ys)) / n
+    # step: move opposite the slope (downhill)
+    w -= lr * dw
+    b -= lr * db
+    if epoch % 20 == 0:
+        print(f&quot;epoch {epoch:3d}  loss={loss:.4f}  w={w:.3f}  b={b:.3f}&quot;)
+
+print(f&quot;\nlearned: w={w:.3f} b={b:.3f}   (truth: w=2.000 b=1.000)&quot;)
+print(f&quot;final MSE: {mse(w, b):.4f}&quot;)
+
+# --- The same loop with a learning rate that&#x27;s way too big ---
+print(&quot;\n=== Gradient descent, lr = 1.5 (too big) ===&quot;)
+w, b = 0.0, 0.0
+for epoch in range(8):
+    preds = [w * x + b for x in xs]
+    loss = sum((p - y) ** 2 for p, y in zip(preds, ys)) / n
+    dw = sum(2 * (p - y) * x for p, y, x in zip(preds, ys, xs)) / n
+    db = sum(2 * (p - y) for p, y in zip(preds, ys)) / n
+    w -= 1.5 * dw
+    b -= 1.5 * db
+    print(f&quot;epoch {epoch}: loss={loss:15.2f}  w={w:12.2f}  b={b:12.2f}&quot;)
+print(&quot;\nOvershoots the bowl, oscillates, and blows up. &quot;
+      &quot;Step size is the one knob you must respect.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>=== Gradient descent, lr = 0.1 ===
+epoch   0  loss=6.8585  w=0.549  b=0.185
+epoch  20  loss=0.2281  w=2.043  b=1.077
+epoch  40  loss=0.2278  w=2.047  b=1.091
+epoch  60  loss=0.2278  w=2.047  b=1.091
+epoch  80  loss=0.2278  w=2.047  b=1.091
+
+learned: w=2.047 b=1.091   (truth: w=2.000 b=1.000)
+final MSE: 0.2278
+
+=== Gradient descent, lr = 1.5 (too big) ===
+epoch 0: loss=           6.86  w=        8.24  b=        2.77
+epoch 1: loss=          54.47  w=      -17.08  b=       -0.75
+epoch 2: loss=         504.79  w=       61.96  b=        0.08
+epoch 3: loss=        4983.73  w=     -187.27  b=       17.80
+epoch 4: loss=       50441.22  w=      603.54  b=      -78.73
+epoch 5: loss=      515368.75  w=    -1915.57  b=      308.20
+epoch 6: loss=     5284281.14  w=     6128.53  b=    -1083.27
+epoch 7: loss=    54253104.71  w=   -19596.37  b=     3671.84
+
+Overshoots the bowl, oscillates, and blows up. Step size is the one knob you must respect.
+</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Your hand-written loop drove MSE from <strong>6.86 &rarr; 0.23</strong> and landed at <strong>w &asymp; 2.05, b &asymp; 1.09</strong> &mdash; against truth <code>w = 2.0, b = 1.0</code> &mdash; using gradients you derived yourself. No torch, no autograd. The loop you just wrote (<em>forward &rarr; loss &rarr; backward &rarr; step</em>) is the ancestor of every training loop in deep learning. You now know what's underneath all of them.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea," then run <code>code.py</code> and watch two things: the loss dropping every epoch, and the <code>lr = 1.5</code> run exploding. Skip the math paragraph if you're rushed &mdash; the loop is the lesson. (~20 min)</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow the machine takes over the derivatives: <code>torch.autograd</code> replays today's exact loop as <strong>forward &rarr; loss &rarr; backward &rarr; step</strong> &mdash; the four-line ritual that trains everything from MLPs to frontier LLMs. You'll never hand-derive a gradient again, and now you'll know exactly what it's doing.</p>
+  </div>
+
+  <div class="footer">Streak: 6 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
