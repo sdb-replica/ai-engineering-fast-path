@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Training Loop Anatomy — Day 7 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 7 of 100</span>
+  <h1>The Training Loop Anatomy</h1>
+  <p class="outcome">Tonight you'll be able to: run the four-move ritual &mdash; forward &rarr; loss &rarr; backward &rarr; step &mdash; that trains every PyTorch model, and watch it land on the exact answer you hand-derived yesterday</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday <em>you</em> were the autograd: you derived the gradients by hand and wrote the loop. Today torch does the calculus &mdash; and you'll see that <strong>the loop you wrote <em>is</em> the training loop</strong>. Every model you will ever train &mdash; a line, an MLP, a frontier LLM &mdash; learns through the same four moves:</p>
+<p><strong>1. Forward.</strong> <code>preds = w * X + b</code>. Because <code>w</code> and <code>b</code> were created with <code>requires_grad=True</code>, torch silently starts the tape recorder (Day 4) on every op. <strong>2. Loss.</strong> <code>loss = ((preds - Y) ** 2).mean()</code> &mdash; Day 5's MSE collapses all predictions to one number. <strong>3. Backward.</strong> <code>loss.backward()</code> replays the tape and fills <code>w.grad</code> and <code>b.grad</code> with exactly the "error times input" formula you derived yesterday. Nothing new &mdash; a machine for your calculus. <strong>4. Step.</strong> <code>w -= lr * w.grad</code>. Ordinary arithmetic on the knobs, same as Day 6.</p>
+<p>Two bookkeeping details make it real: the step runs under <code>with torch.no_grad()</code> so the bookkeeping itself isn't recorded on the tape (you don't want "nudging the knob" to become part of the gradient's story), and <code>w.grad.zero_()</code> resets the accumulator because gradients <em>add up</em> across backward calls (Day 4's accumulation) &mdash; forgetting this is the classic silent training bug.</p>
+<p>The payoff: when you read any PyTorch training code from now on &mdash; tutorials, papers, frontier repos &mdash; you won't see four mysteries. You'll see <em>this</em>, with a bigger forward and a fancier loss.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>This is a <strong>Kubernetes reconcile loop</strong> in four phases: observe the current state (forward), diff it against desired (loss), attribute the diff to each component (backward &mdash; "which knob caused this?"), apply the patch (step), then re-observe. The backward pass is the attribution engine &mdash; it's the <code>kubectl describe</code> that turns "the SLO is breached" into "this deployment's replica count is the lever." In trading terms: scan (forward) &rarr; score the signal (loss) &rarr; risk engine says which position is bleeding (backward) &rarr; send the order (step).</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 620 370" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The four-phase training loop: forward, loss, backward, step, repeating">
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0a7aff"/></marker></defs>
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:9.5px;fill:#777}.code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700}</style>
+<text x="20" y="18" class="t">The four-move ritual (Day 6's loop, with a machine for the calculus)</text>
+<!-- boxes -->
+<rect x="14" y="44" width="136" height="150" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<rect x="170" y="44" width="136" height="150" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+<rect x="326" y="44" width="136" height="150" rx="10" fill="#f1efff" stroke="#7a5cff" stroke-width="1.6"/>
+<rect x="482" y="44" width="124" height="150" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="82" y="68" class="t" text-anchor="middle" fill="#0a54c2">1. FORWARD</text>
+<text x="82" y="90" class="code" text-anchor="middle">preds = w*X + b</text>
+<text x="82" y="110" class="sm" text-anchor="middle">tape recorder ON</text>
+<text x="82" y="124" class="sm" text-anchor="middle">(requires_grad=True)</text>
+<text x="82" y="146" class="sm" text-anchor="middle">&#8594; Day 4's tape</text>
+<text x="82" y="172" class="sm" text-anchor="middle">100 predictions</text>
+<text x="238" y="68" class="t" text-anchor="middle" fill="#9a6b00">2. LOSS</text>
+<text x="238" y="90" class="code" text-anchor="middle">((preds&#8722;Y)^2).mean()</text>
+<text x="238" y="110" class="sm" text-anchor="middle">MSE &mdash; Day 5's</text>
+<text x="238" y="124" class="sm" text-anchor="middle">single number</text>
+<text x="238" y="146" class="sm" text-anchor="middle">epoch 0: 6.8585</text>
+<text x="394" y="68" class="t" text-anchor="middle" fill="#5a3fd4">3. BACKWARD</text>
+<text x="394" y="90" class="code" text-anchor="middle">loss.backward()</text>
+<text x="394" y="110" class="sm" text-anchor="middle">replays the tape</text>
+<text x="394" y="124" class="sm" text-anchor="middle">fills w.grad, b.grad</text>
+<text x="394" y="146" class="sm" text-anchor="middle">="error &#215; input"</text>
+<text x="394" y="172" class="sm" text-anchor="middle">&#8594; your Day 6 formula!</text>
+<text x="544" y="68" class="t" text-anchor="middle" fill="#177245">4. STEP</text>
+<text x="544" y="90" class="code" text-anchor="middle">w &#8722;= lr&#183;w.grad</text>
+<text x="544" y="110" class="sm" text-anchor="middle">under no_grad()</text>
+<text x="544" y="124" class="sm" text-anchor="middle">then zero_grad()</text>
+<text x="544" y="146" class="sm" text-anchor="middle">&#8594; Day 4's gotcha</text>
+<!-- forward arrows -->
+<line x1="150" y1="119" x2="166" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="306" y1="119" x2="322" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="462" y1="119" x2="478" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<!-- loop back -->
+<path d="M 544 194 L 544 300 L 82 300 L 82 198" fill="none" stroke="#0a7aff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<text x="313" y="322" class="sm" text-anchor="middle">repeat 100 epochs &mdash; the same loop trains MLPs and LLMs, only the forward and loss get bigger</text>
+<rect x="160" y="230" width="300" height="44" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="310" y="247" class="sm" text-anchor="middle">the whole thing = Day 6's pure-Python loop,</text>
+<text x="310" y="263" class="sm" text-anchor="middle">with autograd replacing your hand-derived gradients</text>
+</svg>
+    <div class="caption">The four-move ritual. The loop-back arrow is the whole lesson: every PyTorch training run, at any scale, is forward &rarr; loss &rarr; backward &rarr; step, repeated.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Same data, same model, same loop as yesterday &mdash; but <code>requires_grad=True</code> turns on Day 4's tape recorder, and <code>loss.backward()</code> computes the gradients you hand-derived. First we hold autograd against your formula at epoch 0; then we run the loop and compare the final answer to yesterday's.</p>
+  <pre><code>"""Day 7 — The Training Loop: forward → loss → backward → step.
+
+One idea: every training loop in PyTorch (and in deep learning, period) is
+four moves: forward (make predictions) → loss (score them) → backward (get
+gradients) → step (nudge the knobs downhill). Today we replay Day 6's tiny
+regression in torch, and let autograd replace the hand-derived gradients.
+
+Runs on a MacBook with the ~/ai-lab venv + torch (MPS or CPU). No CUDA, no paid APIs.
+"""
+
+import random
+
+import torch
+
+random.seed(42)  # same toy data as Day 6
+
+# --- Data: y = 2x + 1 plus noise (100 points) ---
+xs = [random.uniform(-2, 2) for _ in range(100)]
+ys = [2 * x + 1 + random.gauss(0, 0.5) for x in xs]
+n = len(xs)
+
+device = "mps" if torch.backends.mps.is_available() else "cpu"
+print(f"device: {device}")
+X = torch.tensor(xs, dtype=torch.float32, device=device)
+Y = torch.tensor(ys, dtype=torch.float32, device=device)
+
+# --- The knobs, but this time torch watches them (Day 4's tape recorder) ---
+w = torch.tensor(0.0, requires_grad=True, device=device)
+b = torch.tensor(0.0, requires_grad=True, device=device)
+lr = 0.1
+
+# --- Side by side at epoch 0: yesterday's formula vs autograd ---
+preds0 = [w.item() * x + b.item() for x in xs]  # w=0, b=0
+dw_hand = sum(2 * (p - y) * x for p, y, x in zip(preds0, ys, xs)) / n
+db_hand = sum(2 * (p - y) for p, y in zip(preds0, ys)) / n
+
+preds_t = w * X + b
+torch_loss0 = ((preds_t - Y) ** 2).mean()
+torch_loss0.backward()
+print(f"hand-derived grads: dw={dw_hand:.5f}  db={db_hand:.5f}")
+print(f"autograd grads:     dw={w.grad.item():.5f}  db={b.grad.item():.5f}")
+w.grad.zero_()
+b.grad.zero_()
+
+# --- The loop: forward → loss → backward → step ---
+print("\nepoch   loss     w       b")
+for epoch in range(100):
+    preds = w * X + b                      # forward: predictions
+    loss = ((preds - Y) ** 2).mean()       # loss: one number
+    loss.backward()                        # backward: fills w.grad, b.grad
+    with torch.no_grad():                  # step: bookkeeping, don't record it
+        w -= lr * w.grad
+        b -= lr * b.grad
+    w.grad.zero_()                         # reset the tape for next epoch
+    b.grad.zero_()
+    if epoch % 20 == 0:
+        print(f"{epoch:3d}   {loss.item():.4f}  {w.item():.3f}  {b.item():.3f}")
+
+print(f"\nlearned: w={w.item():.3f}  b={b.item():.3f}   (truth: 2.000 / 1.000)")
+print("Day 6's pure-Python loop converged to w=2.047, b=1.091. Same loop. Same math.")
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+hand-derived grads: dw=-5.49342  db=-1.84714
+autograd grads:     dw=-5.49342  db=-1.84714
+
+epoch   loss     w       b
+  0   6.8585  0.549  0.185
+ 20   0.2281  2.043  1.077
+ 40   0.2278  2.047  1.091
+ 60   0.2278  2.047  1.091
+ 80   0.2278  2.047  1.091
+
+learned: w=2.047  b=1.091   (truth: 2.000 / 1.000)
+Day 6's pure-Python loop converged to w=2.047, b=1.091. Same loop. Same math.
+</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Autograd's gradients matched your hand-derived ones digit for digit &mdash; the machine replays your calculus exactly &mdash; and the torch loop converged to <strong>w=2.047, b=1.091</strong>, byte-identical to yesterday's pure-Python answer. You can now read the training loop in any PyTorch codebase on earth: it's these four moves, with a bigger forward. Experiment: comment out the two <code>zero_grad()</code> lines and re-run &mdash; watch the accumulation bug from Day 4 bite.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea," then run <code>code.py</code> and watch two numbers: the epoch-0 gradients matching your formula, and the loss collapsing 6.86 &rarr; 0.23. Skip the no_grad/zero_grad paragraph tonight &mdash; the four moves are the lesson. (~20 min)</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: a model that aces its training data can still be useless on data it hasn't seen. The curve-fitting trap &mdash; and its trading cousin, the backtest that memorized the past.</p>
+  </div>
+
+  <div class="footer">Streak: 7 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

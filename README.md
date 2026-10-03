@@ -31,3 +31,4 @@ pip install torch numpy
 | 4 | [Autograd: The Tape Recorder](day-004-autograd-the-tape-recorder/lesson.html) | [lesson.md](day-004-autograd-the-tape-recorder/lesson.md) | [code.py](day-004-autograd-the-tape-recorder/code.py) |
 | 5 | [Loss Functions: How a Model Knows It's Wrong](day-005-loss-functions/lesson.html) | [lesson.md](day-005-loss-functions/lesson.md) | [code.py](day-005-loss-functions/code.py) |
 | 6 | [Gradient Descent From Scratch](day-006-gradient-descent-from-scratch/lesson.html) | [lesson.md](day-006-gradient-descent-from-scratch/lesson.md) | [code.py](day-006-gradient-descent-from-scratch/code.py) |
+| 7 | [The Training Loop Anatomy](day-007-training-loop-anatomy/lesson.html) | [lesson.md](day-007-training-loop-anatomy/lesson.md) | [code.py](day-007-training-loop-anatomy/code.py) |

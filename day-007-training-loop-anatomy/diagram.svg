@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 620 370" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The four-phase training loop: forward, loss, backward, step, repeating">
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0a7aff"/></marker></defs>
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:9.5px;fill:#777}.code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700}</style>
+<text x="20" y="18" class="t">The four-move ritual (Day 6's loop, with a machine for the calculus)</text>
+<rect x="14" y="44" width="136" height="150" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<rect x="170" y="44" width="136" height="150" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+<rect x="326" y="44" width="136" height="150" rx="10" fill="#f1efff" stroke="#7a5cff" stroke-width="1.6"/>
+<rect x="482" y="44" width="124" height="150" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="82" y="68" class="t" text-anchor="middle" fill="#0a54c2">1. FORWARD</text>
+<text x="82" y="90" class="code" text-anchor="middle">preds = w*X + b</text>
+<text x="82" y="110" class="sm" text-anchor="middle">tape recorder ON</text>
+<text x="82" y="124" class="sm" text-anchor="middle">(requires_grad=True)</text>
+<text x="82" y="146" class="sm" text-anchor="middle">→ Day 4's tape</text>
+<text x="82" y="172" class="sm" text-anchor="middle">100 predictions</text>
+<text x="238" y="68" class="t" text-anchor="middle" fill="#9a6b00">2. LOSS</text>
+<text x="238" y="90" class="code" text-anchor="middle">((preds−Y)^2).mean()</text>
+<text x="238" y="110" class="sm" text-anchor="middle">MSE — Day 5's</text>
+<text x="238" y="124" class="sm" text-anchor="middle">single number</text>
+<text x="238" y="146" class="sm" text-anchor="middle">epoch 0: 6.8585</text>
+<text x="394" y="68" class="t" text-anchor="middle" fill="#5a3fd4">3. BACKWARD</text>
+<text x="394" y="90" class="code" text-anchor="middle">loss.backward()</text>
+<text x="394" y="110" class="sm" text-anchor="middle">replays the tape</text>
+<text x="394" y="124" class="sm" text-anchor="middle">fills w.grad, b.grad</text>
+<text x="394" y="146" class="sm" text-anchor="middle">="error × input"</text>
+<text x="394" y="172" class="sm" text-anchor="middle">→ your Day 6 formula!</text>
+<text x="544" y="68" class="t" text-anchor="middle" fill="#177245">4. STEP</text>
+<text x="544" y="90" class="code" text-anchor="middle">w −= lr·w.grad</text>
+<text x="544" y="110" class="sm" text-anchor="middle">under no_grad()</text>
+<text x="544" y="124" class="sm" text-anchor="middle">then zero_grad()</text>
+<text x="544" y="146" class="sm" text-anchor="middle">→ Day 4's gotcha</text>
+<line x1="150" y1="119" x2="166" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="306" y1="119" x2="322" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="462" y1="119" x2="478" y2="119" stroke="#0a7aff" stroke-width="2" marker-end="url(#ah)"/>
+<path d="M 544 194 L 544 300 L 82 300 L 82 198" fill="none" stroke="#0a7aff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<text x="313" y="322" class="sm" text-anchor="middle">repeat 100 epochs — the same loop trains MLPs and LLMs, only the forward and loss get bigger</text>
+<rect x="160" y="230" width="300" height="44" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="310" y="247" class="sm" text-anchor="middle">the whole thing = Day 6's pure-Python loop,</text>
+<text x="310" y="263" class="sm" text-anchor="middle">with autograd replacing your hand-derived gradients</text>
+</svg>
