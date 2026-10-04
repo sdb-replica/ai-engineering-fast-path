@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 640 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Train/val/test split and the overfitting signature">
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:10px;fill:#777}.code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700}</style>
+<text x="20" y="20" class="t">The honest split: 40 / 20 / 40</text>
+<rect x="20" y="32" width="236" height="40" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="138.0" y="57" class="code" text-anchor="middle" fill="#0a7aff">TRAIN · 40 pts</text>
+<text x="138.0" y="88" class="sm" text-anchor="middle">study material — the model learns here</text>
+<rect x="264" y="32" width="124" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="326.0" y="57" class="code" text-anchor="middle" fill="#22a355">VAL · 20 pts</text>
+<text x="326.0" y="88" class="sm" text-anchor="middle">the judge — pick the model here</text>
+<rect x="396" y="32" width="224" height="40" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.6"/>
+<text x="508.0" y="57" class="code" text-anchor="middle" fill="#7a5cff">TEST · 40 pts</text>
+<text x="508.0" y="88" class="sm" text-anchor="middle">the verdict — locked — touched once</text>
+<rect x="594" y="44" width="14" height="11" rx="2" fill="none" stroke="#5a3fd4" stroke-width="2"/>
+<path d="M 597 44 v-4 a4 4 0 0 1 8 0 v4" fill="none" stroke="#5a3fd4" stroke-width="2"/>
+<text x="20" y="132" class="t">The overfitting signature (same data, three models)</text>
+<line x1="70" y1="329.4" x2="610" y2="329.4" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="332.9" class="sm" text-anchor="end">0.5</text>
+<line x1="70" y1="288.3" x2="610" y2="288.3" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="291.8" class="sm" text-anchor="end">2</text>
+<line x1="70" y1="247.2" x2="610" y2="247.2" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="250.7" class="sm" text-anchor="end">8</text>
+<line x1="70" y1="206.1" x2="610" y2="206.1" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="209.6" class="sm" text-anchor="end">32</text>
+<text x="28" y="260" class="sm" text-anchor="middle" transform="rotate(-90 28 260)">MSE (log scale)</text>
+<text x="340" y="398" class="sm" text-anchor="middle">model complexity → polynomial degree</text>
+<text x="90" y="382" class="sm" text-anchor="middle">degree 1</text>
+<text x="365" y="382" class="sm" text-anchor="middle">degree 8</text>
+<text x="590" y="382" class="sm" text-anchor="middle">degree 20</text>
+<polyline points="90,310.4 365,317.0 590,344.6" fill="none" stroke="#0a7aff" stroke-width="2.5"/>
+<polyline points="90,293.0 365,281.2 590,179.7" fill="none" stroke="#22a355" stroke-width="2.5"/>
+<circle cx="90" cy="310.4" r="4.5" fill="#0a7aff"/>
+<circle cx="365" cy="317.0" r="4.5" fill="#0a7aff"/>
+<circle cx="590" cy="344.6" r="4.5" fill="#0a7aff"/>
+<text x="80" y="300.4" class="sm" text-anchor="end">0.95</text>
+<text x="375" y="307.0" class="sm">0.76</text>
+<text x="600" y="348.6" class="sm">0.30</text>
+<circle cx="90" cy="293.0" r="4.5" fill="#22a355"/>
+<circle cx="365" cy="281.2" r="4.5" fill="#22a355"/>
+<circle cx="590" cy="179.7" r="4.5" fill="#22a355"/>
+<text x="102" y="283.0" class="sm">1.71</text>
+<text x="377" y="271.2" class="sm">2.54</text>
+<text x="578" y="169.7" class="sm" text-anchor="end">78.04</text>
+<rect x="80" y="142" width="150" height="46" rx="8" fill="#fff" stroke="#ddd"/>
+<line x1="92" y1="159" x2="112" y2="159" stroke="#0a7aff" stroke-width="3"/>
+<text x="118" y="163" class="sm">train MSE</text>
+<line x1="92" y1="177" x2="112" y2="177" stroke="#22a355" stroke-width="3"/>
+<text x="118" y="181" class="sm">val MSE</text>
+<circle cx="90" cy="293.0" r="9" fill="none" stroke="#d99a00" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="106" y="297.0" class="sm" fill="#9a6b00">val picks degree 1</text>
+</svg>

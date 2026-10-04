@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Train, Val, Test &amp; Overfitting — Day 8 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 8 of 100</span>
+  <h1>Train, Val, Test &amp; Overfitting</h1>
+  <p class="outcome">Tonight you'll be able to: split any dataset the honest way, read the overfitting signature in two numbers, and never leak a test set again.</p>
+
+  <h2>The one idea</h2>
+  
+<p>Days 6 and 7 fit one line on all 100 points and then graded it on the same
+100 points. That is the student grading their own homework — rigged. A model
+that memorizes the training data gets an A+ from training loss and an F from
+reality. So we split the data into three piles with three jobs:</p>
+<ul>
+<li><strong>TRAIN</strong> — the study material. The model learns here; every
+knob is tuned against this pile. 40 points tonight.</li>
+<li><strong>VAL</strong> (validation) — the judge. You pick the model, the
+hyperparameters, the checkpoint here. The model never trains on it; it only
+gets graded on it. 20 points.</li>
+<li><strong>TEST</strong> — the verdict. Locked away, touched <em>exactly
+once</em>, at the very end, to report the one honest number. 40 points.</li>
+</ul>
+<p><strong>Overfitting</strong> is what happens when a model has more knobs than
+the training data deserves. A degree-20 polynomial has 21 knobs for 40 noisy
+points — about two points per knob. It can thread every training point, so its
+train MSE collapses to 0.30. But it memorized the <em>noise</em>, not the
+line, and on fresh data it flails: val MSE 78.04. The signature, learn to read
+it at a glance: <strong>train loss keeps falling while val loss bottoms out
+and rises</strong>. Train ≪ val = memorization, not learning.</p>
+<p>The cardinal sin is tuning against the test set. Every choice you make while
+looking at test scores leaks the answer key into training — you end up "passing
+the exam" by studying the exam itself. That is why there are <em>three</em>
+piles, not two: val absorbs all your decisions, test stays clean.</p>
+<p>No new math tonight — MSE is Day 5's, and the intuition is pure counting:
+21 knobs vs 40 noisy points leaves nothing left to generalize with.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    
+<p><strong>The runbook engineer.</strong> An on-call engineer who memorizes
+every past incident's runbook aces the quiz on old incidents (train MSE
+→ 0) — then freezes on the novel 3am page she's never seen (val explodes).
+Understanding generalizes; memorization overfits. You already interview for
+the difference between the two.</p>
+<p><strong>Curve-fitting a backtest.</strong> Add enough indicators to a
+strategy and you can make it print money on 2021–2023 data — beautiful
+equity curve, train MSE near zero. Then you trade it live and it bleeds,
+because the market, like the test set, doesn't care about your backtest.
+You live this one, Sai. The quant capstone (Days 83–92) will formalize it:
+walk-forward validation is just train/val/test with a calendar.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 640 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Train/val/test split and the overfitting signature">
+<style>text{font-family:-apple-system,system-ui,sans-serif;font-size:11px;fill:#333}.t{font-size:13px;font-weight:700}.sm{font-size:10px;fill:#777}.code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700}</style>
+<text x="20" y="20" class="t">The honest split: 40 / 20 / 40</text>
+<rect x="20" y="32" width="236" height="40" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="138.0" y="57" class="code" text-anchor="middle" fill="#0a7aff">TRAIN · 40 pts</text>
+<text x="138.0" y="88" class="sm" text-anchor="middle">study material — the model learns here</text>
+<rect x="264" y="32" width="124" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="326.0" y="57" class="code" text-anchor="middle" fill="#22a355">VAL · 20 pts</text>
+<text x="326.0" y="88" class="sm" text-anchor="middle">the judge — pick the model here</text>
+<rect x="396" y="32" width="224" height="40" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.6"/>
+<text x="508.0" y="57" class="code" text-anchor="middle" fill="#7a5cff">TEST · 40 pts</text>
+<text x="508.0" y="88" class="sm" text-anchor="middle">the verdict — locked — touched once</text>
+<rect x="594" y="44" width="14" height="11" rx="2" fill="none" stroke="#5a3fd4" stroke-width="2"/>
+<path d="M 597 44 v-4 a4 4 0 0 1 8 0 v4" fill="none" stroke="#5a3fd4" stroke-width="2"/>
+<text x="20" y="132" class="t">The overfitting signature (same data, three models)</text>
+<line x1="70" y1="329.4" x2="610" y2="329.4" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="332.9" class="sm" text-anchor="end">0.5</text>
+<line x1="70" y1="288.3" x2="610" y2="288.3" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="291.8" class="sm" text-anchor="end">2</text>
+<line x1="70" y1="247.2" x2="610" y2="247.2" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="250.7" class="sm" text-anchor="end">8</text>
+<line x1="70" y1="206.1" x2="610" y2="206.1" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="209.6" class="sm" text-anchor="end">32</text>
+<text x="28" y="260" class="sm" text-anchor="middle" transform="rotate(-90 28 260)">MSE (log scale)</text>
+<text x="340" y="398" class="sm" text-anchor="middle">model complexity → polynomial degree</text>
+<text x="90" y="382" class="sm" text-anchor="middle">degree 1</text>
+<text x="365" y="382" class="sm" text-anchor="middle">degree 8</text>
+<text x="590" y="382" class="sm" text-anchor="middle">degree 20</text>
+<polyline points="90,310.4 365,317.0 590,344.6" fill="none" stroke="#0a7aff" stroke-width="2.5"/>
+<polyline points="90,293.0 365,281.2 590,179.7" fill="none" stroke="#22a355" stroke-width="2.5"/>
+<circle cx="90" cy="310.4" r="4.5" fill="#0a7aff"/>
+<circle cx="365" cy="317.0" r="4.5" fill="#0a7aff"/>
+<circle cx="590" cy="344.6" r="4.5" fill="#0a7aff"/>
+<text x="80" y="300.4" class="sm" text-anchor="end">0.95</text>
+<text x="375" y="307.0" class="sm">0.76</text>
+<text x="600" y="348.6" class="sm">0.30</text>
+<circle cx="90" cy="293.0" r="4.5" fill="#22a355"/>
+<circle cx="365" cy="281.2" r="4.5" fill="#22a355"/>
+<circle cx="590" cy="179.7" r="4.5" fill="#22a355"/>
+<text x="102" y="283.0" class="sm">1.71</text>
+<text x="377" y="271.2" class="sm">2.54</text>
+<text x="578" y="169.7" class="sm" text-anchor="end">78.04</text>
+<rect x="80" y="142" width="150" height="46" rx="8" fill="#fff" stroke="#ddd"/>
+<line x1="92" y1="159" x2="112" y2="159" stroke="#0a7aff" stroke-width="3"/>
+<text x="118" y="163" class="sm">train MSE</text>
+<line x1="92" y1="177" x2="112" y2="177" stroke="#22a355" stroke-width="3"/>
+<text x="118" y="181" class="sm">val MSE</text>
+<circle cx="90" cy="293.0" r="9" fill="none" stroke="#d99a00" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="106" y="297.0" class="sm" fill="#9a6b00">val picks degree 1</text>
+</svg>
+    <div class="caption">Top: the 40/20/40 split and each pile's job. Bottom: MSE (log scale) vs model complexity on the same data — train MSE falls with more knobs while val MSE bottoms out and explodes. The dashed circle marks where val picks the model.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  
+<p>Same toy world as Days 6/7 (<code>y = 2x + 1 + noise</code>, seed 42 — the
+data is generated in pure Python so your numbers match the expected output
+exactly), noisier this time (σ = 1.0), split 40/20/40 with
+<code>random.shuffle</code> <em>before</em> splitting — order is information.
+Three models of growing flexibility, fit with exact least squares
+(<code>torch.linalg.lstsq</code>), graded on all three piles. Watch the
+signature.</p>
+  <pre><code>&quot;&quot;&quot;Day 8 — Train/Val/Test &amp; Overfitting: the generalization contract.
+
+One idea: training loss is a grade the student gives themselves — rigged.
+You need three piles: TRAIN (study material), VAL (the judge you tune
+against), TEST (the verdict — locked away, touched once). Tonight we fit
+three models of growing flexibility on the same toy world as Days 6/7 and
+watch the overfit model&#x27;s train loss collapse while its honest loss explodes.
+
+Runs on a MacBook with the ~/ai-lab venv + torch (MPS or CPU). No CUDA, no paid APIs.
+&quot;&quot;&quot;
+
+import random
+
+import torch
+
+random.seed(42)  # same toy world as Days 6/7, noisier this time
+
+# --- Data: y = 2x + 1 + noise (100 points), then the honest 40/20/40 split ---
+xs = [random.uniform(-2, 2) for _ in range(100)]
+ys = [2 * x + 1 + random.gauss(0, 1.0) for x in xs]
+idx = list(range(100))
+random.shuffle(idx)  # shuffle BEFORE splitting — order is information
+
+device = &quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;
+print(f&quot;device: {device}&quot;)
+X = torch.tensor(xs, dtype=torch.float32, device=device)
+Y = torch.tensor(ys, dtype=torch.float32, device=device)
+
+Xtr, Ytr = X[idx[:40]], Y[idx[:40]]      # TRAIN: the study material
+Xva, Yva = X[idx[40:60]], Y[idx[40:60]]  # VAL: the judge (pick the model here)
+Xte, Yte = X[idx[60:]], Y[idx[60:]]      # TEST: the verdict — touched once, below
+
+
+def design(xv, degree):
+    &quot;&quot;&quot;Polynomial features x, x^2, ..., x^degree + bias, standardized.&quot;&quot;&quot;
+    feats = torch.stack([xv ** p for p in range(1, degree + 1)], dim=1)
+    z = (feats - feats.mean(0)) / feats.std(0, unbiased=False)
+    return torch.cat([torch.ones(len(xv), 1, device=device), z], dim=1)
+
+
+def fit_and_score(degree):
+    beta, *_ = torch.linalg.lstsq(design(Xtr, degree), Ytr.unsqueeze(1))
+    beta = beta.squeeze(1)  # exact least squares — no gradient descent
+    mse = lambda a, b: ((a - b) ** 2).mean().item()
+    return (mse(design(Xtr, degree) @ beta, Ytr),
+            mse(design(Xva, degree) @ beta, Yva),
+            mse(design(Xte, degree) @ beta, Yte))
+
+
+print(f&quot;\n{&#x27;model&#x27;:&lt;12}{&#x27;train&#x27;:&gt;8}{&#x27;val&#x27;:&gt;8}{&#x27;test&#x27;:&gt;8}&quot;)
+results = {}
+for deg in (1, 8, 20):
+    tr, va, te = fit_and_score(deg)
+    results[deg] = (tr, va, te)
+    print(f&quot;degree {deg:&lt;4}{tr:&gt;8.2f}{va:&gt;8.2f}{te:&gt;8.2f}&quot;)
+
+best = min(results, key=lambda d: results[d][1])
+print(f&quot;\nval picks degree {best}  (val MSE {results[best][1]:.2f} — the honest score)&quot;)
+print(f&quot;test verdict: degree {best} MSE {results[best][2]:.2f} &quot;
+      f&quot;vs degree 20 MSE {results[20][2]:.2f}  &lt;-- overfitting, quantified&quot;)
+print(&quot;\nthe test set was touched exactly once: right here, at the end.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps              (prints "cpu" on machines without MPS)
+
+model       train     val    test
+degree 1     0.95    1.71    1.69
+degree 8     0.76    2.54    2.11
+degree 20    0.30   78.04   33.49
+
+val picks degree 1  (val MSE 1.71 — the honest score)
+test verdict: degree 1 MSE 1.69 vs degree 20 MSE 33.49  &lt;-- overfitting, quantified
+
+the test set was touched exactly once: right here, at the end.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    
+<p>Run the script in <code>~/ai-lab</code>. The degree-20 model <em>wins</em>
+training (MSE 0.30) and loses reality (val 78.04 — about 46× worse than the
+honest model). Val picks degree 1 <em>before you ever look at test</em>; the
+single test peek confirms it (1.69 vs 33.49). Done-state: you can explain why
+nobody tunes on test, and you can read <code>train ≪ val</code> as
+memorization in any loss table — including, one day, your own trading
+models.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    
+<p>Read "The one idea" and the analogy, run the code, stare at the three-row
+table for a minute. The whole lesson is one signature: train falls, val
+explodes. Fifteen minutes, one concept, show up tomorrow.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    
+<p>Tomorrow: we take this machinery to the real world — fitting a line to
+actual SPY closes. Your world, honest splits, real noise.</p>
+  </div>
+
+  <div class="footer">Streak: 8 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
