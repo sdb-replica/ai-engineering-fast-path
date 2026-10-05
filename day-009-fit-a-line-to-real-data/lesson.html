@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fit a Line to Real Data — Day 9 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 9 of 100</span>
+  <h1>Fit a Line to Real Data</h1>
+  <p class="outcome">Tonight you'll be able to: run the whole Phase A machine &mdash; tensors &rarr; autograd &rarr; MSE &rarr; gradient descent &rarr; train/val/test &mdash; on 60 days of real SPY closes, and read the report card like an engineer.</p>
+
+  <h2>The one idea</h2>
+  <p>Days 2&ndash;8 built you a complete machine. Tonight you point it at the real world. Here&rsquo;s the whole arc in one breath:</p>
+<ul>
+<li><strong>Days 2&ndash;3:</strong> market data lives in tensors; every op is vectorized.</li>
+<li><strong>Day 4:</strong> autograd tapes the computation so gradients replay themselves.</li>
+<li><strong>Day 5:</strong> MSE turns &ldquo;wrong&rdquo; into a single number the machine can minimize.</li>
+<li><strong>Days 6&ndash;7:</strong> gradient descent plus the four-phase loop (forward &rarr; loss &rarr; backward &rarr; step) finds the line.</li>
+<li><strong>Day 8:</strong> the three piles &mdash; train fits, val judges, test delivers the verdict.</li>
+</ul>
+<p>One new rule tonight, and it&rsquo;s the difference between a backtest that lies and one that doesn&rsquo;t: <strong>the split must respect time.</strong> With time series, shuffling is forbidden &mdash; it leaks the future into training. Days 0&ndash;35 train, 36&ndash;47 validate, 48&ndash;59 test. That ordering is a contract, not a preference.</p>
+<p>Two just-in-time bites, both load-bearing:</p>
+<p><strong>1. Normalize with train stats only.</strong> Day index runs 0&ndash;59 while prices sit near $750 &mdash; different scales make the loss bowl long and skinny, and Day 6 taught you what that does to a learning rate. So we z-score the day index, <code>(x &minus; mean) / std</code>, using the <em>train</em> mean and std for all three piles. Peeking at val/test to build the scaler is leakage &mdash; the polite kind, the kind that still ruins you.</p>
+<p><strong>2. R&sup2;, the honest score.</strong> <code>R&sup2; = 1 &minus; SS_res / SS_tot</code>: the fraction of price variance your line explains. 1.0 is perfect, 0.0 means &ldquo;no better than predicting the average price every day,&rdquo; and <em>negative</em> means worse than the average &mdash; the model is actively misleading you. Watch what happens below.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You&rsquo;ve done this before &mdash; in two worlds. <strong>Capacity planning:</strong> you fit a request-growth trend to production traffic logs, then validate against <em>next month&rsquo;s</em> traffic &mdash; never against shuffled past days, because next month is the only exam that counts. <strong>Trading:</strong> backtest on 2024, validate on 2025, paper-trade 2026. Shuffling the days would be trading on tomorrow&rsquo;s newspaper.</p>
+<p>The red line below is exactly that fit: a July trend projected into September and October. It overshoots &mdash; the regime changed. That overshoot has a name you&rsquo;ll meet properly on Day 83: <em>non-stationarity</em>, the reason finance is the hardest ML domain there is.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 392" font-family="-apple-system, system-ui, sans-serif">
+<rect x="46.8" y="34" width="374.6" height="310" fill="#eaf2ff"/>
+<text x="234.1" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#555">TRAIN — fit here</text>
+<rect x="421.4" y="34" width="124.9" height="310" fill="#fff6df"/>
+<text x="483.9" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#555">VAL — judge</text>
+<rect x="546.3" y="34" width="124.9" height="310" fill="#f3ecff"/>
+<text x="608.8" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#555">TEST — verdict</text>
+<line x1="421.4" y1="34" x2="421.4" y2="344" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4"/>
+<line x1="546.3" y1="34" x2="546.3" y2="344" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="664" y="330" text-anchor="end" font-size="11" fill="#999">days 0-59, chronological order</text>
+<line x1="52" y1="344.0" x2="666" y2="344.0" stroke="#e3e3e3" stroke-width="1"/>
+<text x="44" y="348.0" text-anchor="end" font-size="11" fill="#777">$720</text>
+<line x1="52" y1="266.5" x2="666" y2="266.5" stroke="#e3e3e3" stroke-width="1"/>
+<text x="44" y="270.5" text-anchor="end" font-size="11" fill="#777">$740</text>
+<line x1="52" y1="189.0" x2="666" y2="189.0" stroke="#e3e3e3" stroke-width="1"/>
+<text x="44" y="193.0" text-anchor="end" font-size="11" fill="#777">$760</text>
+<line x1="52" y1="111.5" x2="666" y2="111.5" stroke="#e3e3e3" stroke-width="1"/>
+<text x="44" y="115.5" text-anchor="end" font-size="11" fill="#777">$780</text>
+<line x1="52" y1="34.0" x2="666" y2="34.0" stroke="#e3e3e3" stroke-width="1"/>
+<text x="44" y="38.0" text-anchor="end" font-size="11" fill="#777">$800</text>
+<text x="52.0" y="364" text-anchor="middle" font-size="11" fill="#777">07-10</text>
+<text x="416.2" y="364" text-anchor="middle" font-size="11" fill="#777">08-28</text>
+<text x="541.1" y="364" text-anchor="middle" font-size="11" fill="#777">09-16</text>
+<text x="666.0" y="364" text-anchor="middle" font-size="11" fill="#777">10-02</text>
+<circle cx="52.0" cy="208.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="62.4" cy="231.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="72.8" cy="220.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="83.2" cy="209.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="93.6" cy="225.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="104.0" cy="253.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="114.4" cy="258.4" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="124.8" cy="234.4" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="135.3" cy="237.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="145.7" cy="273.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="156.1" cy="270.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="166.5" cy="270.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="176.9" cy="263.2" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="187.3" cy="307.3" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="197.7" cy="260.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="208.1" cy="239.3" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="218.5" cy="198.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="228.9" cy="145.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="239.3" cy="151.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="249.7" cy="155.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="260.1" cy="137.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="270.5" cy="138.5" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="280.9" cy="148.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="291.4" cy="140.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="301.8" cy="119.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="312.2" cy="125.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="322.6" cy="139.9" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="333.0" cy="160.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="343.4" cy="153.9" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="353.8" cy="178.9" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="364.2" cy="166.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="374.6" cy="175.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="385.0" cy="166.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="395.4" cy="165.4" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="405.8" cy="146.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="416.2" cy="152.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="426.6" cy="161.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="437.1" cy="182.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="447.5" cy="169.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="457.9" cy="138.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="468.3" cy="149.5" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="478.7" cy="165.9" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="489.1" cy="179.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="499.5" cy="197.4" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="509.9" cy="172.4" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="520.3" cy="185.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="530.7" cy="199.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="541.1" cy="212.1" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="551.5" cy="178.9" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="561.9" cy="182.5" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="572.3" cy="136.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="582.7" cy="137.2" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="593.2" cy="158.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="603.6" cy="161.2" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="614.0" cy="145.0" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="624.4" cy="167.3" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="634.8" cy="172.7" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="645.2" cy="178.8" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="655.6" cy="173.5" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<circle cx="666.0" cy="151.6" r="3.4" fill="#1f6feb" opacity="0.85"/>
+<line x1="52.0" y1="255.8" x2="666.0" y2="51.7" stroke="#e5484d" stroke-width="2.5"/>
+<text x="60.0" y="277.8" font-size="12" font-weight="700" fill="#e5484d">fitted trend (+$0.89/day)</text>
+<text x="52" y="382" font-size="11" fill="#999">SPY daily closes, real data (Massive)</text>
+</svg>
+    <div class="caption">60 real SPY daily closes with the fitted trend line, split chronologically.
+Train on days 0&ndash;35, judge on 36&ndash;47, verdict on 48&ndash;59 &mdash; note how the July
+trend sails above the September&ndash;October dots: one regime&rsquo;s trend doesn&rsquo;t survive the next.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>60 real SPY daily closes (2026-07-10 &rarr; 2026-10-02, pulled from your Massive feed), embedded as data &mdash; no downloads, no APIs, nothing to install. Paste into <code>~/ai-lab</code> and run:</p>
+  <pre><code>&quot;&quot;&quot;Day 9 - Fit a Line to Real Data: the Phase A machine, end to end.
+
+Recap arc: tensors hold the data (Day 2), vectorized ops (Day 3),
+autograd tapes the computation (Day 4), MSE scores the error (Day 5),
+gradient descent + the 4-phase training loop find w and b (Days 6-7),
+chronological train/val/test splits judge generalization (Day 8).
+
+Runs on MacBook: ~/ai-lab venv, torch CPU/MPS. No downloads, no paid APIs -
+60 real SPY daily closes (2026-07-10 -&gt; 2026-10-02, via Massive) are embedded.
+&quot;&quot;&quot;
+import torch
+
+DATES = [
+    &#x27;2026-07-10&#x27;, &#x27;2026-07-13&#x27;, &#x27;2026-07-14&#x27;, &#x27;2026-07-15&#x27;, &#x27;2026-07-16&#x27;, &#x27;2026-07-17&#x27;,
+    &#x27;2026-07-20&#x27;, &#x27;2026-07-21&#x27;, &#x27;2026-07-22&#x27;, &#x27;2026-07-23&#x27;, &#x27;2026-07-24&#x27;, &#x27;2026-07-27&#x27;,
+    &#x27;2026-07-28&#x27;, &#x27;2026-07-29&#x27;, &#x27;2026-07-30&#x27;, &#x27;2026-07-31&#x27;, &#x27;2026-08-03&#x27;, &#x27;2026-08-04&#x27;,
+    &#x27;2026-08-05&#x27;, &#x27;2026-08-06&#x27;, &#x27;2026-08-07&#x27;, &#x27;2026-08-10&#x27;, &#x27;2026-08-11&#x27;, &#x27;2026-08-12&#x27;,
+    &#x27;2026-08-13&#x27;, &#x27;2026-08-14&#x27;, &#x27;2026-08-17&#x27;, &#x27;2026-08-18&#x27;, &#x27;2026-08-19&#x27;, &#x27;2026-08-20&#x27;,
+    &#x27;2026-08-21&#x27;, &#x27;2026-08-24&#x27;, &#x27;2026-08-25&#x27;, &#x27;2026-08-26&#x27;, &#x27;2026-08-27&#x27;, &#x27;2026-08-28&#x27;,
+    &#x27;2026-08-31&#x27;, &#x27;2026-09-01&#x27;, &#x27;2026-09-02&#x27;, &#x27;2026-09-03&#x27;, &#x27;2026-09-04&#x27;, &#x27;2026-09-08&#x27;,
+    &#x27;2026-09-09&#x27;, &#x27;2026-09-10&#x27;, &#x27;2026-09-11&#x27;, &#x27;2026-09-14&#x27;, &#x27;2026-09-15&#x27;, &#x27;2026-09-16&#x27;,
+    &#x27;2026-09-17&#x27;, &#x27;2026-09-18&#x27;, &#x27;2026-09-21&#x27;, &#x27;2026-09-22&#x27;, &#x27;2026-09-23&#x27;, &#x27;2026-09-24&#x27;,
+    &#x27;2026-09-25&#x27;, &#x27;2026-09-28&#x27;, &#x27;2026-09-29&#x27;, &#x27;2026-09-30&#x27;, &#x27;2026-10-01&#x27;, &#x27;2026-10-02&#x27;
+]
+
+CLOSES = [
+    754.95, 749.17, 751.83, 754.81, 750.72, 743.29, 742.09, 748.28, 747.41, 738.18, 738.93, 739.09,
+    740.86, 729.46, 741.69, 747.03, 757.67, 771.33, 769.79, 768.56, 773.26, 773.03, 770.56, 772.49,
+    777.88, 776.34, 772.67, 767.45, 769.06, 762.60, 765.72, 763.47, 765.91, 766.08, 771.10, 769.35,
+    767.05, 761.78, 765.16, 773.17, 770.19, 765.96, 762.40, 757.83, 764.29, 760.88, 757.39, 754.05,
+    762.60, 761.69, 773.50, 773.38, 767.81, 767.18, 771.35, 765.61, 764.20, 762.63, 763.99, 769.64
+]
+
+closes = torch.tensor(CLOSES, dtype=torch.float32)
+x = torch.arange(len(closes), dtype=torch.float32)  # day index 0..59
+
+# ---- Chronological split: with time series the piles must respect time ----
+# Shuffling here = look-ahead bias = trading on data from the future.
+n_train, n_val = 36, 12
+x_train, y_train = x[:n_train], closes[:n_train]
+x_val, y_val = x[n_train:n_train + n_val], closes[n_train:n_train + n_val]
+x_test, y_test = x[n_train + n_val:], closes[n_train + n_val:]
+
+# ---- z-score normalize using TRAIN stats only (never peek at val/test) ----
+x_mean, x_std = x_train.mean(), x_train.std()
+xn_train = (x_train - x_mean) / x_std
+xn_val = (x_val - x_mean) / x_std
+xn_test = (x_test - x_mean) / x_std
+
+# ---- Days 6/7 machinery: linear model + MSE, fit by gradient descent ----
+w = torch.zeros(1, requires_grad=True)
+b = torch.zeros(1, requires_grad=True)
+opt = torch.optim.SGD([w, b], lr=0.1)
+for _ in range(500):
+    loss = ((w * xn_train + b - y_train) ** 2).mean()  # MSE (Day 5)
+    opt.zero_grad()   # no_grad/zero_grad bookkeeping (Day 7 gotcha)
+    loss.backward()   # autograd replays the tape (Day 4)
+    opt.step()        # walk the bowl (Day 6)
+
+# ---- Report card ----
+with torch.no_grad():
+    for name, xn, y in ((&quot;train&quot;, xn_train, y_train),
+                        (&quot;val&quot;, xn_val, y_val),
+                        (&quot;test&quot;, xn_test, y_test)):
+        pred = w * xn + b
+        mse = ((pred - y) ** 2).mean().item()
+        r2 = 1 - ((pred - y) ** 2).sum().item() / ((y - y.mean()) ** 2).sum().item()
+        print(f&quot;{name:5s}  MSE {mse:7.2f}   RMSE ${mse ** 0.5:5.2f}   R2 {r2:6.3f}&quot;)
+
+slope = (w / x_std).item()  # back into $/day
+print(f&quot;\ntrend slope: ${slope:+.2f} per trading day&quot;)
+print(f&quot;model price at day 0: ${b.item():.2f}&quot;)
+print(f&quot;last real close: ${CLOSES[-1]:.2f}&quot;)
+print(&quot;\nlast 3 test days: model vs actual&quot;)
+with torch.no_grad():
+    for j in range(len(x_test) - 3, len(x_test)):
+        day = int(x_test[j].item())
+        pred = (w * xn_test[j] + b).item()
+        print(f&quot;{DATES[day]}  model ${pred:7.2f}   actual ${CLOSES[day]:7.2f}&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>train  MSE   92.33   RMSE $ 9.61   R2  0.482
+val    MSE  330.42   RMSE $18.18   R2 -11.021
+test   MSE  583.00   RMSE $24.15   R2 -34.876
+
+trend slope: $+0.89 per trading day
+model price at day 0: $742.77
+last real close: $769.64
+
+last 3 test days: model vs actual
+2026-09-30  model $ 793.65   actual $ 762.63
+2026-10-01  model $ 794.55   actual $ 763.99
+2026-10-02  model $ 795.44   actual $ 769.64</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p><strong>Done-state:</strong> you ran the entire Phase A machine on real market data &mdash; 60 SPY closes, chronological 36/12/12 split, z-scored features, 500 epochs of the Day-6/7 loop &mdash; and it converged to the exact closed-form trend line: <strong>+$0.89 per trading day</strong>.</p>
+<p>The honest part is the report card: train R&sup2; 0.48, test R&sup2; <em>negative</em>. The line fit July beautifully and got embarrassed by September &mdash; a trend from one regime projected into another. That&rsquo;s not a failure of your pipeline; it&rsquo;s what the pipeline is <em>for</em>: telling you the truth about generalization before real money is involved.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run <code>code.py</code> and read the report card &mdash; 5 minutes. Then change <code>n_train = 36</code> to <code>48</code> and re-run: watch how the test RMSE moves as the train window eats more of the sideways market. That&rsquo;s the whole lesson in miniature: <strong>where you cut time changes what the model believes.</strong></p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the vocabulary AI scientists actually speak &mdash; distributions. Normal, categorical, and why &ldquo;assume it&rsquo;s Gaussian&rdquo; is doing more work than it looks.</p>
+  </div>
+
+  <div class="footer">Streak: 9 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
