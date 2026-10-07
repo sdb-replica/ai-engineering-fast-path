@@ -35,3 +35,4 @@ pip install torch numpy
 | 8 | [Train, Val, Test & Overfitting](day-008-train-val-test-and-overfitting/lesson.html) | [lesson.md](day-008-train-val-test-and-overfitting/lesson.md) | [code.py](day-008-train-val-test-and-overfitting/code.py) |
 | 9 | [Fit a Line to Real Data](day-009-fit-a-line-to-real-data/lesson.html) | [lesson.md](day-009-fit-a-line-to-real-data/lesson.md) | [code.py](day-009-fit-a-line-to-real-data/code.py) |
 | 10 | [Distributions: The Vocabulary of Uncertainty](day-010-distributions-the-vocab-of-uncertainty/lesson.html) | [lesson.md](day-010-distributions-the-vocab-of-uncertainty/lesson.md) | [code.py](day-010-distributions-the-vocab-of-uncertainty/code.py) |
+| 11 | [Expectation, Variance & Maximum Likelihood](day-011-expectation-variance-maximum-likelihood/lesson.html) | [lesson.md](day-011-expectation-variance-maximum-likelihood/lesson.md) | [code.py](day-011-expectation-variance-maximum-likelihood/code.py) |
