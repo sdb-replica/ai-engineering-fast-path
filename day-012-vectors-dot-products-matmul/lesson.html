@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vectors, Dot Products & the Core Op — Day 12 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 12 of 100</span>
+  <h1>Vectors, Dot Products & the Core Op</h1>
+  <p class="outcome">Tonight you'll be able to: say what a dot product, a matrix multiply, and the shape contract are — and show that a neural layer is just <code>y = Wx + b</code>.</p>
+
+  <h2>The one idea</h2>
+  <p>You've been running the core op of deep learning since Day 6 — you just didn't have the name for it yet.</p>
+<p><strong>A vector</strong> is an ordered list of numbers. Tonight it's 4 features of one stock-day: <code>[ret_1d, ret_5d, log(volume/vol_20d), RSI−50]</code>. The order is the meaning; position 3 is always the volume signal.</p>
+<p><strong>A dot product</strong> is multiply-pairs-then-add: <code>w·x = Σ wᵢxᵢ</code>. It takes two vectors and returns one number. Every weighted average you've ever computed is a dot product. A <strong>neuron</strong> is exactly one dot product plus a bias: <code>y = w·x + b</code>. Day 6's <code>y = 2.0·x + 1.0</code> was the one-weight special case. Tonight's neuron has 4 weights — same move, wider input.</p>
+<p><strong>A matrix</strong> is a stack of vectors. Stack three neurons' weight rows into a matrix <code>W</code> (3 rows × 4 columns), and <code>Wx</code> computes <em>all three</em> dot products in one shot: <code>yⱼ = Σᵢ Wⱼᵢxᵢ + bⱼ</code>. One row, one neuron, one dot product — the matrix is just batched dot products with shared bookkeeping.</p>
+<p><strong>The batch</strong> is where it gets real. Score 5 stock-days at once: stack the feature vectors as rows of <code>X</code> (5 × 4), and <code>X @ W.T</code> gives all 5 days × 3 neurons = <strong>15 dot products in a single op, zero Python loops</strong>.</p>
+<p><strong>The shape contract.</strong> In <code>A @ B</code>, the inner dims must match: <code>(m,k) @ (k,n) → (m,n)</code>. (5,4) @ (4,3) works → (5,3). (5,4) @ (3,4) refuses — the <code>4</code> and the <code>3</code> don't touch. Think of it as the op's type signature: features-out-of-A must equal features-into-B. Nine out of ten "deep learning bugs" you'll ever debug are this rule.</p>
+<p>So a neural layer, revealed: <code>y = Wx + b</code> — every neuron votes its weighted sum, the matrix runs every vote at once, and the shapes keep everyone honest. Everything from Day 36 onward is built out of this exact line, wrapped in non-linearities.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Distributed systems:</strong> a matrix multiply is the ultimate fan-out. Every output cell is an independent dot product — no cell needs another cell's result — so the whole op shards perfectly across workers, exactly like a map with no reduce. <code>W</code>'s rows are per-worker config read once; <code>X</code>'s rows are the workload. Tomorrow you'll see why this property, and only this property, is what GPUs were built for.</p>
+<p><strong>Trading:</strong> portfolio return is <em>literally</em> a dot product — <code>Σ weightᵢ × returnᵢ</code>. You've been hand-computing them for years. And note tonight's 2× experiment: double the position (features), and the output doubles (bias aside) — dot products are linear, which is exactly why leverage scales P&amp;L linearly. Also why the model needs non-linearities later: linearity alone can't price anything interesting.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 660 316" xmlns="http://www.w3.org/2000/svg" role="img">
+  <rect x="30" y="70" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="58.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.9</text>
+  <rect x="90" y="70" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="118.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.4</text>
+  <rect x="150" y="70" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="178.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.2</text>
+  <rect x="210" y="70" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="238.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.1</text>
+  <rect x="30" y="108" width="56" height="34" rx="4" fill="#ffe08a" stroke="#999"/><text x="58.0" y="129.5" text-anchor="middle" font-size="12" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="#222">0.45</text>
+  <rect x="90" y="108" width="56" height="34" rx="4" fill="#ffe08a" stroke="#999"/><text x="118.0" y="129.5" text-anchor="middle" font-size="12" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="#222">0.2</text>
+  <rect x="150" y="108" width="56" height="34" rx="4" fill="#ffe08a" stroke="#999"/><text x="178.0" y="129.5" text-anchor="middle" font-size="12" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="#222">0.1</text>
+  <rect x="210" y="108" width="56" height="34" rx="4" fill="#ffe08a" stroke="#999"/><text x="238.0" y="129.5" text-anchor="middle" font-size="12" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="#222">0.05</text>
+  <rect x="30" y="146" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="58.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.27</text>
+  <rect x="90" y="146" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="118.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.12</text>
+  <rect x="150" y="146" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="178.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.06</text>
+  <rect x="210" y="146" width="56" height="34" rx="4" fill="#eef2f7" stroke="#999"/><text x="238.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.03</text>
+  <text x="150" y="36" text-anchor="middle" font-size="18" font-weight="700" font-family="-apple-system, system-ui, sans-serif" fill="#444">W</text>
+  <text x="150" y="56" text-anchor="middle" font-size="11" font-weight="400" font-family="-apple-system, system-ui, sans-serif" fill="#777">3 neurons × 4 features</text>
+  <rect x="300" y="70" width="56" height="34" rx="4" fill="#dbeaff" stroke="#999"/><text x="328.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.004</text>
+  <rect x="300" y="108" width="56" height="34" rx="4" fill="#dbeaff" stroke="#999"/><text x="328.0" y="129.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.011</text>
+  <rect x="300" y="146" width="56" height="34" rx="4" fill="#dbeaff" stroke="#999"/><text x="328.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.18</text>
+  <rect x="300" y="184" width="56" height="34" rx="4" fill="#dbeaff" stroke="#999"/><text x="328.0" y="205.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.12</text>
+  <text x="328.0" y="36" text-anchor="middle" font-size="18" font-weight="700" font-family="-apple-system, system-ui, sans-serif" fill="#444">x</text>
+  <text x="328.0" y="56" text-anchor="middle" font-size="11" font-weight="400" font-family="-apple-system, system-ui, sans-serif" fill="#777">4 features</text>
+  <rect x="470" y="70" width="56" height="34" rx="4" fill="#e2f6e6" stroke="#999"/><text x="498.0" y="91.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">0.0972</text>
+  <rect x="470" y="108" width="56" height="34" rx="4" fill="#ffe08a" stroke="#999"/><text x="498.0" y="129.5" text-anchor="middle" font-size="12" font-weight="700" font-family="ui-monospace, Menlo, monospace" fill="#222">0.0036</text>
+  <rect x="470" y="146" width="56" height="34" rx="4" fill="#e2f6e6" stroke="#999"/><text x="498.0" y="167.5" text-anchor="middle" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#222">-0.01416</text>
+  <text x="498.0" y="36" text-anchor="middle" font-size="18" font-weight="700" font-family="-apple-system, system-ui, sans-serif" fill="#444">y</text>
+  <text x="498.0" y="56" text-anchor="middle" font-size="11" font-weight="400" font-family="-apple-system, system-ui, sans-serif" fill="#777">3 scores</text>
+  <text x="284" y="125.0" text-anchor="middle" font-size="22" fill="#888" font-family="system-ui">×</text>
+  <text x="446" y="125.0" text-anchor="middle" font-size="22" fill="#888" font-family="system-ui">=</text>
+  <line x1="58.0" y1="125.0" x2="328.0" y2="87.0" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.75"/>
+  <line x1="118.0" y1="125.0" x2="328.0" y2="125.0" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.75"/>
+  <line x1="178.0" y1="125.0" x2="328.0" y2="163.0" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.75"/>
+  <line x1="238.0" y1="125.0" x2="328.0" y2="201.0" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.75"/>
+  <line x1="328.0" y1="125.0" x2="470" y2="125.0" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.75"/>
+  <text x="330" y="228" text-anchor="middle" font-size="12.5" font-weight="700" font-family="system-ui" fill="#444">One row, worked by hand:</text>
+  <text x="330" y="250" text-anchor="middle" font-size="11.5" font-family="ui-monospace, Menlo, monospace" fill="#333">y₁ = 0.45·0.004 + 0.2·(−0.011) + 0.1·0.18 + 0.05·0.12 − 0.02</text>
+  <text x="330" y="270" text-anchor="middle" font-size="11.5" font-family="ui-monospace, Menlo, monospace" fill="#333">= 0.0018 − 0.0022 + 0.018 + 0.006 − 0.02 = 0.0036 ✓</text>
+  <text x="330" y="294" text-anchor="middle" font-size="11.5" font-family="system-ui" fill="#777">That is a dot product. A layer just runs one per row, at once.</text>
+</svg>
+
+    <div class="caption">A 3-neuron layer as one matmul. Row 2 is worked by hand — one dot product; the matrix just runs one per row, at once.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Paste into <code>~/ai-lab</code> and run. Four moves: a neuron by hand, a layer as one matmul, a whole watchlist in one batched op, and the shape contract enforced.</p>
+  <pre><code>&quot;&quot;&quot;Day 12 - Linear Algebra Bite 1: Vectors, Dot Products, Matrix Multiply.
+
+Tonight&#x27;s idea: a neuron is a dot product. A layer is a matrix multiply.
+  1. Vector + dot product: a weighted sum. w . x + b is the Day-6 neuron.
+  2. Matrix @ vector: every row of W dot-products x in one shot -- one layer.
+  3. Matrix @ matrix: add a batch dim, score a whole watchlist at once.
+  4. The contract: shapes (m,k) @ (k,n) = (m,n) are the type system.
+
+Runs on MacBook: ~/ai-lab venv, torch CPU/MPS. No downloads, no paid APIs.
+&quot;&quot;&quot;
+import torch
+
+torch.manual_seed(12)
+
+# ---- 1. A neuron is a dot product ----
+# Day-6&#x27;s line y = 2.0*x + 1.0, rewritten: w . x + b with w = [2.0], b = 1.0.
+# Trading toy: a next-day score from 4 features
+#   [ret_1d, ret_5d, log(volume/volume_20d), RSI-50]
+x = torch.tensor([0.004, -0.011, 0.18, 0.12])   # one stock-day&#x27;s features
+w = torch.tensor([0.9, 0.4, 0.2, 0.1])          # weights = opinions on features
+b = torch.tensor(0.05)                          # bias = base rate
+hand = (w * x).sum() + b                        # multiply pairs, add, shift
+print(&quot;features x :&quot;, [round(v, 4) for v in x.tolist()])
+print(&quot;weights  w :&quot;, [round(v, 4) for v in w.tolist()])
+print(&quot;by hand (w*x).sum() + b :&quot;, round(hand.item(), 6))
+print(&quot;torch.dot(w, x) + b      :&quot;, round((torch.dot(w, x) + b).item(), 6))
+print(&quot;match:&quot;, bool(torch.allclose(hand, torch.dot(w, x) + b)))
+
+# ---- 2. A layer is a matrix multiply ----
+# Three neurons = three opinions on the same features. Stack their weight
+# rows into W -- one matmul computes all three dot products at once.
+W = torch.stack([w, w * 0.5, w * -0.3])         # shape (3, 4)
+b2 = torch.tensor([0.05, -0.02, 0.0])           # one bias per neuron
+y_loop = torch.stack([torch.dot(row, x) + b2[i] for i, row in enumerate(W)])
+y_mat = W @ x + b2                              # (3,4) @ (4,) -&gt; (3,)
+print(&quot;\nW.shape:&quot;, tuple(W.shape), &quot;x.shape:&quot;, tuple(x.shape),
+      &quot;y.shape:&quot;, tuple(y_mat.shape))
+print(&quot;looped dot products:&quot;, [round(v, 6) for v in y_loop.tolist()])
+print(&quot;W @ x + b          :&quot;, [round(v, 6) for v in y_mat.tolist()])
+print(&quot;match:&quot;, bool(torch.allclose(y_loop, y_mat)))
+
+# ---- 3. The batch: score a whole watchlist in one matmul ----
+# X rows = examples, columns = features: (5,4) @ (4,3) -&gt; (5,3). Zero loops.
+X = torch.stack([x, x * 1.5, x * -0.8, x * 2.0, x * 0.3])
+scores_loop = torch.stack([W @ row + b2 for row in X])
+scores_mat = X @ W.T + b2                       # (5,4) @ (4,3) -&gt; (5,3)
+print(&quot;\nX.shape:&quot;, tuple(X.shape), &quot;W.T.shape:&quot;, tuple(W.T.shape),
+      &quot;scores.shape:&quot;, tuple(scores_mat.shape))
+print(&quot;batch loop == one matmul:&quot;, bool(torch.allclose(scores_loop, scores_mat)))
+print(&quot;row 0 (base)      :&quot;, [round(v, 6) for v in scores_mat[0].tolist()])
+print(&quot;row 3 (2x leverage):&quot;, [round(v, 6) for v in scores_mat[3].tolist()])
+lin = scores_mat[3] - b2                        # strip biases, leverage should hold
+print(&quot;2x leverage on features == 2x on scores (b aside):&quot;,
+      bool(torch.allclose(lin, 2 * (scores_mat[0] - b2))))
+n_mult = X.shape[0] * W.shape[0] * X.shape[1]
+print(&quot;multiplies in one matmul:&quot;, n_mult, &quot;(zero Python loops)&quot;)
+
+# ---- 4. The contract: shapes are the type system ----
+# torch.nn.functional.linear(x, W, b) == x @ W.T + b. Same numbers, cleaner API.
+import torch.nn.functional as F
+y_f = F.linear(X, W, b2)                        # (5,4) @ (4,3) -&gt; (5,3)
+print(&quot;\nF.linear(X, W, b) == X @ W.T + b:&quot;, bool(torch.allclose(y_f, scores_mat)))
+try:
+    X @ W                                       # (5,4) @ (3,4): inner dims mismatch
+    print(&quot;X @ W: no error (unexpected)&quot;)
+except RuntimeError as e:
+    print(&quot;X @ W fails:&quot;, str(e).split(&quot;\n&quot;)[0][:90])
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>features x : [0.004, -0.011, 0.18, 0.12]
+weights  w : [0.9, 0.4, 0.2, 0.1]
+by hand (w*x).sum() + b : 0.0972
+torch.dot(w, x) + b      : 0.0972
+match: True
+
+W.shape: (3, 4) x.shape: (4,) y.shape: (3,)
+looped dot products: [0.0972, 0.0036, -0.01416]
+W @ x + b          : [0.0972, 0.0036, -0.01416]
+match: True
+
+X.shape: (5, 4) W.T.shape: (4, 3) scores.shape: (5, 3)
+batch loop == one matmul: True
+row 0 (base)      : [0.0972, 0.0036, -0.01416]
+row 3 (2x leverage): [0.1444, 0.0272, -0.02832]
+2x leverage on features == 2x on scores (b aside): True
+multiplies in one matmul: 60 (zero Python loops)
+
+F.linear(X, W, b) == X @ W.T + b: True
+X @ W fails: mat1 and mat2 shapes cannot be multiplied (5x4 and 3x4)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Run <code>code.py</code> and verify three things: <strong>(1)</strong> your hand-rolled <code>(w*x).sum() + b</code> matches <code>torch.dot(w, x) + b</code> digit for digit — a neuron is a dot product; <strong>(2)</strong> the looped 3-row dot products equal the single <code>W @ x + b</code> — a layer is a matmul; <strong>(3)</strong> the 5-day batch <code>X @ W.T</code> equals the looped version and <code>F.linear</code>, and the deliberately broken <code>X @ W</code> shape error reads naturally. <strong>Done state:</strong> you can say out loud why <code>(5,4) @ (3,4)</code> refuses and what fix the inner dims need.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read <strong>The one idea</strong> and study the diagram: a neuron is <code>w·x + b</code>, a layer is <code>Wx + b</code> (one dot product per row), a batch is <code>X @ W.T</code> (5 days × 3 neurons in one op), and the shape contract <code>(m,k) @ (k,n) → (m,n)</code> is the type system. Skip the code tonight; run it tomorrow before Day 13.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: why GPUs exist. That one innocent op — multiply, add, repeat — scaled to billions of times per step. The throughput number that explains the hardware.</p>
+  </div>
+
+  <div class="footer">Streak: 12 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
