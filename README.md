@@ -37,3 +37,4 @@ pip install torch numpy
 | 10 | [Distributions: The Vocabulary of Uncertainty](day-010-distributions-the-vocab-of-uncertainty/lesson.html) | [lesson.md](day-010-distributions-the-vocab-of-uncertainty/lesson.md) | [code.py](day-010-distributions-the-vocab-of-uncertainty/code.py) |
 | 11 | [Expectation, Variance & Maximum Likelihood](day-011-expectation-variance-maximum-likelihood/lesson.html) | [lesson.md](day-011-expectation-variance-maximum-likelihood/lesson.md) | [code.py](day-011-expectation-variance-maximum-likelihood/code.py) |
 | 12 | [Vectors, Dot Products & the Core Op](day-012-vectors-dot-products-matmul/lesson.html) | [lesson.md](day-012-vectors-dot-products-matmul/lesson.md) | [code.py](day-012-vectors-dot-products-matmul/code.py) |
+| 13 | [Why GPUs Exist](day-013-why-gpus-exist/lesson.html) | [lesson.md](day-013-why-gpus-exist/lesson.md) | [code.py](day-013-why-gpus-exist/code.py) |

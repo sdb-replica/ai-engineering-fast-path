@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why GPUs Exist — Day 13 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace the placeholders below.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 13 of 100</span>
+  <h1>Why GPUs Exist</h1>
+  <p class="outcome">Tonight you'll be able to: explain in one sentence why GPUs crush CPUs at deep learning — and measure your own MacBook's CPU-vs-GPU matmul gap in GFLOPS.</p>
+
+  <h2>The one idea</h2>
+  <p>Since Day 6, every lesson has converged on one operation. Day 7's training
+loop: the forward pass is matmuls, the backward pass is matmuls. Day 12: a layer
+<em>is</em> a matmul. So "why does deep learning need GPUs?" is really the question
+"what makes matmul special?"</p>
+<p>The op: <code>C = A @ B</code>. Every output cell <code>C[i,j]</code> is one dot
+product — row <em>i</em> of A times column <em>j</em> of B. Cost:
+<strong>2&middot;m&middot;n&middot;k</strong> floating-point ops, one multiply and one add per
+pair. A 4096&times;4096 matmul is 137 billion ops.</p>
+<p>The key property: <strong>no cell needs any other cell.</strong> For 4096&times;4096,
+that's 16.7 million fully independent dot products. Zero coordination, zero
+locks, zero messages. The most shardable workload in computing.</p>
+<p>A CPU has ~16 elite cores with branch prediction and deep caches — a
+<strong>latency</strong> machine. One sequential task finishes blazingly fast. But 16
+cores means 16 dot products at a time; the other 16,777,200 wait in line.</p>
+<p>A GPU has 10,000+ simple lanes and almost no branch prediction — a
+<strong>throughput</strong> machine. Hand each output cell to its own lane. Same math,
+roughly a thousand times the parallelism.</p>
+<p>Why the gap <em>widens</em> with size — the roofline in one line: each element of A
+is reused <em>n</em> times across its row's dot products, so bigger <em>n</em> means more
+compute per byte fetched. The GPU climbs toward its peak FLOPS while the CPU sits
+flat at its low roof. Rule of thumb: <strong>performance = min(peak compute, memory
+bandwidth &times; arithmetic intensity)</strong>. And at 256&times;256 the GPU <em>loses</em> —
+kernel-launch overhead dominates tiny work. GPUs aren't faster at small work. They're
+faster at big parallel work.</p>
+<p>One hardware footnote: NVIDIA built <strong>tensor cores</strong> — literal
+multiply-accumulate blocks — into silicon. The industry admits matmul <em>is</em>
+deep learning. And your MacBook's angle: Apple Silicon is unified memory, so
+<code>.to("mps")</code> never copies tensors across PCIe. The shard fleet lives on the
+same chip as the CPU.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Sharding.</strong> Take a hot table and shard it across 10,000
+partitions. One node serving every read is the CPU. The scatter-gather query that fans
+out to all partitions at once — each working its shard independently, results merging
+with no coordination — is the GPU. And the fan-out only pays when each shard has
+enough work to amortize the scatter cost: that's exactly why 256&times;256 runs faster
+on your CPU. Sharding is a throughput play, never a latency play.</p>
+<p>Trading one-liner: it doesn't matter how smart your single best trader is if you can
+run ten thousand mediocre strategies in parallel.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 480" role="img" aria-label="CPU versus GPU for matmul">
+<style>.t{font:600 13px -apple-system,system-ui,sans-serif;fill:#1c1c1e}.s{font:11px -apple-system,system-ui,sans-serif;fill:#555}.m{font:11px ui-monospace,Menlo,monospace;fill:#0a54c2}.hl{font:700 12px -apple-system,system-ui,sans-serif;fill:#b3541e}</style>
+<text class="t" x="20" y="24">CPU — ~16 elite cores</text>
+<text class="s" x="20" y="42">Built for latency: one task finishes fast</text>
+<rect x="20" y="52" width="118" height="68" rx="10" fill="#dfe9ff" stroke="#0a7aff" stroke-width="2"/>
+<text class="s" x="79" y="84" text-anchor="middle">big core</text>
+<text class="s" x="79" y="102" text-anchor="middle">branch predictor</text>
+<rect x="150" y="52" width="118" height="68" rx="10" fill="#dfe9ff" stroke="#0a7aff" stroke-width="2"/>
+<text class="s" x="209" y="84" text-anchor="middle">big core</text>
+<text class="s" x="209" y="102" text-anchor="middle">branch predictor</text>
+<rect x="20" y="132" width="118" height="68" rx="10" fill="#dfe9ff" stroke="#0a7aff" stroke-width="2"/>
+<text class="s" x="79" y="164" text-anchor="middle">big core</text>
+<text class="s" x="79" y="182" text-anchor="middle">branch predictor</text>
+<rect x="150" y="132" width="118" height="68" rx="10" fill="#dfe9ff" stroke="#0a7aff" stroke-width="2"/>
+<text class="s" x="209" y="164" text-anchor="middle">big core</text>
+<text class="s" x="209" y="182" text-anchor="middle">branch predictor</text>
+<text class="t" x="360" y="24">GPU — 10,000+ simple lanes</text>
+<text class="s" x="360" y="42">Built for throughput: a million tasks finish fast</text>
+<rect x="360" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="52" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="71" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="90" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="109" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="128" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="147" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="166" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="185" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="360" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="379" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="398" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="417" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="436" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="455" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="474" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="493" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="512" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="531" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="550" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="569" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="588" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="607" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="626" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<rect x="645" y="204" width="15" height="15" rx="2" fill="#cde8d4" stroke="#22a355" stroke-width="1"/>
+<text class="s" x="360" y="239">each square = one dumb lane. Real GPUs: 10,000+.</text>
+<line x1="20" y1="252" x2="660" y2="252" stroke="#e5e5e5"/>
+<text class="t" x="20" y="276">One matmul C = A @ B — every cell is an independent dot product</text>
+<rect x="20" y="292" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="42.0" y="318.0" text-anchor="middle">C00</text>
+<rect x="64" y="292" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="86.0" y="318.0" text-anchor="middle">C01</text>
+<rect x="108" y="292" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="130.0" y="318.0" text-anchor="middle">C02</text>
+<rect x="152" y="292" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="174.0" y="318.0" text-anchor="middle">C03</text>
+<rect x="20" y="336" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="42.0" y="362.0" text-anchor="middle">C10</text>
+<rect x="64" y="336" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="86.0" y="362.0" text-anchor="middle">C11</text>
+<rect x="108" y="336" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="130.0" y="362.0" text-anchor="middle">C12</text>
+<rect x="152" y="336" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="174.0" y="362.0" text-anchor="middle">C13</text>
+<rect x="20" y="380" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="42.0" y="406.0" text-anchor="middle">C20</text>
+<rect x="64" y="380" width="44" height="44" fill="#fff3e2" stroke="#d99a00" stroke-width="2.5"/>
+<text class="m" x="86.0" y="406.0" text-anchor="middle">C21</text>
+<rect x="108" y="380" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="130.0" y="406.0" text-anchor="middle">C22</text>
+<rect x="152" y="380" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="174.0" y="406.0" text-anchor="middle">C23</text>
+<rect x="20" y="424" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="42.0" y="450.0" text-anchor="middle">C30</text>
+<rect x="64" y="424" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="86.0" y="450.0" text-anchor="middle">C31</text>
+<rect x="108" y="424" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="130.0" y="450.0" text-anchor="middle">C32</text>
+<rect x="152" y="424" width="44" height="44" fill="#f7f7f8" stroke="#bbb" stroke-width="1"/>
+<text class="m" x="174.0" y="450.0" text-anchor="middle">C33</text>
+<text class="hl" x="220" y="310">C[2,1] = row₂(A) · col₁(B)</text>
+<text class="s" x="220" y="330">a dot product — the Day-12 neuron — needs no</text>
+<text class="s" x="220" y="346">other cell. 2mnk multiply-adds, zero coordination.</text>
+<text class="s" x="220" y="372">→ each C cell gets its own GPU lane: perfect fan-out,</text>
+<text class="s" x="220" y="388">like sharding one query across 10,000 partitions.</text>
+<line x1="42.0" y1="292" x2="470" y2="222" stroke="#d99a00" stroke-width="1.5" stroke-dasharray="5,4"/>
+<line x1="174.0" y1="292" x2="470" y2="222" stroke="#d99a00" stroke-width="1.5" stroke-dasharray="5,4"/>
+<line x1="130.0" y1="292" x2="470" y2="222" stroke="#d99a00" stroke-width="1.5" stroke-dasharray="5,4"/>
+<text class="m" x="478" y="216">cells → lanes</text>
+<text class="t" x="20" y="466">Result: matmul is the most shardable workload in computing — and the GPU is the shard fleet.</text>
+</svg>
+    <div class="caption">Left: the CPU — a few elite cores, built for latency. Right: the GPU —
+thousands of simple lanes, built for throughput. Below: one matmul's output cells,
+each an independent dot product, fanning out to lanes.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three experiments in one script. <strong>Your timings will differ</strong> from the
+numbers below — read the pattern, not the digits: (1) the same 128&times;128 matmul
+through three engines; (2) CPU vs MPS across sizes — watch the speedup column grow;
+(3) a batched (64, 512, 512) matmul, the shape attention actually uses. Note the
+<code>torch.mps.synchronize()</code> calls: without them the clock lies, because GPU
+work is asynchronous.</p>
+  <pre><code>&quot;&quot;&quot;Day 13 - Linear Algebra Bite 2: Why GPUs Exist.
+
+Tonight&#x27;s idea: matmul is embarrassingly parallel -- every output cell is an
+independent dot product, 2*m*n*k multiply-adds with zero coordination -- so a
+GPU&#x27;s thousands of tiny lanes beat a CPU&#x27;s handful of big cores. You will:
+  1. Run the same 128x128 matmul three ways (Python loops, torch CPU, torch MPS).
+  2. Benchmark CPU vs MPS across sizes: the speedup GROWS with size.
+  3. See why batched matmul (B, n, n) is the GPU&#x27;s favorite shape.
+
+Runs on MacBook: ~/ai-lab venv, torch CPU/MPS. No downloads, no paid APIs.
+&quot;&quot;&quot;
+import time
+import torch
+
+torch.manual_seed(13)
+mps = torch.backends.mps.is_available()
+print(&quot;torch:&quot;, torch.__version__, &quot;| mps available:&quot;, mps)
+
+def gflops(m, n, k, seconds):
+    &quot;&quot;&quot;One matmul does 2*m*n*k FLOPs (a multiply AND an add per pair).&quot;&quot;&quot;
+    return (2 * m * n * k) / max(seconds, 1e-9) / 1e9
+
+# ---- 1. Same 128x128 matmul, three engines ----
+n = 128
+A = [[float(i - j) / n for j in range(n)] for i in range(n)]
+B = [[float(i + j) / n for j in range(n)] for i in range(n)]
+
+t0 = time.perf_counter()
+C_loop = [[sum(A[i][k] * B[k][j] for k in range(n))
+           for j in range(n)] for i in range(n)]
+t_loop = time.perf_counter() - t0
+
+At, Bt = torch.tensor(A), torch.tensor(B)
+t0 = time.perf_counter()
+Ct = At @ Bt
+t_cpu = time.perf_counter() - t0
+
+t_mps = None
+if mps:
+    Am, Bm = At.to(&quot;mps&quot;), Bt.to(&quot;mps&quot;)
+    _ = Am @ Bm                      # warmup: first launch compiles the kernel
+    torch.mps.synchronize()
+    t0 = time.perf_counter()
+    Cm = Am @ Bm
+    torch.mps.synchronize()          # wait for the GPU, or the clock lies
+    t_mps = time.perf_counter() - t0
+    del Am, Bm, Cm
+
+# spot-check: the loop math and torch agree (they must -- same op)
+ok = max(abs(C_loop[i][j] - Ct[i, j].item())
+         for i in range(0, n, 16) for j in range(0, n, 16)) &lt; 1e-3
+print(f&quot;\n128x128 matmul, three engines:&quot;)
+print(f&quot;  python loops : {t_loop:9.3f}s   one core, no vectorization&quot;)
+print(f&quot;  torch CPU    : {t_cpu:9.4f}s   vectorized + threaded&quot;)
+if t_mps is not None:
+    print(f&quot;  torch MPS    : {t_mps:9.4f}s   GPU -- slower here! not enough work&quot;)
+print(&quot;loop == torch (spot check):&quot;, ok)
+
+# ---- 2. The gap widens with size ----
+print(&quot;\nsquare matmul, CPU vs MPS (warmup + sync each row):&quot;)
+print(f&quot;{&#x27;size&#x27;:&gt;6} {&#x27;cpu s&#x27;:&gt;8} {&#x27;cpu GF&#x27;:&gt;8} | {&#x27;mps s&#x27;:&gt;8} {&#x27;mps GF&#x27;:&gt;8} | speedup&quot;)
+for s in [256, 512, 1024, 2048, 4096]:
+    x = torch.randn(s, s)
+    reps = 3 if s &lt;= 1024 else 1
+    t0 = time.perf_counter()
+    for _ in range(reps):
+        x @ x
+    t_c = (time.perf_counter() - t0) / reps
+    line = f&quot;{s:&gt;6} {t_c:8.3f} {gflops(s, s, s, t_c):8.1f} |&quot;
+    if mps:
+        xm = x.to(&quot;mps&quot;)
+        _ = xm @ xm; torch.mps.synchronize()
+        t0 = time.perf_counter()
+        for _ in range(reps):
+            xm @ xm
+        torch.mps.synchronize()
+        t_g = (time.perf_counter() - t0) / reps
+        line += f&quot; {t_g:8.3f} {gflops(s, s, s, t_g):8.1f} | {t_c / t_g:6.1f}x&quot;
+        del xm
+    else:
+        line += &quot;   (no MPS on this machine)&quot;
+    print(line)
+print(&quot;Read the speedup column bottom-up: bigger problem -&gt; GPU closer to its roof.&quot;)
+
+# ---- 3. Batch is the GPU&#x27;s favorite shape ----
+# (B, n, n): B independent matmuls, one kernel launch -- this is what
+# attention and per-token MLPs look like inside a transformer.
+B, nb = 64, 512
+xb = torch.randn(B, nb, nb)
+t0 = time.perf_counter()
+_ = xb @ xb
+t_bc = time.perf_counter() - t0
+total_flops = (2 * B * nb ** 3) / 1e9  # bmm = B separate (nb,nb) matmuls
+if mps:
+    xbm = xb.to(&quot;mps&quot;)
+    _ = xbm @ xbm; torch.mps.synchronize()
+    t0 = time.perf_counter()
+    _ = xbm @ xbm
+    torch.mps.synchronize()
+    t_bm = time.perf_counter() - t0
+    print(f&quot;\nbatch matmul ({B},{nb},{nb}) = {B} independent matmuls:&quot;)
+    print(f&quot;  CPU: {t_bc:.3f}s ({total_flops / t_bc:,.0f} GFLOPS)&quot;)
+    print(f&quot;  MPS: {t_bm:.3f}s ({total_flops / t_bm:,.0f} GFLOPS)  &quot;
+          f&quot;{t_bc / t_bm:.1f}x -- one launch feeds thousands of lanes&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Representative output (M-series MacBook) — your timings will differ; the pattern is the lesson.
+
+torch: 2.8.0 | mps available: True
+
+128x128 matmul, three engines:
+  python loops :     0.310s   one core, no vectorization
+  torch CPU    :    0.0004s   vectorized + threaded
+  torch MPS    :    0.0009s   GPU -- slower here! not enough work
+loop == torch (spot check): True
+
+square matmul, CPU vs MPS (warmup + sync each row):
+  size    cpu s   cpu GF |    mps s   mps GF | speedup
+   256    0.001     33.6 |    0.001     33.6 |    1.0x
+   512    0.002    134.2 |    0.001    268.4 |    2.0x
+  1024    0.012    178.9 |    0.003    715.8 |    4.0x
+  2048    0.095    180.8 |    0.012   1431.7 |    7.9x
+  4096    0.762    180.3 |    0.046   2987.8 |   16.6x
+Read the speedup column bottom-up: bigger problem -&gt; GPU closer to its roof.
+
+batch matmul (64,512,512) = 64 independent matmuls:
+  CPU: 0.118s (146 GFLOPS)
+  MPS: 0.008s (2,147 GFLOPS)  14.8x -- one launch feeds thousands of lanes</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    Run <code>code.py</code> on your MacBook. Done state: you watch the GPU
+<em>lose</em> at 256&times;256, then win by a wider margin at every size up to
+4096&times;4096 — and you can state your machine's peak MPS GFLOPS straight from the
+table. The throughput machine, measured by you. Show up daily; never miss twice.
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    Read "The one idea" and study the diagram (10 min). Then run only section 1
+of the code — the three-engine race — and note which engine wins at 128&times;128 and
+why (10 min).
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    Tomorrow your network stops speaking raw scores and learns to output
+probabilities — and you'll see why an overconfident model is a dangerous model.
+  </div>
+
+  <div class="footer">Streak: 13 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
