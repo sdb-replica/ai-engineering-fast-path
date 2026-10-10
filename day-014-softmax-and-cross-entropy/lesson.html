@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Softmax &amp; Cross-Entropy — Day 14 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace DAY/TITLE/OUTCOME/THEORY/ANALOGY/DIAGRAM_SVG/DIAGRAM_CAPTION/CODE_INTRO/CODE/EXPECTED_OUTPUT/WIN/MVW/TEASER.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 14 of 100</span>
+  <h1>Softmax &amp; Cross-Entropy</h1>
+  <p class="outcome">Tonight you'll be able to: turn any model&rsquo;s raw scores into probabilities with softmax, and read the loss behind nearly every classifier in AI as a bill for your mistakes.</p>
+
+  <h2>The one idea</h2>
+  <p>Your neurons spit out <strong>raw scores</strong> &mdash; logits. Day 12 ended there:
+three neurons, three scores, one per class. But classification needs something stricter:
+<em>how much of my belief goes on each class?</em> That's a probability distribution
+(Day 10's vocabulary) &mdash; numbers that are &ge;0 and sum to 1. Raw scores aren't:
+they can be negative, and 2.0 + 1.0 + 0.1 = 3.1, not 1.</p>
+<p><strong>Softmax is the two-step fix:</strong> exponentiate each score (kills negatives,
+stretches the gaps between scores), then divide by the sum:</p>
+<p style="text-align:center"><code>softmax(z<sub>i</sub>) = e<sup>z<sub>i</sub></sup> / &sum;<sub>j</sub> e<sup>z<sub>j</sub></sup></code></p>
+<p>Exponentiation makes softmax care only about <em>differences</em>: add 1000 to every
+score and the answer doesn't move &mdash; softmax(z) = softmax(z &minus; c). That's a free
+overflow fix: subtract the max score first, exp stays small, result identical.</p>
+<p><strong>Cross-entropy is the bill.</strong> The truth is a one-hot vector (1 on the winner,
+0 everywhere else), and the loss only asks what you paid for the <em>right</em> answer:</p>
+<p style="text-align:center"><code>CE = &minus;&sum; y<sub>i</sub> log p<sub>i</sub> = &minus;log p<sub>true</sub></code></p>
+<p>66% on the winner &rarr; 0.42. 10% on the winner &rarr; 2.30. 3% &rarr; 3.51.
+Every extra 10&times; of wrong confidence costs exactly ln(10) &asymp; 2.3 more.
+Softmax states what you believe; cross-entropy charges you for being wrong about it.</p>
+<p><strong>Day 11 connection:</strong> &minus;log p<sub>true</sub> is the negative log-likelihood
+of the true class &mdash; so minimizing cross-entropy <em>is</em> maximum likelihood.
+Your Days 5&ndash;9 MSE loops were Gaussian MLE; every classifier since 2015 has been
+categorical MLE wearing this loss.</p>
+<p><strong>The punchline gradient:</strong> <code>dL/dz<sub>i</sub> = p<sub>i</sub> &minus; y<sub>i</sub></code>.
+Softmax + cross-entropy fuse into one elegant derivative: the gradient on each score is just
+<em>prediction minus target</em>. Same &ldquo;error&rdquo; shape as Day 6's error &times; input &mdash;
+deep learning's favorite trick, showing up again.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Logits are conviction scores; softmax is your position sizer.</strong>
+You score three setups &mdash; bull, bear, chop &mdash; and softmax turns conviction into
+weights summing to 100% of the book. And it's an aggressive allocator: e<sup>conviction</sup>
+weighting concentrates hard on your highest-conviction idea, like sizing up an A-quality setup.</p>
+<p><strong>Cross-entropy is the book's P&amp;L for mis-sizing.</strong> It ignores everything
+except the weight you put on the trade that <em>worked</em>: 10% on the winner, pay
+&minus;log(0.10) = 2.3. Confident-and-wrong is the blow-up trade &mdash; the cost grows
+without bound as your confidence in the wrong answer nears 100%.</p>
+<p>Systems brain bonus: softmax is also a load balancer &mdash; raw health scores in,
+traffic fractions summing to 1 out.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 600" role="img" aria-label="Softmax pipeline and cross-entropy penalty curve">
+<text x="320" y="30" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">softmax: raw scores &#8594; probabilities</text>
+<text x="110" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">logits  z</text>
+<rect x="44.0" y="127.0" width="34" height="88.0" rx="3" fill="#22a355"/>
+<text x="61.0" y="121.0" text-anchor="middle" font-size="10.5" fill="currentColor">2.00</text>
+<text x="61.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bull</text>
+<rect x="90.0" y="171.0" width="34" height="44.0" rx="3" fill="#e5484d"/>
+<text x="107.0" y="165.0" text-anchor="middle" font-size="10.5" fill="currentColor">1.00</text>
+<text x="107.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bear</text>
+<rect x="136.0" y="210.6" width="34" height="4.4" rx="3" fill="#d99a00"/>
+<text x="153.0" y="204.6" text-anchor="middle" font-size="10.5" fill="currentColor">0.10</text>
+<text x="153.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">chop</text>
+<text x="320" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">exp(z)</text>
+<rect x="254.0" y="128.3" width="34" height="86.7" rx="3" fill="#22a355"/>
+<text x="271.0" y="122.3" text-anchor="middle" font-size="10.5" fill="currentColor">7.39</text>
+<text x="271.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bull</text>
+<rect x="300.0" y="183.1" width="34" height="31.9" rx="3" fill="#e5484d"/>
+<text x="317.0" y="177.1" text-anchor="middle" font-size="10.5" fill="currentColor">2.72</text>
+<text x="317.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bear</text>
+<rect x="346.0" y="202.0" width="34" height="13.0" rx="3" fill="#d99a00"/>
+<text x="363.0" y="196.0" text-anchor="middle" font-size="10.5" fill="currentColor">1.11</text>
+<text x="363.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">chop</text>
+<text x="530" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">probabilities  p</text>
+<rect x="464.0" y="157.0" width="34" height="58.0" rx="3" fill="#22a355"/>
+<text x="481.0" y="151.0" text-anchor="middle" font-size="10.5" fill="currentColor">0.66</text>
+<text x="481.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bull</text>
+<rect x="510.0" y="193.7" width="34" height="21.3" rx="3" fill="#e5484d"/>
+<text x="527.0" y="187.7" text-anchor="middle" font-size="10.5" fill="currentColor">0.24</text>
+<text x="527.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">bear</text>
+<rect x="556.0" y="206.3" width="34" height="8.7" rx="3" fill="#d99a00"/>
+<text x="573.0" y="200.3" text-anchor="middle" font-size="10.5" fill="currentColor">0.10</text>
+<text x="573.0" y="233" text-anchor="middle" font-size="10.5" fill="currentColor">chop</text>
+<line x1="218" y1="150" x2="270" y2="150" stroke="#0a7aff" stroke-width="2" marker-end="url(#arr)"/>
+<text x="244" y="140" text-anchor="middle" font-size="11" font-weight="600" fill="#0a54c2">exp( )</text>
+<line x1="428" y1="150" x2="480" y2="150" stroke="#0a7aff" stroke-width="2" marker-end="url(#arr)"/>
+<text x="454" y="140" text-anchor="middle" font-size="11" font-weight="600" fill="#0a54c2">÷ 11.21</text>
+<text x="454" y="168" text-anchor="middle" font-size="10" fill="currentColor">the sum</text>
+<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0a7aff"/></marker></defs>
+<text x="320" y="258" text-anchor="middle" font-size="11" fill="currentColor">softmax(z) = softmax(z &#8722; max(z)) &#8212; subtract the max first, same answer, no overflow</text>
+<line x1="30" y1="276" x2="610" y2="276" stroke="#ccc" stroke-width="1"/>
+<text x="320" y="306" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">cross-entropy = &#8722;log p: the bill for your mistake</text>
+<line x1="70" y1="476.2" x2="595" y2="476.2" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="480.2" text-anchor="end" font-size="10.5" fill="currentColor">1</text>
+<line x1="70" y1="432.4" x2="595" y2="432.4" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="436.4" text-anchor="end" font-size="10.5" fill="currentColor">2</text>
+<line x1="70" y1="388.6" x2="595" y2="388.6" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="392.6" text-anchor="end" font-size="10.5" fill="currentColor">3</text>
+<line x1="70" y1="344.8" x2="595" y2="344.8" stroke="#e0e0e0" stroke-width="1"/>
+<text x="62" y="348.8" text-anchor="end" font-size="10.5" fill="currentColor">4</text>
+<text x="62" y="524.0" text-anchor="end" font-size="10.5" fill="currentColor">0</text>
+<text x="30" y="428" font-size="11" fill="currentColor" transform="rotate(-90 30 428)" text-anchor="middle">loss &#8722;log(p)</text>
+<text x="332" y="550" text-anchor="middle" font-size="11" fill="currentColor">probability p you assigned to the true class</text>
+<text x="70.0" y="536" text-anchor="middle" font-size="10.5" fill="currentColor">0</text>
+<text x="193.2" y="536" text-anchor="middle" font-size="10.5" fill="currentColor">0.25</text>
+<text x="327.1" y="536" text-anchor="middle" font-size="10.5" fill="currentColor">0.5</text>
+<text x="461.1" y="536" text-anchor="middle" font-size="10.5" fill="currentColor">0.75</text>
+<text x="595.0" y="536" text-anchor="middle" font-size="10.5" fill="currentColor">1.0</text>
+<polyline points="70.0,348.6 74.4,363.6 78.8,374.8 83.1,383.7 87.5,391.0 91.9,397.4 96.2,402.9 100.6,407.8 105.0,412.2 109.4,416.2 113.8,419.8 118.1,423.2 122.5,426.4 126.9,429.3 131.2,432.1 135.6,434.6 140.0,437.1 144.4,439.4 148.8,441.6 153.1,443.7 157.5,445.7 161.9,447.6 166.2,449.4 170.6,451.2 175.0,452.9 179.4,454.5 183.8,456.1 188.1,457.6 192.5,459.0 196.9,460.4 201.3,461.8 205.6,463.1 210.0,464.4 214.4,465.7 218.8,466.9 223.1,468.1 227.5,469.3 231.9,470.4 236.3,471.5 240.6,472.5 245.0,473.6 249.4,474.6 253.8,475.6 258.1,476.6 262.5,477.5 266.9,478.5 271.2,479.4 275.6,480.3 280.0,481.2 284.4,482.0 288.8,482.9 293.1,483.7 297.5,484.5 301.9,485.3 306.2,486.1 310.6,486.8 315.0,487.6 319.4,488.3 323.8,489.1 328.1,489.8 332.5,490.5 336.9,491.2 341.2,491.9 345.6,492.6 350.0,493.2 354.4,493.9 358.7,494.5 363.1,495.2 367.5,495.8 371.9,496.4 376.2,497.0 380.6,497.6 385.0,498.2 389.4,498.8 393.7,499.4 398.1,499.9 402.5,500.5 406.9,501.0 411.2,501.6 415.6,502.1 420.0,502.7 424.4,503.2 428.8,503.7 433.1,504.2 437.5,504.7 441.9,505.3 446.2,505.8 450.6,506.2 455.0,506.7 459.4,507.2 463.8,507.7 468.1,508.2 472.5,508.6 476.9,509.1 481.3,509.5 485.6,510.0 490.0,510.4 494.4,510.9 498.7,511.3 503.1,511.8 507.5,512.2 511.9,512.6 516.2,513.0 520.6,513.5 525.0,513.9 529.4,514.3 533.8,514.7 538.1,515.1 542.5,515.5 546.9,515.9 551.2,516.3 555.6,516.7 560.0,517.0 564.4,517.4 568.8,517.8 573.1,518.2 577.5,518.5 581.9,518.9 586.2,519.3 590.6,519.6 595.0,520.0" fill="none" stroke="#7a5cff" stroke-width="2.5"/>
+<line x1="70" y1="520" x2="595" y2="520" stroke="#888" stroke-width="1.5"/>
+<line x1="70" y1="520" x2="70" y2="336" stroke="#888" stroke-width="1.5"/>
+<circle cx="412.3" cy="501.7" r="5" fill="#22a355" stroke="#fff" stroke-width="1.5"/>
+<text x="421.3" y="479.7" font-size="10.5" fill="currentColor">gave 66% to the winner</text>
+<text x="421.3" y="491.7" font-size="10.5" font-weight="700" fill="#22a355">bill: 0.42</text>
+<circle cx="112.9" cy="419.1" r="5" fill="#d99a00" stroke="#fff" stroke-width="1.5"/>
+<text x="121.9" y="397.1" font-size="10.5" fill="currentColor">10% on the winner</text>
+<text x="121.9" y="409.1" font-size="10.5" font-weight="700" fill="#d99a00">bill: 2.30</text>
+<circle cx="75.4" cy="366.4" r="5" fill="#e5484d" stroke="#fff" stroke-width="1.5"/>
+<text x="84.4" y="344.4" font-size="10.5" fill="currentColor">3% on the winner</text>
+<text x="84.4" y="356.4" font-size="10.5" font-weight="700" fill="#e5484d">bill: 3.51</text>
+<text x="320" y="580" text-anchor="middle" font-size="11" fill="currentColor">every extra 10× of wrong confidence costs exactly ln(10) ≈ 2.3 more &#8212; confident-and-wrong is brutal</text>
+</svg>
+
+    <div class="caption">Top: logits [2.0, 1.0, 0.1] &rarr; exp &rarr; &divide;11.21 &rarr; probabilities.
+Bottom: the &minus;log p penalty curve &mdash; what the model paid for each level of
+belief in the true class.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>On your MacBook (<code>~/ai-lab</code>, torch with MPS): five acts &mdash;
+hand-rolled softmax vs torch, the overflow gotcha, cross-entropy by hand vs the library,
+the p &minus; y gradient check, and your turn: regime scores &rarr; allocation weights
+(Day 12's three neurons, one matmul).</p>
+  <pre><code>&quot;&quot;&quot;Day 14 - Softmax &amp; Cross-Entropy: turning scores into probabilities.
+
+A classifier&#x27;s raw scores (logits) can be anything - negative, huge, not summing
+to 1. Softmax squashes them into a probability distribution; cross-entropy bills
+you -log(p_true) for the answer you got wrong. And the punchline: the gradient
+of the pair collapses to (prediction - target) - the same &quot;error&quot; pattern as
+Day 6&#x27;s regression gradient and Day 11&#x27;s MLE.
+
+Runs on the ~/ai-lab venv: torch CPU or MPS, no paid APIs.
+Expected output is shown in the lesson HTML - numbers below should match to the
+printed precision.
+&quot;&quot;&quot;
+import torch
+import torch.nn.functional as F
+
+torch.set_printoptions(precision=4)
+
+print(&quot;=== 1. Logits -&gt; probabilities: softmax by hand ===&quot;)
+logits = torch.tensor([2.0, 1.0, 0.1])          # [bull, bear, chop] conviction
+hand = torch.exp(logits) / torch.exp(logits).sum()
+lib = F.softmax(logits, dim=0)
+print(&quot;hand :&quot;, hand.tolist())
+print(&quot;torch:&quot;, lib.tolist())
+print(f&quot;sum  : {float(lib.sum()):.6f}&quot;)             # a real distribution: sums to 1
+
+print(&quot;\n=== 2. The overflow gotcha (and the one-line fix) ===&quot;)
+big = torch.tensor([1000.0, 1001.0, 1002.0])
+naive = torch.exp(big) / torch.exp(big).sum()    # exp(1002) = inf -&gt; nan
+print(&quot;naive softmax:&quot;, naive.tolist())
+stable = F.softmax(big, dim=0)                   # subtracts max(z) internally
+print(&quot;torch softmax :&quot;, stable.tolist())
+print(&quot;softmax(z) == softmax(z - max(z)): shifting scores changes nothing&quot;)
+
+print(&quot;\n=== 3. Cross-entropy: the loss = -log(p_true) ===&quot;)
+probs = F.softmax(logits, dim=0)
+true_class = 0                                   # bull was right
+ce_hand = -torch.log(probs[true_class])
+# F.cross_entropy takes RAW logits (it applies log_softmax inside) + class index
+ce_lib = F.cross_entropy(logits.unsqueeze(0), torch.tensor([true_class]))
+print(f&quot;hand: -log({float(probs[true_class]):.4f}) = {float(ce_hand):.4f}&quot;)
+print(f&quot;lib : F.cross_entropy(raw_logits, target)  = {float(ce_lib):.4f}&quot;)
+print(&quot;(minimizing this = maximizing likelihood: Day 11&#x27;s MLE, one line)&quot;)
+
+print(&quot;\n=== 4. The punchline gradient: dL/dz = p - y ===&quot;)
+z = logits.clone().requires_grad_(True)
+F.cross_entropy(z.unsqueeze(0), torch.tensor([true_class])).backward()
+onehot = F.one_hot(torch.tensor([true_class]), num_classes=3).float()
+print(&quot;autograd dL/dz:&quot;, [f&quot;{v:.4f}&quot; for v in z.grad.tolist()])
+print(&quot;p - y        :&quot;, [f&quot;{v:.4f}&quot; for v in (probs - onehot).tolist()])
+print(&quot;identical. Gradient = how-wrong x how-much-I-pushed: the Day 6 pattern.&quot;)
+
+print(&quot;\n=== 5. Your turn: regime scores -&gt; allocation weights ===&quot;)
+features = torch.tensor([0.04, 1.25, 0.62])      # momentum, volume_z, vol_spike
+W = torch.tensor([[ 1.20,  0.35, -0.80],          # bull row (Day 12: neurons)
+                  [-1.05,  0.15,  0.60],          # bear row
+                  [ 0.30, -0.90,  0.45]])         # chop row
+b = torch.tensor([0.10, 0.05, 0.00])
+regime_logits = W @ features + b                  # three neurons, one matmul
+alloc = F.softmax(regime_logits, dim=0)
+print(&quot;logits:&quot;, [f&quot;{v:.4f}&quot; for v in regime_logits.tolist()])
+print(f&quot;alloc : bull {float(alloc[0]):.1%} | bear {float(alloc[1]):.1%} | chop {float(alloc[2]):.1%}&quot;)
+print(f&quot;loss if bear wins (-log p): {float(-torch.log(alloc[1])):.4f}&quot;)
+print(&quot;\nWIN: you turned raw conviction into a sized book - and priced the mistake.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>=== 1. Logits -&gt; probabilities: softmax by hand ===
+hand : [0.6590011119842529, 0.24243295192718506, 0.09856589883565903]
+torch: [0.6590011119842529, 0.24243295192718506, 0.09856589883565903]
+sum  : 1.000000
+
+=== 2. The overflow gotcha (and the one-line fix) ===
+naive softmax: [nan, nan, nan]
+torch softmax : [0.09003057330846786, 0.2447284607887268, 0.6652409434318542]
+softmax(z) == softmax(z - max(z)): shifting scores changes nothing
+
+=== 3. Cross-entropy: the loss = -log(p_true) ===
+hand: -log(0.6590) = 0.4170
+lib : F.cross_entropy(raw_logits, target)  = 0.4170
+(minimizing this = maximizing likelihood: Day 11&#x27;s MLE, one line)
+
+=== 4. The punchline gradient: dL/dz = p - y ===
+autograd dL/dz: [&#x27;-0.3410&#x27;, &#x27;0.2424&#x27;, &#x27;0.0986&#x27;]
+p - y        : [&#x27;-0.3410&#x27;, &#x27;0.2424&#x27;, &#x27;0.0986&#x27;]
+identical. Gradient = how-wrong x how-much-I-pushed: the Day 6 pattern.
+
+=== 5. Your turn: regime scores -&gt; allocation weights ===
+logits: [&#x27;0.0895&#x27;, &#x27;0.5675&#x27;, &#x27;-0.8340&#x27;]
+alloc : bull 33.2% | bear 53.6% | chop 13.2%
+loss if bear wins (-log p): 0.6239
+
+WIN: you turned raw conviction into a sized book - and priced the mistake.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Run <code>code.py</code> and confirm three things: (1)&nbsp;your hand-rolled softmax
+matches <code>torch.softmax</code> to 6 decimals; (2)&nbsp;naive softmax on
+<code>[1000, 1001, 1002]</code> &rarr; <code>nan</code> while torch's stays sane (max-subtraction);
+(3)&nbsp;autograd prints <code>dL/dz = [-0.3410, 0.2424, 0.0986]</code> &mdash; exactly
+<code>p &minus; y</code>.</p>
+<p><strong>Done-state:</strong> you can write softmax from memory, and you know why
+<code>F.cross_entropy</code> takes <em>raw logits</em>, not probabilities &mdash; it applies
+log-softmax inside.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read <strong>The one idea</strong>, then run only &sect;1&ndash;&sect;4 of the code
+(skip &sect;5, the regime toy). The non-negotiable moment: watch <code>dL/dz</code> print
+exactly <code>p &minus; y</code> &mdash; that single line is why this loss runs nearly
+every classifier in AI.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: neurons only eat numbers &mdash; so how do you feed one a word? A ticker
+symbol? A category? The trick is older than deep learning, and it's quietly everywhere in
+modern AI.</p>
+  </div>
+
+  <div class="footer">Streak: 14 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

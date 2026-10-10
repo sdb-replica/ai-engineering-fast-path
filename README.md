@@ -38,3 +38,4 @@ pip install torch numpy
 | 11 | [Expectation, Variance & Maximum Likelihood](day-011-expectation-variance-maximum-likelihood/lesson.html) | [lesson.md](day-011-expectation-variance-maximum-likelihood/lesson.md) | [code.py](day-011-expectation-variance-maximum-likelihood/code.py) |
 | 12 | [Vectors, Dot Products & the Core Op](day-012-vectors-dot-products-matmul/lesson.html) | [lesson.md](day-012-vectors-dot-products-matmul/lesson.md) | [code.py](day-012-vectors-dot-products-matmul/code.py) |
 | 13 | [Why GPUs Exist](day-013-why-gpus-exist/lesson.html) | [lesson.md](day-013-why-gpus-exist/lesson.md) | [code.py](day-013-why-gpus-exist/code.py) |
+| 14 | [Softmax & Cross-Entropy](day-014-softmax-and-cross-entropy/lesson.html) | [lesson.md](day-014-softmax-and-cross-entropy/lesson.md) | [code.py](day-014-softmax-and-cross-entropy/code.py) |
