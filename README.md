@@ -40,3 +40,4 @@ pip install torch numpy
 | 13 | [Why GPUs Exist](day-013-why-gpus-exist/lesson.html) | [lesson.md](day-013-why-gpus-exist/lesson.md) | [code.py](day-013-why-gpus-exist/code.py) |
 | 14 | [Softmax & Cross-Entropy](day-014-softmax-and-cross-entropy/lesson.html) | [lesson.md](day-014-softmax-and-cross-entropy/lesson.md) | [code.py](day-014-softmax-and-cross-entropy/code.py) |
 | 15 | [Embeddings: Categories → Vectors](day-015-embeddings-categories-to-vectors/lesson.html) | [lesson.md](day-015-embeddings-categories-to-vectors/lesson.md) | [code.py](day-015-embeddings-categories-to-vectors/code.py) |
+| 16 | [Tiny Classifier on Real Data](day-016-tiny-classifier-real-data/lesson.html) | [lesson.md](day-016-tiny-classifier-real-data/lesson.md) | [code.py](day-016-tiny-classifier-real-data/code.py) |

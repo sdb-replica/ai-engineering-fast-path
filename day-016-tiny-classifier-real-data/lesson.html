@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiny Classifier on Real Data — Day 16 of 100</title>
+<!--
+  Day 16 — Build: tiny classifier on a real dataset (sklearn digits), end-to-end.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 16 of 100</span>
+  <h1>Tiny Classifier on Real Data</h1>
+  <p class="outcome">Tonight you'll be able to: assemble every piece from Days 2&ndash;15 into one
+working machine &mdash; a neural net that reads handwritten digits at 95%+ accuracy.</p>
+
+  <h2>The one idea</h2>
+  <p>Fifteen days, fifteen parts. Tonight they stop being parts. The task: read handwritten
+digits &mdash; real data, from sklearn's <code>digits</code> dataset: 1,797 grayscale
+8&times;8 images, 64 pixel features each (values 0&ndash;16), labeled 0&ndash;9. Input: a
+64-number pixel vector. Output: which digit.</p>
+  <p>This is <strong>classification, not regression</strong> &mdash; the target is a category,
+so the model can't emit one number. It emits <strong>10 logits</strong>, one per digit, and
+Day 14's cross-entropy scores them against the one-hot truth: <code>&minus;log p_true</code>.
+Day 11's punchline returns: minimizing cross-entropy <em>is</em> maximum likelihood on the
+true class.</p>
+  <p>The model is three lines: <code>Linear(64, 32) &rarr; ReLU &rarr; Linear(32, 10)</code>.
+The first layer is Day 12 &mdash; 32 stacked dot products. The last layer is 10 more. One
+loan from the future sits between them: <strong>ReLU</strong>, <code>max(0, x)</code>. It
+bends the line so two stacked linear layers can learn curves instead of just planes. The
+full treatment (activations, why non-linearity matters) lands on Day 22; tonight it's one
+line, used not taught.</p>
+  <p>The training loop is Day 7's ritual, but <strong>mini-batch</strong>: instead of one big
+accurate gradient per step, each step sees 64 shuffled digits and makes ~22 cheap noisy
+steps per epoch. The noise is a feature &mdash; noisy steps converge far faster in
+wall-clock time and shake the optimizer out of flat spots. Everything else is muscle memory:
+<code>zero_grad</code>, forward, <code>loss.backward()</code>, <code>step()</code>.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>The integration test.</strong> Days 2&ndash;15 were unit tests &mdash; each part
+proven alone. Tonight is the first deploy of the whole request path: data store, split
+(router), model (service), loss (health check), optimizer (auto-scaler). And like any good
+integration test, it runs against <em>real</em> data and reports a number you can't fake:
+accuracy on digits the model never trained on.</p>
+    <p><strong>The trading version:</strong> this is a backtest harness &mdash; data feed,
+feature pipeline, model, scorer, validator. The val split is your out-of-sample period, and
+Day 8's rule holds: the model never sees it until scoring. Tonight's P&amp;L: 95.6%.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 802" role="img" aria-label="End-to-end classifier pipeline">
+<text x="320" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">every day you built one part — today the whole machine runs</text>
+<defs><marker id="d16arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#555"/></marker></defs>
+<rect x="80" y="52" width="480" height="62" rx="12" fill="#ffffff" stroke="#0a7aff" stroke-width="2.5"/>
+<circle cx="114" cy="83" r="20" fill="#0a7aff"/>
+<text x="114" y="88" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">1</text>
+<text x="144" y="78" font-size="13.5" font-weight="700" fill="currentColor">DATA — sklearn digits</text>
+<text x="144" y="98" font-size="11.5" fill="currentColor">1,797 handwritten digits · 64 pixel features (8×8)</text>
+<text x="546" y="78" text-anchor="end" font-size="10.5" font-weight="700" fill="#0a7aff">Day 2</text>
+<rect x="80" y="160" width="480" height="62" rx="12" fill="#ffffff" stroke="#0a7aff" stroke-width="2.5"/>
+<circle cx="114" cy="191" r="20" fill="#0a7aff"/>
+<text x="114" y="196" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">2</text>
+<text x="144" y="186" font-size="13.5" font-weight="700" fill="currentColor">SPLIT — 80 / 20</text>
+<text x="144" y="206" font-size="11.5" fill="currentColor">train 1,437 · val 360 · random_state = 16</text>
+<text x="546" y="186" text-anchor="end" font-size="10.5" font-weight="700" fill="#0a7aff">Day 8</text>
+<line x1="320" y1="114" x2="320" y2="160" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<rect x="80" y="268" width="480" height="62" rx="12" fill="#ffffff" stroke="#0a7aff" stroke-width="2.5"/>
+<circle cx="114" cy="299" r="20" fill="#0a7aff"/>
+<text x="114" y="304" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">3</text>
+<text x="144" y="294" font-size="13.5" font-weight="700" fill="currentColor">SCALE — pixels ÷ 16</text>
+<text x="144" y="314" font-size="11.5" fill="currentColor">values 0..16 → 0..1 · keeps the math well-behaved</text>
+<text x="546" y="294" text-anchor="end" font-size="10.5" font-weight="700" fill="#0a7aff">Day 2</text>
+<line x1="320" y1="222" x2="320" y2="268" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<rect x="80" y="376" width="480" height="62" rx="12" fill="#ffffff" stroke="#7a5cff" stroke-width="2.5"/>
+<circle cx="114" cy="407" r="20" fill="#7a5cff"/>
+<text x="114" y="412" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">4</text>
+<text x="144" y="402" font-size="13.5" font-weight="700" fill="currentColor">MODEL — 64 → 32 → 10</text>
+<text x="144" y="422" font-size="11.5" fill="currentColor">Linear(64,32) → ReLU → Linear(32,10) · 32 stacked dot products</text>
+<text x="546" y="402" text-anchor="end" font-size="10.5" font-weight="700" fill="#7a5cff">Day 12</text>
+<line x1="320" y1="330" x2="320" y2="376" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<rect x="80" y="484" width="480" height="62" rx="12" fill="#ffffff" stroke="#7a5cff" stroke-width="2.5"/>
+<circle cx="114" cy="515" r="20" fill="#7a5cff"/>
+<text x="114" y="520" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">5</text>
+<text x="144" y="510" font-size="13.5" font-weight="700" fill="currentColor">LOSS — cross-entropy</text>
+<text x="144" y="530" font-size="11.5" fill="currentColor">softmax(logits) vs one-hot truth · −log p_true</text>
+<text x="546" y="510" text-anchor="end" font-size="10.5" font-weight="700" fill="#7a5cff">Day 14</text>
+<line x1="320" y1="438" x2="320" y2="484" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<rect x="80" y="592" width="480" height="62" rx="12" fill="#ffffff" stroke="#22a355" stroke-width="2.5"/>
+<circle cx="114" cy="623" r="20" fill="#22a355"/>
+<text x="114" y="628" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">6</text>
+<text x="144" y="618" font-size="13.5" font-weight="700" fill="currentColor">LOOP — the Day-7 ritual</text>
+<text x="144" y="638" font-size="11.5" fill="currentColor">forward → loss → backward → SGD step · lr 0.5 · batch 64 · 20 epochs</text>
+<text x="546" y="618" text-anchor="end" font-size="10.5" font-weight="700" fill="#22a355">Days 4, 6, 7</text>
+<line x1="320" y1="546" x2="320" y2="592" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<rect x="80" y="700" width="480" height="62" rx="12" fill="#ffffff" stroke="#d99a00" stroke-width="2.5"/>
+<circle cx="114" cy="731" r="20" fill="#d99a00"/>
+<text x="114" y="736" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">7</text>
+<text x="144" y="726" font-size="13.5" font-weight="700" fill="currentColor">EVAL — val accuracy 95.6%</text>
+<text x="144" y="746" font-size="11.5" fill="currentColor">train loss 0.84 → 0.07 · scored on digits it never trained on</text>
+<text x="546" y="726" text-anchor="end" font-size="10.5" font-weight="700" fill="#d99a00">Day 8</text>
+<line x1="320" y1="654" x2="320" y2="700" stroke="#555" stroke-width="2" marker-end="url(#d16arr)"/>
+<path d="M 564 623 C 594 623, 594 407, 564 407" fill="none" stroke="#22a355" stroke-width="2.5" stroke-dasharray="7,5" marker-end="url(#d16arr)"/>
+<text x="600" y="455" font-size="11.5" font-weight="700" fill="#22a355">×20</text>
+</svg>
+    <div class="caption">The whole machine, top to bottom. Each box names the day that taught
+it &mdash; the dashed loop is one epoch, repeated 20&times;.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>On your MacBook (<code>~/ai-lab</code>, torch with MPS; <code>pip install
+scikit-learn</code> for the dataset &mdash; it's free): load the digits, split, assemble the
+three-line model, and run Day 7's ritual with mini-batches.</p>
+  <pre><code>&quot;&quot;&quot;Day 16 - Tiny Classifier on Real Data.
+
+Assemble every piece from Days 2-15 into one working machine: a neural net
+that reads handwritten digits (sklearn's digits dataset: 1,797 8x8 images,
+64 pixel features, 10 digit classes).
+
+The cast, by day:
+  Day  2  tensors hold the data (1797, 64)
+  Day  8  80/20 train/val split keeps the score honest
+  Day 12  Linear layers = stacked dot products (64 -> 32 -> 10)
+  Day 14  softmax + cross-entropy scores 10 logits against the truth
+  Day 4/6/7  autograd + SGD + the training-loop ritual
+  Day  5  the loss tells the model how wrong it is
+
+One loan from the future: ReLU (max(0, x)) bends the line so stacked layers
+can learn curves instead of just planes. Full treatment lands Day 22; tonight
+it is one line.
+
+Runs on the ~/ai-lab venv: torch CPU or MPS, no paid APIs. sklearn is free
+(pip install scikit-learn).
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+
+torch.manual_seed(16)
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+print(&quot;device:&quot;, device)
+
+# 1. REAL DATA - 1,797 handwritten digits as 8x8 pixel images
+X, y = load_digits(return_X_y=True)
+print(f&quot;dataset: {X.shape[0]} samples, {X.shape[1]} features (8x8 pixels), &quot;
+      f&quot;{len(set(y.tolist()))} classes&quot;)
+X = X / 16.0                                    # pixels 0..16 -&gt; 0..1
+Xtr, Xva, ytr, yva = train_test_split(X, y, test_size=0.2, random_state=16)
+print(f&quot;train: {len(Xtr)}  val: {len(Xva)}&quot;)
+Xtr = torch.tensor(Xtr, dtype=torch.float32).to(device)
+Xva = torch.tensor(Xva, dtype=torch.float32).to(device)
+ytr = torch.tensor(ytr, dtype=torch.long).to(device)
+yva = torch.tensor(yva, dtype=torch.long).to(device)
+
+# 2. THE MACHINE - everything from Days 2-15, assembled
+model = nn.Sequential(
+    nn.Linear(64, 32),   # Day 12: 32 stacked dot products
+    nn.ReLU(),           # one-line loan from Day 22: bends the line
+    nn.Linear(32, 10),   # 10 logits, one per digit
+).to(device)
+opt = torch.optim.SGD(model.parameters(), lr=0.5)   # Day 6
+loss_fn = nn.CrossEntropyLoss()                     # Day 14
+
+# 3. THE LOOP - Day 7's ritual, mini-batch SGD (64 shuffled digits at a time)
+EPOCHS, B = 20, 64
+for epoch in range(1, EPOCHS + 1):
+    model.train()
+    perm = torch.randperm(len(Xtr), device=device)
+    for i in range(0, len(Xtr), B):
+        idx = perm[i:i + B]
+        opt.zero_grad()                                 # Day 7: no free accumulation
+        loss = loss_fn(model(Xtr[idx]), ytr[idx])       # forward -&gt; loss
+        loss.backward()                                 # backward (Day 4)
+        opt.step()                                      # step (Day 6)
+    if epoch in (1, 5, 10, 15, 20):
+        model.eval()
+        with torch.no_grad():
+            tr_loss = loss_fn(model(Xtr), ytr).item()
+            vacc = (model(Xva).argmax(1) == yva).float().mean().item()
+        print(f&quot;epoch {epoch:3d}  train loss {tr_loss:.4f}  val acc {vacc:.4f}&quot;)
+
+# 4. RECEIPTS - predictions on digits it never trained on
+model.eval()
+with torch.no_grad():
+    pred = model(Xva).argmax(1)
+print(&quot;\nsample predictions (true -&gt; pred):&quot;)
+for i in range(6):
+    print(f&quot;  {yva[i].item()} -&gt; {pred[i].item()}&quot;)
+acc = (pred == yva).float().mean().item()
+print(f&quot;\nWIN: a neural net reading handwriting - val accuracy {acc:.4f}&quot;)
+</code></pre>
+  <p><strong>Expected output</strong> (reference numbers &mdash; your MacBook may differ in the
+last digits since its RNG stream differs, but you'll see the same story):</p>
+  <pre class="output"><code>device: mps
+dataset: 1797 samples, 64 features (8x8 pixels), 10 classes
+train: 1437  val: 360
+epoch   1  train loss 0.8442  val acc 0.6889
+epoch   5  train loss 0.1742  val acc 0.9306
+epoch  10  train loss 0.1188  val acc 0.9250
+epoch  15  train loss 0.0915  val acc 0.9444
+epoch  20  train loss 0.0703  val acc 0.9556
+
+sample predictions (true -&gt; pred):
+  6 -&gt; 6
+  8 -&gt; 8
+  3 -&gt; 3
+  1 -&gt; 1
+  8 -&gt; 8
+  9 -&gt; 9
+
+WIN: a neural net reading handwriting - val accuracy 0.9556</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Run <code>code.py</code> and confirm four things: (1)&nbsp;the dataset line reads
+<code>1797 samples, 64 features</code>; (2)&nbsp;train loss falls from <code>~0.84</code> to
+<code>~0.07</code>; (3)&nbsp;val accuracy climbs into the mid-90s on 360 digits the model never
+trained on; (4)&nbsp;the sample predictions all match.</p>
+    <p><strong>Done-state:</strong> point at any line of the script and name the day that taught
+it &mdash; data (Day 2), split (Day 8), Linear (Day 12), cross-entropy (Day 14), the loop
+(Days 4, 6, 7). That's the whole Phase A machine in your head.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read <strong>The one idea</strong>, then set <code>EPOCHS = 5</code> and run the script.
+The non-negotiable moment: the <code>val acc</code> line jumping <code>0.69 &rarr; 0.93</code>
+in five epochs &mdash; five minutes of compute buying 93% accuracy on images it never saw.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the model learned a little too eagerly &mdash; watch what happens when the
+training loss keeps falling and the validation score stops following.</p>
+  </div>
+
+  <div class="footer">Streak: 16 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
