@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regularization: L2 & Dropout — Day 17 of 100</title>
+<!--
+  Day 17 - Regularization: L2, dropout (analogy: chaos engineering for neurons).
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) - saved files must work offline.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 17 of 100</span>
+  <h1>Regularization: L2 & Dropout</h1>
+  <p class="outcome">Tonight you'll be able to: stop a model from memorizing &mdash; charge rent on big weights with L2, break neuron co-dependence with dropout, and watch a test score get rescued from 38.55 to 1.02.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 8 gave you the diagnosis: <strong>train loss keeps falling while val loss 
+bottoms out and rises</strong> &mdash; the model is memorizing, not learning. Day 16's digits 
+net never showed symptoms: clean data, honest split, 95.6%. But regularization is the brake 
+you install <em>before</em> the data turns hostile &mdash; mislabeled rows, noisy features, 
+too few samples. Real data is hostile. Market data is hostile squared.</p>
+<p><strong>L2 &mdash; charge rent on weights.</strong> Add a second term to the loss: 
+<code>total loss = data loss + &lambda;&middot;&Sigma;w&sup2;</code>. Just-in-time math, 
+one line: the gradient of that term is <code>2&lambda;w</code>, so every step drags each 
+weight toward zero with a force <em>proportional to its size</em>. A weight must keep 
+earning more loss-reduction than its rent, or it decays away. Noise-chasing weights are 
+big and useless &mdash; evicted. Real-signal weights pay easily. In PyTorch you rarely 
+write the term yourself: it's the <code>weight_decay=</code> argument on the optimizer. 
+Solved exactly for a linear model (Part 1), it's called <strong>ridge regression</strong>. 
+One exemption: the bias pays no rent &mdash; it's an offset, not a slope.</p>
+<p><strong>&lambda; is a dial, and val turns it.</strong> Too small and the model still 
+memorizes; too big and it underfits &mdash; too scared to learn anything at all. Part 1's 
+sweep is a perfect U: val MSE 2.53 at &lambda;=0, bottoming at <strong>0.85 at &lambda;=3</strong>, 
+back up to 2.04 at &lambda;=100. Watch the weight norm while it happens: 
+<strong>1.89e+06 &rarr; 2.36</strong>. The unregularized model's weights weren't large 
+because the signal was large &mdash; they were large because nothing charged them rent.</p>
+<p><strong>Dropout &mdash; break co-adaptation.</strong> During training, every forward 
+pass independently zeroes each hidden unit with probability <code>p</code> &mdash; a fresh 
+lottery every pass. Survivors are scaled by <code>1/(1&minus;p)</code> (inverted dropout), 
+so the expected signal is unchanged and eval needs no adjustment. Why it works: units 
+can't <em>collude</em>. A neuron can't specialize in memorizing one example's noise if its 
+partners keep vanishing &mdash; every feature must be carried redundantly, by whichever 
+subset shows up. You're effectively training an ensemble of sub-networks and averaging 
+them at eval time.</p>
+<p><strong>The train/eval switch is load-bearing.</strong> Dropout exists only in train 
+mode &mdash; that's why Day 16's <code>model.eval()</code> before scoring wasn't ceremony. 
+Forget it, and your val score gets graded by a network with random holes in it. Rules of 
+thumb: <code>weight_decay</code> 1e-4&ndash;1e-2 as a starting range, dropout 
+<code>p</code> 0.1&ndash;0.5 on hidden layers (never the output), and the smaller or 
+noisier the data &mdash; or the bigger the model &mdash; the harder you brake. Always 
+tuned on val, never on test: Day 8's contract still runs the building.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Chaos engineering for neurons.</strong> Dropout is Netflix's Chaos Monkey 
+pointed at your own network: randomly kill units in training so the system must serve 
+correctly with <em>any</em> subset down. No single neuron gets to be load-bearing for a 
+memorized path, because production (eval) is not when you want to discover a single point 
+of failure. Redundancy is designed in, not hoped for.</p>
+<p><strong>L2 is a storage bill.</strong> You know this one from object storage: charge 
+every team rent proportional to what it hoards, and junk gets lifecycle-deleted while data 
+that earns its keep stays. &lambda;&middot;w&sup2; is that bill for weights &mdash; and it 
+grows quadratically, so the biggest hoarders feel it first.</p>
+<p><strong>The trading version:</strong> position limits. L2 caps how large any single 
+feature's bet can grow; dropout means your P&amp;L can never hinge on one position being 
+open. A strategy that only works when every indicator fires exactly as backtested is a 
+memorized backtest &mdash; Day 8's curve-fit, wearing a suit.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 430" role="img" aria-label="L2 U-curve and dropout network">
+<text x="320" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">two cures for memorizing: charge rent on weights, drop random neurons</text>
+<text x="177" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="#0a7aff">L2 — the &#955; dial (real numbers, Day 8 data)</text>
+<line x1="62" y1="292" x2="292" y2="292" stroke="#999" stroke-width="1.5"/>
+<line x1="62" y1="86" x2="62" y2="292" stroke="#999" stroke-width="1.5"/>
+<text x="68" y="82" font-size="10.5" fill="currentColor">val MSE &#8593;</text>
+<polyline points="62.0,114.9 108.0,220.6 154.0,227.6 200.0,232.5 246.0,229.0 292.0,149.2" fill="none" stroke="#0a7aff" stroke-width="2.5"/>
+<circle cx="62.0" cy="114.9" r="4.5" fill="#0a7aff"/>
+<text x="62.0" y="102.9" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">2.53</text>
+<text x="62.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">0</text>
+<circle cx="108.0" cy="220.6" r="4.5" fill="#0a7aff"/>
+<text x="108.0" y="208.6" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">1.02</text>
+<text x="108.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">0.1</text>
+<circle cx="154.0" cy="227.6" r="4.5" fill="#0a7aff"/>
+<text x="154.0" y="215.6" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">0.92</text>
+<text x="154.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">1</text>
+<circle cx="200.0" cy="232.5" r="6" fill="#22a355"/>
+<text x="200.0" y="220.5" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">0.85</text>
+<text x="200.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">3</text>
+<circle cx="246.0" cy="229.0" r="4.5" fill="#0a7aff"/>
+<text x="246.0" y="217.0" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">0.90</text>
+<text x="246.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">10</text>
+<circle cx="292.0" cy="149.2" r="4.5" fill="#0a7aff"/>
+<text x="292.0" y="137.2" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">2.04</text>
+<text x="292.0" y="310" text-anchor="middle" font-size="11" fill="currentColor">100</text>
+<text x="177" y="330" text-anchor="middle" font-size="11" fill="currentColor">&#955; (weight-decay strength)</text>
+<text x="200.0" y="258.5" text-anchor="middle" font-size="11" font-weight="700" fill="#22a355">sweet spot &#955;=3</text>
+<text x="68.0" y="350" font-size="11" fill="currentColor">left: memorizing</text>
+<text x="292.0" y="350" text-anchor="end" font-size="11" fill="currentColor">right: underfitting</text>
+<text x="482" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="#7a5cff">dropout — chaos monkey for neurons</text>
+<line x1="385" y1="130" x2="469" y2="92" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="130" x2="469" y2="140" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="130" x2="469" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="130" x2="469" y2="236" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="130" x2="469" y2="284" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="205" x2="469" y2="92" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="205" x2="469" y2="140" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="205" x2="469" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="205" x2="469" y2="236" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="205" x2="469" y2="284" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="280" x2="469" y2="92" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="280" x2="469" y2="140" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="280" x2="469" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<line x1="385" y1="280" x2="469" y2="236" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="385" y1="280" x2="469" y2="284" stroke="#c9c9ce" stroke-width="1" />
+<line x1="495" y1="92" x2="577" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<line x1="495" y1="140" x2="577" y2="188" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="495" y1="188" x2="577" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<line x1="495" y1="236" x2="577" y2="188" stroke="#c9c9ce" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="495" y1="284" x2="577" y2="188" stroke="#c9c9ce" stroke-width="1" />
+<circle cx="372" cy="130" r="13" fill="#ffffff" stroke="#555" stroke-width="2"/>
+<circle cx="372" cy="205" r="13" fill="#ffffff" stroke="#555" stroke-width="2"/>
+<circle cx="372" cy="280" r="13" fill="#ffffff" stroke="#555" stroke-width="2"/>
+<circle cx="482" cy="92" r="13" fill="#efeaff" stroke="#7a5cff" stroke-width="2"/>
+<circle cx="482" cy="140" r="13" fill="#e8e8e8" stroke="#bbb" stroke-width="2"/>
+<path d="M 475,133 L 489,147 M 489,133 L 475,147" stroke="#d33" stroke-width="2.5"/>
+<circle cx="482" cy="188" r="13" fill="#efeaff" stroke="#7a5cff" stroke-width="2"/>
+<circle cx="482" cy="236" r="13" fill="#e8e8e8" stroke="#bbb" stroke-width="2"/>
+<path d="M 475,229 L 489,243 M 489,229 L 475,243" stroke="#d33" stroke-width="2.5"/>
+<circle cx="482" cy="284" r="13" fill="#efeaff" stroke="#7a5cff" stroke-width="2"/>
+<circle cx="592" cy="188" r="15" fill="#ffffff" stroke="#555" stroke-width="2"/>
+<text x="372" y="322" text-anchor="middle" font-size="11" fill="currentColor">in</text>
+<text x="482" y="326" text-anchor="middle" font-size="11" fill="currentColor">hidden: 2 of 5 dropped</text>
+<text x="592" y="230" text-anchor="middle" font-size="11" fill="currentColor">out</text>
+<text x="482" y="368" text-anchor="middle" font-size="11.5" fill="currentColor">train: a new random subset every pass &#183; survivors &#215;1/(1&#8722;p)</text>
+<text x="482" y="390" text-anchor="middle" font-size="11.5" fill="currentColor">eval: dropout off — everybody works, no rescaling</text>
+<text x="177" y="390" text-anchor="middle" font-size="11.5" fill="currentColor">train MSE 0.30 &#8594; 0.95, but test 38.55 &#8594; 1.02</text>
+</svg>
+    <div class="caption">Left: the &lambda; U-curve on Day 8's exact data &mdash; val MSE bottoms at &lambda;=3, and the test set (touched once, at the end) is rescued 38.55 &rarr; 1.02. Right: one dropout pass &mdash; a random 2 of 5 hidden neurons sit out; next pass, a different pair sits out.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts, one story. <strong>Part 1</strong> is exact math on Day 8's own 
+data (ridge regression &mdash; no training loop, no luck). <strong>Part 2</strong> isolates 
+dropout's mechanics on a vector of ones. <strong>Part 3</strong> returns to Day 16's digits, 
+poisons 25% of the training labels, and races four identical nets that differ only in 
+their brakes. Parts 1&ndash;2 run on CPU on purpose (float64 precision; seeded masks); 
+Part 3 is a tiny net &mdash; the whole script takes a few minutes.</p>
+  <pre><code>&quot;&quot;&quot;Day 17 - Regularization: L2 &amp; Dropout.
+
+Day 8 showed the disease: a model with too many knobs memorizes noise -
+train loss collapses while the honest scores explode. Day 16&#x27;s digits
+were too clean to bleed. Tonight: the two standard brakes, proven three
+ways.
+
+  Part 1  L2 (weight decay) rescues Day 8&#x27;s degree-20 polynomial, with
+          exact math. Loss becomes: data loss + lambda * sum(w^2). Every
+          weight pays rent proportional to its size; only weights that
+          earn their keep survive. lambda is picked on VAL (Day 8&#x27;s
+          contract); the test set is touched exactly once, at the end.
+  Part 2  Dropout mechanics: in train mode each unit is zeroed with
+          probability p, survivors scaled by 1/(1-p); in eval mode
+          dropout is off. model.train() / model.eval() is not ceremony.
+  Part 3  Both brakes on Day 16&#x27;s digits - after poisoning 25% of the
+          training labels. The unregularized net memorizes the corrupted
+          labels (train acc 0.96 against labels a quarter of which are
+          wrong) and pays for it on clean val data (0.84). The
+          regularized nets refuse the bad labels - worse train scores,
+          ~11 points better where it counts.
+
+Runs on the ~/ai-lab venv: torch (Parts 1-2 on CPU - float64 and a
+seeded generator; Part 3 is a tiny net) + scikit-learn for the dataset.
+No CUDA, no paid APIs.
+
+Expected output (Part 1 is exact - same numbers everywhere; Parts 2-3
+are reference numbers from a numpy twin of the same algorithm - your
+MacBook will differ in the last digits, the story will be identical):
+
+  device: mps
+
+  Part 1 - L2 on Day 8&#x27;s degree-20 polynomial:
+    lambda    train      val  ||weights||
+       0.0     0.30     2.53     1.89e+06
+       0.1     0.79     1.02         3.97
+       1.0     0.85     0.92          2.8
+       3.0     0.95     0.85         2.36
+      10.0     1.28     0.90         1.82
+     100.0     3.11     2.04        0.917
+  val picks lambda = 3
+  test (touched once): lambda=0 -&gt; 38.55   lambda=3 -&gt; 1.02
+
+  Part 2 - dropout mechanics (p = 0.5):
+    train pass 1: ~6 of 12 zeroed, survivors = 2.0
+    train pass 2: a different ~6 of 12 zeroed, survivors = 2.0
+    eval pass: 0 of 12 zeroed, output == input: True
+
+  Part 3 - digits with 25% of training labels flipped:
+  run                        train (fed) val (clean) ||weights||
+  no regularization               0.9576      0.8389       41.82
+  L2 only (wd=0.005)              0.7488      0.9444        9.29
+  dropout only (p=0.3)            0.8664      0.8806       37.77
+  L2 + dropout                    0.7418      0.9472        9.30
+&quot;&quot;&quot;
+import random
+
+import torch
+import torch.nn as nn
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+
+print(&quot;device:&quot;, &quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+
+# ---------- Part 1: L2 rescues Day 8&#x27;s degree-20 disaster (exact) ----------
+# Same world as Day 8 (seed 42, pure-Python data, 40/20/40 split). One quiet
+# fix: feature stats now come from TRAIN only - Day 8 used each split&#x27;s own
+# stats, a small leak. float64 on CPU on purpose: degree-20 polynomials are
+# ill-conditioned, and MPS has no float64. Precision is the point here.
+random.seed(42)
+xs = [random.uniform(-2, 2) for _ in range(100)]
+ys = [2 * x + 1 + random.gauss(0, 1.0) for x in xs]
+idx = list(range(100))
+random.shuffle(idx)
+X = torch.tensor(xs, dtype=torch.float64)
+Y = torch.tensor(ys, dtype=torch.float64)
+Xtr, Ytr = X[idx[:40]], Y[idx[:40]]      # TRAIN: study material (Day 8)
+Xva, Yva = X[idx[40:60]], Y[idx[40:60]]  # VAL: the judge - lambda is picked here
+Xte, Yte = X[idx[60:]], Y[idx[60:]]      # TEST: the verdict - touched once, below
+
+
+def design(xv, degree, mu=None, sd=None):
+    &quot;&quot;&quot;Polynomial features x..x^degree, standardized with train stats.&quot;&quot;&quot;
+    feats = torch.stack([xv ** p for p in range(1, degree + 1)], dim=1)
+    if mu is None:
+        mu, sd = feats.mean(0), feats.std(0, unbiased=False)
+    z = (feats - mu) / sd
+    return torch.cat([torch.ones(len(xv), 1, dtype=torch.float64), z], dim=1), mu, sd
+
+
+Atr, mu, sd = design(Xtr, 20)
+Ava, _, _ = design(Xva, 20, mu, sd)
+Ate, _, _ = design(Xte, 20, mu, sd)
+mse = lambda a, b: ((a - b) ** 2).mean().item()
+
+
+def ridge(A, y, lam):
+    &quot;&quot;&quot;Solve min ||A b - y||^2 + lam * sum(b^2) exactly. Bias not penalized.&quot;&quot;&quot;
+    if lam == 0:
+        beta, *_ = torch.linalg.lstsq(A, y.unsqueeze(1))
+        return beta.squeeze(1)
+    P = torch.eye(A.shape[1], dtype=torch.float64)
+    P[0, 0] = 0.0  # the bias is an offset, not a slope - it pays no rent
+    return torch.linalg.solve(A.T @ A + lam * P, A.T @ y)
+
+
+print(&quot;\nPart 1 - L2 on Day 8&#x27;s degree-20 polynomial:&quot;)
+print(f&quot;{&#x27;lambda&#x27;:&gt;8}{&#x27;train&#x27;:&gt;9}{&#x27;val&#x27;:&gt;9}{&#x27;||weights||&#x27;:&gt;13}&quot;)
+best_lam, best_val, betas = None, float(&quot;inf&quot;), {}
+for lam in (0.0, 0.1, 1.0, 3.0, 10.0, 100.0):
+    b = ridge(Atr, Ytr, lam)
+    betas[lam] = b
+    tr, va = mse(Atr @ b, Ytr), mse(Ava @ b, Yva)
+    print(f&quot;{lam:&gt;8.1f}{tr:&gt;9.2f}{va:&gt;9.2f}{b.norm().item():&gt;13.3g}&quot;)
+    if va &lt; best_val:
+        best_val, best_lam = va, lam
+print(f&quot;val picks lambda = {best_lam:g}&quot;)
+print(f&quot;test (touched once): lambda=0 -&gt; {mse(Ate @ betas[0.0], Yte):.2f}&quot;
+      f&quot;   lambda={best_lam:g} -&gt; {mse(Ate @ betas[best_lam], Yte):.2f}&quot;)
+
+# ---------- Part 2: dropout mechanics (train mode != eval mode) ----------
+# Seeded, on CPU, so the masks below are reproducible. p = 0.5: each unit
+# is zeroed with probability 1/2; survivors are scaled by 1/(1-p) = 2, so
+# the expected sum is unchanged and eval needs no rescaling (inverted
+# dropout - this is what nn.Dropout does).
+print(&quot;\nPart 2 - dropout mechanics (p = 0.5):&quot;)
+torch.manual_seed(17)
+drop = nn.Dropout(p=0.5)
+x = torch.ones(12)
+drop.train()
+for i in (1, 2):
+    out = drop(x)
+    print(f&quot;  train pass {i}: {(out == 0).sum().item()} of 12 zeroed,&quot;
+          f&quot; survivors = {out[out != 0][0].item():.1f}&quot;)
+drop.eval()
+print(f&quot;  eval pass: {(drop(x) == 0).sum().item()} of 12 zeroed,&quot;
+      f&quot; output == input: {torch.equal(drop(x), x)}&quot;)
+
+# ---------- Part 3: poisoned digits - both brakes on a real net ----------
+# Day 16&#x27;s digits and split discipline, one twist: 25% of the TRAINING
+# labels are randomly flipped. Val labels stay clean - the honest judge.
+# Memorizing is now measurable: the only way to score high against the
+# fed labels is to learn answers that are wrong a quarter of the time.
+Xd, yd = load_digits(return_X_y=True)
+Xd = Xd / 16.0
+Xtr, Xva, ytr, yva = train_test_split(Xd, yd, test_size=0.2,
+                                      random_state=17, stratify=yd)
+g = torch.Generator().manual_seed(17)
+y_fed = torch.tensor(ytr, dtype=torch.long)
+flip_idx = torch.randperm(len(y_fed), generator=g)[:len(y_fed) // 4]
+y_fed[flip_idx] = torch.randint(0, 10, (len(flip_idx),), generator=g)
+Xtr_t = torch.tensor(Xtr, dtype=torch.float32)
+Xva_t = torch.tensor(Xva, dtype=torch.float32)
+yva_t = torch.tensor(yva, dtype=torch.long)
+print(f&quot;\nPart 3 - digits with 25% of training labels flipped&quot;
+      f&quot; ({len(flip_idx)} of {len(y_fed)} labels corrupted):&quot;)
+
+
+def train_digits(wd, p):
+    torch.manual_seed(17)  # same init for every run - a fair race
+    net = nn.Sequential(
+        nn.Linear(64, 256), nn.ReLU(), nn.Dropout(p),  # Day 12 + Part 2
+        nn.Linear(256, 10),                            # 10 logits (Day 14)
+    )
+    opt = torch.optim.SGD(net.parameters(), lr=0.5, weight_decay=wd)
+    loss_fn = nn.CrossEntropyLoss()                    # Day 14
+    for epoch in range(80):
+        perm = torch.randperm(len(Xtr_t))
+        for i in range(0, len(Xtr_t), 32):
+            j = perm[i:i + 32]
+            opt.zero_grad()
+            loss = loss_fn(net(Xtr_t[j]), y_fed[j])    # Day 7 ritual
+            loss.backward()
+            opt.step()
+    net.eval()  # dropout OFF for scoring - Part 2&#x27;s lesson, applied
+    with torch.no_grad():
+        acc = lambda X_, y_: (net(X_).argmax(1) == y_).float().mean().item()
+        wnorm = sum(q.norm().item() ** 2 for name, q in net.named_parameters()
+                    if name.endswith(&quot;weight&quot;)) ** 0.5
+    return acc(Xtr_t, y_fed), acc(Xva_t, yva_t), wnorm
+
+
+print(f&quot;{&#x27;run&#x27;:&lt;26}{&#x27;train (fed)&#x27;:&gt;12}{&#x27;val (clean)&#x27;:&gt;12}{&#x27;||weights||&#x27;:&gt;12}&quot;)
+for label, wd, p in ((&quot;no regularization&quot;, 0.0, 0.0),
+                     (&quot;L2 only (wd=0.005)&quot;, 0.005, 0.0),
+                     (&quot;dropout only (p=0.3)&quot;, 0.0, 0.3),
+                     (&quot;L2 + dropout&quot;, 0.005, 0.3)):
+    tr, va, wn = train_digits(wd, p)
+    print(f&quot;{label:&lt;26}{tr:&gt;12.4f}{va:&gt;12.4f}{wn:&gt;12.2f}&quot;)
+print(&quot;\nthe corrupted labels cap honest train accuracy near 0.75 + slack:&quot;)
+print(&quot;scoring 0.96 against them means the net memorized wrong answers.&quot;)
+print(&quot;WIN: both brakes score WORSE on fed labels and BETTER on clean val.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+
+Part 1 - L2 on Day 8's degree-20 polynomial:
+  lambda    train      val  ||weights||
+     0.0     0.30     2.53     1.89e+06
+     0.1     0.79     1.02         3.97
+     1.0     0.85     0.92          2.8
+     3.0     0.95     0.85         2.36
+    10.0     1.28     0.90         1.82
+   100.0     3.11     2.04        0.917
+val picks lambda = 3
+test (touched once): lambda=0 -&gt; 38.55   lambda=3 -&gt; 1.02
+
+Part 2 - dropout mechanics (p = 0.5):
+  train pass 1: 6 of 12 zeroed, survivors = 2.0
+  train pass 2: 5 of 12 zeroed, survivors = 2.0
+  eval pass: 0 of 12 zeroed, output == input: True
+
+Part 3 - digits with 25% of training labels flipped (359 of 1437 labels corrupted):
+run                        train (fed) val (clean) ||weights||
+no regularization               0.9576      0.8389       41.82
+L2 only (wd=0.005)              0.7488      0.9444        9.29
+dropout only (p=0.3)            0.8664      0.8806       37.77
+L2 + dropout                    0.7418      0.9472        9.30
+
+the corrupted labels cap honest train accuracy near 0.75 + slack:
+scoring 0.96 against them means the net memorized wrong answers.
+WIN: both brakes score WORSE on fed labels and BETTER on clean val.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Run <code>code.py</code> and confirm four receipts: (1)&nbsp;the &lambda; sweep is a U 
+&mdash; val falls 2.53 &rarr; 0.85 at &lambda;=3, then rises to 2.04 at &lambda;=100, while 
+<code>||weights||</code> collapses 1.89e+06 &rarr; 2.36; (2)&nbsp;the test line reads 
+<code>38.55 &rarr; 1.02</code>; (3)&nbsp;dropout train passes zero roughly half of 12 units 
+with survivors exactly <code>2.0</code>, and the eval pass returns the input untouched; 
+(4)&nbsp;in Part 3, both-brakes has the <em>worst</em> train score (0.7418) and the 
+<em>best</em> clean val score (0.9472).</p>
+<p><strong>Done-state:</strong> you can explain, in one breath each, why a big weight must 
+&quot;pay rent&quot;, why a dropped neuron can't collude, and why <code>model.eval()</code> 
+changes what your network <em>is</em> &mdash; not just what it reports.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run <strong>Part 1 only</strong> (comment out Parts 2&ndash;3): five minutes, exact 
+numbers, the whole L2 story &mdash; U-curve, weight collapse, test rescued 
+38.55 &rarr; 1.02. Then read the dropout paragraphs of <strong>The one idea</strong>. The 
+non-negotiable moment: the <code>||weights||</code> column falling from 
+<code>1.89e+06</code> to <code>2.36</code> while the honest score <em>improves</em>.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: every training loop so far turned one knob &mdash; how big a step to take 
+downhill. What changes when the stepper starts remembering where it's been, and adapts 
+its stride per weight?</p>
+  </div>
+
+  <div class="footer">Streak: 17 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
