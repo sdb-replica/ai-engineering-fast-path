@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimizers: SGD vs Adam — Day 18 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 18 of 100</span>
+  <h1>Optimizers: SGD vs Adam</h1>
+  <p class="outcome">Tonight you'll be able to: explain why one global learning rate breaks when weights live on different scales — and watch Adam finish a race in 41 steps that takes plain SGD 248.</p>
+
+  <h2>The one idea</h2>
+  <p>Every <code>optimizer.step()</code> you've written so far — Days 7, 16, 17 — was
+<strong>plain SGD</strong> (stochastic gradient descent): <code>w &larr; w &minus; lr &middot; grad</code>.
+One global learning rate, and each weight's step is <em>sized by its own gradient</em>.
+That works when every weight lives on roughly the same scale. Real models don't.</p>
+
+<p><strong>The ravine.</strong> Take <code>loss = &frac12;(x&sup2; + 100y&sup2;)</code> &mdash; one direction
+100&times; steeper than the other. The gradient at the start is <code>(6, 60)</code>. SGD's lr must stay
+under ~0.02 or the steep <em>y</em> direction explodes &mdash; so <em>y</em> dies in ~3 steps,
+then <em>x</em> crawls at 1.5% per step for the remaining 245. One lr is serving two
+geometries, and it can only satisfy the violent one. Tonight's race: <strong>248 steps</strong>.</p>
+
+<p><strong>Momentum &mdash; SGD with a memory.</strong> Keep a rolling velocity: each step adds the
+new gradient to a decaying average of past steps, then moves along the <em>velocity</em>.
+Gradients that keep pointing the same way build speed; the zigzag across the ravine
+walls cancels itself out. Same lr, same problem: <strong>68 steps</strong> &mdash; faster, but it
+swings wide on the way in, because a rolling ball doesn't stop on a dime.</p>
+
+<p><strong>Adam &mdash; a learning rate per weight.</strong> Adam keeps <em>two</em> rolling averages
+<strong>per weight</strong>: <code>m</code>, the mean gradient (which way, on average &mdash; momentum's
+job), and <code>v</code>, the mean <em>squared</em> gradient (how big gradients here
+usually are). The step is <code>lr &middot; m / &radic;v</code>: direction, <em>divided by typical
+size</em>. Watch the first step from <code>(6, 60)</code>: SGD steps <code>(0.09, 0.90)</code> &mdash;
+sized <em>by</em> the gradient. Adam steps <code>(0.20, 0.20)</code> &mdash; sized by <code>lr</code>
+alone, in both directions. That's the whole trick: when a weight's gradients are
+consistently huge, dividing by their typical size shrinks its stride to ~<code>lr</code>;
+when they're tiny, the same division <em>lifts</em> its stride to ~<code>lr</code>. The race:
+<strong>41 steps</strong>.</p>
+
+<p><strong>What actually changes for you.</strong> (1) Adam's default <code>lr</code> is <code>1e-3</code>, not
+SGD's &mdash; the number means something different now: it's a per-step stride cap, not a
+gradient multiplier. (2) Adam is far less sensitive to feature scaling &mdash; Part 2
+fits a &times;100 feature that poisons SGD completely (<code>MSE 9.44</code> vs Adam's
+<code>0.0111</code>, at the noise floor). (3) It's not free: Adam stores <code>m</code> and <code>v</code>
+for every weight &mdash; 2 extra numbers per parameter &mdash; and on some problems
+well-tuned SGD+momentum still reaches a slightly better final minimum. The working
+rule: <strong>start with Adam, it's the forgiving default; reach for SGD+momentum when
+you're squeezing the last points and can afford to tune.</strong> One Day-17 callback:
+in Adam, <code>weight_decay=</code> interacts with the normalization &mdash; the cleaned-up
+variant is a separate optimizer called AdamW. Same rent, collected properly.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Adam is volatility-adjusted position sizing.</strong> You'd never size a trade
+in raw dollars across names without looking at how much each one <em>moves</em>: a
+$700 stock swinging 3% a day and a $5 stock swinging 0.3% need completely different
+share counts to carry the same risk. SGD sizes every weight's step in raw gradient
+units &mdash; so the loudest feature silently sets the pace for the whole book.
+Adam is the vol-targeting version: divide each weight's signal by its own typical
+move (<code>&radic;v</code> is literally a running RMS &mdash; a realized-vol estimate),
+and every weight advances at the same <em>risk-adjusted</em> pace.</p>
+<p><strong>Momentum is a trend filter.</strong> A moving average over past gradients:
+noise whipsaws cancel, a persistent direction compounds &mdash; exactly why you
+trust a 20-day trend over one day's candle. And the systems version: SGD is one
+global timeout for every downstream service; Adam is a <em>per-service</em> adaptive
+timeout, continuously re-estimated from each service's own observed latency.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" role="img" aria-label="Optimizer race on a ravine: SGD crawls, momentum swings, Adam goes straight">
+<text x="320" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">one bowl, three steppers: the ravine race</text>
+<text x="210" y="56" text-anchor="middle" font-size="12" font-weight="700" fill="#0a7aff">the ravine: loss = &#189;(x&#178; + 100y&#178;), contours = loss</text>
+<line x1="40" y1="220.0" x2="400" y2="220.0" stroke="#eee" stroke-width="1"/>
+<ellipse cx="220.0" cy="220.0" rx="149.7" ry="73.2" fill="none" stroke="#d5d5da" stroke-width="1"/>
+<text x="220.0" y="141.8" text-anchor="middle" font-size="9.5" fill="#999">16</text>
+<ellipse cx="220.0" cy="220.0" rx="112.3" ry="54.9" fill="none" stroke="#d5d5da" stroke-width="1"/>
+<text x="220.0" y="160.1" text-anchor="middle" font-size="9.5" fill="#999">9</text>
+<ellipse cx="220.0" cy="220.0" rx="74.9" ry="36.6" fill="none" stroke="#d5d5da" stroke-width="1"/>
+<text x="220.0" y="178.4" text-anchor="middle" font-size="9.5" fill="#999">4</text>
+<ellipse cx="220.0" cy="220.0" rx="37.4" ry="18.3" fill="none" stroke="#d5d5da" stroke-width="1"/>
+<text x="220.0" y="196.7" text-anchor="middle" font-size="9.5" fill="#999">1</text>
+<polyline points="378.8,142.4 376.4,258.8 374.1,200.6 371.8,229.7 369.5,215.1 367.3,222.4 365.1,218.8 362.9,220.6 360.7,219.7 358.6,220.2 356.5,219.9 354.5,220.0 352.5,220.0 350.5,220.0 348.5,220.0 346.6,220.0 344.7,220.0 342.8,220.0 341.0,220.0 339.2,220.0 337.4,220.0 335.6,220.0 333.9,220.0 332.2,220.0 330.5,220.0 328.8,220.0 327.2,220.0 325.6,220.0 324.0,220.0 322.5,220.0 320.9,220.0 319.4,220.0 317.9,220.0 316.5,220.0 315.0,220.0 313.6,220.0 312.2,220.0 310.8,220.0 309.4,220.0 308.1,220.0 306.8,220.0 305.5,220.0 304.2,220.0 302.9,220.0 301.7,220.0 300.5,220.0 299.2,220.0 298.1,220.0 296.9,220.0 295.7,220.0 294.6,220.0 293.5,220.0 292.4,220.0 291.3,220.0 290.2,220.0 289.2,220.0 288.1,220.0 287.1,220.0 286.1,220.0 285.1,220.0 284.1,220.0 283.2,220.0 282.2,220.0 281.3,220.0 280.4,220.0 279.5,220.0 278.6,220.0 277.7,220.0 276.8,220.0 276.0,220.0 275.1,220.0 274.3,220.0 273.5,220.0 272.7,220.0 271.9,220.0 271.1,220.0 270.4,220.0 269.6,220.0 268.9,220.0 268.1,220.0 267.4,220.0 266.7,220.0 266.0,220.0 265.3,220.0 264.6,220.0 264.0,220.0 263.3,220.0 262.6,220.0 262.0,220.0 261.4,220.0 260.8,220.0 260.1,220.0 259.5,220.0 258.9,220.0 258.4,220.0 257.8,220.0 257.2,220.0 256.7,220.0 256.1,220.0 255.6,220.0 255.0,220.0 254.5,220.0 254.0,220.0 253.5,220.0 253.0,220.0 252.5,220.0 252.0,220.0 251.5,220.0 251.0,220.0 250.6,220.0 250.1,220.0 249.7,220.0 249.2,220.0 248.8,220.0 248.4,220.0 247.9,220.0 247.5,220.0 247.1,220.0 246.7,220.0 246.3,220.0 245.9,220.0 245.5,220.0 245.1,220.0 244.7,220.0 244.4,220.0 244.0,220.0 243.7,220.0 243.3,220.0 242.9,220.0 242.6,220.0 242.3,220.0 241.9,220.0 241.6,220.0 241.3,220.0 241.0,220.0 240.6,220.0 240.3,220.0 240.0,220.0 239.7,220.0 239.4,220.0 239.1,220.0 238.9,220.0 238.6,220.0 238.3,220.0 238.0,220.0 237.7,220.0 237.5,220.0 237.2,220.0 237.0,220.0 236.7,220.0 236.5,220.0 236.2,220.0 236.0,220.0 235.7,220.0 235.5,220.0 235.3,220.0 235.0,220.0 234.8,220.0 234.6,220.0 234.4,220.0 234.1,220.0 233.9,220.0 233.7,220.0 233.5,220.0 233.3,220.0 233.1,220.0 232.9,220.0 232.7,220.0 232.5,220.0 232.3,220.0 232.2,220.0 232.0,220.0 231.8,220.0 231.6,220.0 231.5,220.0 231.3,220.0 231.1,220.0 230.9,220.0 230.8,220.0 230.6,220.0 230.5,220.0 230.3,220.0 230.1,220.0 230.0,220.0 229.8,220.0 229.7,220.0 229.6,220.0 229.4,220.0 229.3,220.0 229.1,220.0 229.0,220.0 228.9,220.0 228.7,220.0 228.6,220.0 228.5,220.0 228.3,220.0 228.2,220.0 228.1,220.0 228.0,220.0 227.8,220.0 227.7,220.0 227.6,220.0 227.5,220.0 227.4,220.0 227.3,220.0 227.2,220.0 227.1,220.0 227.0,220.0 226.8,220.0 226.7,220.0 226.6,220.0 226.5,220.0 226.4,220.0 226.4,220.0 226.3,220.0 226.2,220.0 226.1,220.0 226.0,220.0 225.9,220.0 225.8,220.0 225.7,220.0 225.6,220.0 225.5,220.0 225.5,220.0 225.4,220.0 225.3,220.0 225.2,220.0 225.1,220.0 225.1,220.0 225.0,220.0 224.9,220.0 224.8,220.0 224.8,220.0 224.7,220.0 224.6,220.0 224.6,220.0 224.5,220.0 224.4,220.0 224.4,220.0 224.3,220.0 224.2,220.0 224.2,220.0 224.1,220.0 224.0,220.0 224.0,220.0 223.9,220.0 223.9,220.0 223.8,220.0 223.7,220.0 223.7,220.0 223.6,220.0 223.6,220.0 223.5,220.0 223.5,220.0 223.4,220.0 223.4,220.0 223.3,220.0 223.3,220.0 223.2,220.0 223.2,220.0 223.1,220.0" fill="none" stroke="#e07b00" stroke-width="2.2"/>
+<polyline points="378.8,142.4 376.4,258.8 372.0,305.4 365.6,219.2 357.8,142.8 348.6,189.8 338.4,277.4 327.5,270.1 316.1,188.4 304.3,162.3 292.5,225.3 280.8,274.1 269.3,236.8 258.2,178.0 247.7,188.1 237.8,245.0 228.6,258.7 220.2,213.0 212.7,182.3 206.0,211.2 200.2,250.4 195.3,240.0 191.2,200.7 188.0,194.2 185.5,227.1 183.9,246.0 182.9,224.0 182.6,198.2 182.9,207.6 183.7,234.7 185.0,237.0 186.7,213.6 188.7,202.1 191.0,218.6 193.4,235.5 196.1,227.4 198.8,209.0 201.6,208.9 204.4,225.5 207.1,232.2 209.7,220.0 212.3,209.0 214.7,215.7 216.9,228.1 219.0,227.2 220.9,215.5 222.5,211.8 224.0,220.7 225.3,227.7 226.3,222.4 227.2,214.0 227.8,215.4 228.3,223.5 228.6,225.5 228.8,219.0 228.8,214.6 228.6,218.7 228.4,224.3 228.0,222.9 227.6,217.3 227.1,216.3 226.5,221.0 225.9,223.7 225.3,220.6 224.7,216.9 224.0,218.2 223.4,222.1 222.7,222.4 222.1,219.1" fill="none" stroke="#7a5cff" stroke-width="2.2"/>
+<polyline points="378.8,142.4 373.5,168.2 368.2,193.4 363.0,216.6 357.7,236.1 352.4,250.1 347.2,257.6 342.0,259.3 336.9,256.4 331.7,250.1 326.6,241.7 321.6,232.1 316.6,222.3 311.7,213.3 306.8,205.8 302.0,200.5 297.3,197.6 292.6,197.2 288.1,199.0 283.6,202.7 279.3,207.7 275.0,213.4 270.9,219.2 266.8,224.6 262.9,229.0 259.1,232.2 255.5,233.8 251.9,233.8 248.6,232.4 245.3,229.8 242.2,226.5 239.3,222.7 236.5,219.0 233.8,215.7 231.3,213.2 229.0,211.7 226.8,211.2 224.8,211.8 222.9,213.3 221.2,215.4 219.6,217.9 218.2,220.4" fill="none" stroke="#22a355" stroke-width="2.5"/>
+<circle cx="378.8" cy="142.4" r="5" fill="#1c1c1e"/>
+<text x="378.8" y="130.4" text-anchor="middle" font-size="10.5" font-weight="700" fill="currentColor">start (6, 0.6)</text>
+<circle cx="220.0" cy="220.0" r="5" fill="none" stroke="#1c1c1e" stroke-width="2"/>
+<text x="220.0" y="244.0" text-anchor="middle" font-size="10.5" font-weight="700" fill="currentColor">minimum</text>
+<text x="52" y="372" font-size="11.5" fill="#e07b00" font-weight="700">SGD: 248 steps &#8212; y done in 3, x crawls</text>
+<text x="52" y="394" font-size="11.5" fill="#7a5cff" font-weight="700">SGD + momentum: 68 steps &#8212; faster, swings wide</text>
+<text x="52" y="416" font-size="11.5" fill="#22a355" font-weight="700">Adam: 41 steps &#8212; ~same stride in both directions</text>
+<text x="525" y="56" text-anchor="middle" font-size="12" font-weight="700" fill="#0a7aff">first step (grad = 6, 60)</text>
+<text x="525" y="92" text-anchor="middle" font-size="11" fill="currentColor">SGD step = lr &#183; g: sized BY the gradient</text>
+<rect x="455" y="104" width="9" height="18" fill="#e07b00"/>
+<text x="470" y="118" font-size="10.5" fill="currentColor">x: 0.09</text>
+<rect x="455" y="128" width="90" height="18" fill="#e07b00" opacity="0.55"/>
+<text x="551" y="142" font-size="10.5" fill="currentColor">y: 0.90</text>
+<text x="525" y="182" text-anchor="middle" font-size="11" fill="currentColor">Adam step = lr &#183; m / sqrt(v): sized by lr alone</text>
+<rect x="455" y="194" width="20" height="18" fill="#22a355"/>
+<text x="481" y="208" font-size="10.5" fill="currentColor">x: 0.20</text>
+<rect x="455" y="218" width="20" height="18" fill="#22a355" opacity="0.55"/>
+<text x="481" y="232" font-size="10.5" fill="currentColor">y: 0.20</text>
+<text x="525" y="272" text-anchor="middle" font-size="11" fill="currentColor">Adam remembers, per weight:</text>
+<text x="525" y="296" text-anchor="middle" font-size="11" fill="currentColor">m = which way gradients usually point</text>
+<text x="525" y="318" text-anchor="middle" font-size="11" fill="currentColor">v = how big they usually are</text>
+<text x="525" y="352" text-anchor="middle" font-size="11" fill="currentColor">step = lr &#183; m / sqrt(v) &#8212; direction,</text>
+<text x="525" y="374" text-anchor="middle" font-size="11" fill="currentColor">normalized by typical size</text>
+<text x="525" y="416" text-anchor="middle" font-size="11.5" font-weight="700" fill="currentColor">one global lr &#8594; per-weight stride</text>
+</svg>
+    <div class="caption">The ravine, loss = &frac12;(x&sup2; + 100y&sup2;). Orange: SGD kills the steep direction in 3 steps, then crawls 245 more along the shallow one. Purple: momentum builds speed and finishes in 68, swinging wide. Green: Adam strides ~lr in both directions at once &mdash; 41 steps, nearly straight in. Right: why &mdash; SGD's step is sized by the gradient; Adam's is sized by lr alone.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Two races, one lesson. <strong>Part 1</strong> runs the ravine from the diagram in the
+open &mdash; three optimizers, same start, count the steps to <code>loss &lt; 0.01</code>.
+<strong>Part 2</strong> is the Day 7 training loop on a regression whose second feature is
+scaled &times;100 (truth: <code>w = (3, &minus;0.02)</code>) &mdash; the optimizer is the
+<em>only</em> thing that changes between runs. Tiny problems on CPU on purpose:
+seeded, deterministic, identical numbers everywhere.</p>
+  <pre><code>&quot;&quot;&quot;Day 18 - Optimizers: SGD vs Adam.
+
+Every optimizer.step() so far was plain SGD: w -= lr * grad, one global
+learning rate, step size per weight dictated by that weight&#x27;s gradient.
+Fine when all weights live on the same scale - broken when they don&#x27;t.
+
+  Part 1  The ravine race. loss = 0.5*(x^2 + 100*y^2): the y direction
+          is 100x steeper than x. One lr must serve both, so SGD kills
+          y in ~3 steps then crawls along x for 248 steps. Momentum
+          (a rolling velocity) cuts it to 68, swinging wide on the way.
+          Adam keeps two per-weight averages - m (mean gradient) and
+          v (mean squared gradient) - and steps lr * m/sqrt(v): each
+          weight&#x27;s stride is normalized by its own typical gradient,
+          so both directions advance ~lr per step. 41 steps.
+  Part 2  The same race inside the Day 7 training loop, on a regression
+          whose second feature is scaled x100 (truth: w = (3, -0.02),
+          b = 1, noise floor MSE ~ 0.01). The optimizer is the ONLY
+          thing that changes between runs. SGD&#x27;s lr is capped by the
+          huge feature, so w1 barely moves in 300 epochs (MSE 9.44).
+          Adam learns both weights at their own pace: MSE 0.0111,
+          right at the noise floor.
+
+Runs on the ~/ai-lab venv: torch only, tiny problems on CPU on purpose
+(seeded, deterministic, identical numbers everywhere). No CUDA, no
+paid APIs.
+
+Expected output:
+
+  Part 1 - the ravine: loss = 0.5*(x^2 + 100*y^2), start (6, 0.6)
+  first step from start (gradient = (6, 60)):
+    SGD  steps (0.090, 0.900)   &lt;- sized BY the gradient
+    Adam steps (0.200, 0.200)   &lt;- sized by lr alone
+  optimizer            lr  steps to loss &lt; 0.01
+  SGD                0.015                   248
+  SGD + momentum     0.015                    68
+  Adam               0.200                    41
+
+  Part 2 - regression with a x100 feature (300 full-batch epochs):
+  optimizer       loss@1  loss@100     final        w1       w2        b
+  SGD             12.9728    9.8222    9.4366    0.0888  -0.01717   0.0289
+  SGD + momentum  12.9728    8.3613    5.5815    0.7646  -0.01785   0.2494
+  Adam            12.9728    0.0152    0.0111    3.0041  -0.02012   1.0044
+  truth: w1 = 3, w2 = -0.02, b = 1, noise floor MSE ~ 0.01
+&quot;&quot;&quot;
+import random
+
+import torch
+
+# ---------- Part 1: the ravine race ----------
+# loss = 0.5*(x^2 + 100*y^2). The gradient is (x, 100*y): at the start
+# (6, 60). SGD&#x27;s lr must stay under ~0.02 or the y direction explodes,
+# which leaves the x direction crawling at 1.5% per step.
+print(&quot;Part 1 - the ravine: loss = 0.5*(x^2 + 100*y^2), start (6, 0.6)&quot;)
+
+
+def ravine(opt_name, lr):
+    &quot;&quot;&quot;Race one optimizer downhill; return (first-step, steps to &lt;0.01).&quot;&quot;&quot;
+    w = torch.tensor([6.0, 0.6], requires_grad=True)
+    if opt_name == &quot;sgd&quot;:
+        opt = torch.optim.SGD([w], lr=lr)
+    elif opt_name == &quot;mom&quot;:
+        opt = torch.optim.SGD([w], lr=lr, momentum=0.9)
+    else:
+        opt = torch.optim.Adam([w], lr=lr)
+    first_step = None
+    for step in range(1, 501):
+        before = w.detach().clone()
+        opt.zero_grad()                                # Day 7 ritual
+        loss = 0.5 * (w[0] ** 2 + 100 * w[1] ** 2)
+        loss.backward()
+        opt.step()
+        if first_step is None:
+            first_step = (w.detach() - before).abs()
+        with torch.no_grad():
+            now = 0.5 * (w[0] ** 2 + 100 * w[1] ** 2)
+        if now.item() &lt; 0.01:
+            return first_step, step
+    return first_step, 500
+
+
+s_sgd, n_sgd = ravine(&quot;sgd&quot;, 0.015)
+s_mom, n_mom = ravine(&quot;mom&quot;, 0.015)
+s_adam, n_adam = ravine(&quot;adam&quot;, 0.2)
+print(&quot;first step from start (gradient = (6, 60)):&quot;)
+print(f&quot;  SGD  steps ({s_sgd[0]:.3f}, {s_sgd[1]:.3f})   &lt;- sized BY the gradient&quot;)
+print(f&quot;  Adam steps ({s_adam[0]:.3f}, {s_adam[1]:.3f})   &lt;- sized by lr alone&quot;)
+print(f&quot;{&#x27;optimizer&#x27;:&lt;16}{&#x27;lr&#x27;:&gt;6}{&#x27;steps to loss &lt; 0.01&#x27;:&gt;22}&quot;)
+print(f&quot;{&#x27;SGD&#x27;:&lt;16}{0.015:&gt;6.3f}{n_sgd:&gt;22}&quot;)
+print(f&quot;{&#x27;SGD + momentum&#x27;:&lt;16}{0.015:&gt;6.3f}{n_mom:&gt;22}&quot;)
+print(f&quot;{&#x27;Adam&#x27;:&lt;16}{0.2:&gt;6.3f}{n_adam:&gt;22}&quot;)
+
+# ---------- Part 2: badly-scaled features, Day 7 loop, optimizer swapped --
+# Data from the pure-Python RNG (seed 18) so the numbers below reproduce
+# exactly. Feature 2 is feature-shaped noise scaled x100, so its true
+# weight is tiny (-2/100 = -0.02) while w1 = 3. Gradients inherit the
+# scale mismatch: grad(w2) runs ~100x grad(w1).
+random.seed(18)
+n = 200
+u1 = [random.gauss(0, 1) for _ in range(n)]
+u2 = [random.gauss(0, 1) for _ in range(n)]
+noise = [random.gauss(0, 0.1) for _ in range(n)]
+X = torch.tensor([[a, 100 * b] for a, b in zip(u1, u2)])
+y = torch.tensor([3 * a - 2 * b + 1 + e for a, b, e in zip(u1, u2, noise)])
+print(&quot;\nPart 2 - regression with a x100 feature (300 full-batch epochs):&quot;)
+
+
+def train(opt_name):
+    w = torch.zeros(2, requires_grad=True)
+    b = torch.zeros((), requires_grad=True)
+    if opt_name == &quot;sgd&quot;:
+        opt = torch.optim.SGD([w, b], lr=5e-5)
+    elif opt_name == &quot;mom&quot;:
+        opt = torch.optim.SGD([w, b], lr=5e-5, momentum=0.9)
+    else:
+        opt = torch.optim.Adam([w, b], lr=0.05)
+    marks = {}
+    for epoch in range(300):
+        opt.zero_grad()
+        loss = ((X @ w + b - y) ** 2).mean()           # forward + loss
+        if epoch in (0, 99):
+            marks[epoch] = loss.item()
+        loss.backward()                                # backward
+        opt.step()                                     # &lt;- the ONLY swap
+    with torch.no_grad():
+        final = ((X @ w + b - y) ** 2).mean().item()
+    return marks[0], marks[99], final, w.detach(), b.item()
+
+
+print(f&quot;{&#x27;optimizer&#x27;:&lt;16}{&#x27;loss@1&#x27;:&gt;9}{&#x27;loss@100&#x27;:&gt;10}{&#x27;final&#x27;:&gt;10}&quot;
+      f&quot;{&#x27;w1&#x27;:&gt;9}{&#x27;w2&#x27;:&gt;10}{&#x27;b&#x27;:&gt;9}&quot;)
+for name, key in ((&quot;SGD&quot;, &quot;sgd&quot;), (&quot;SGD + momentum&quot;, &quot;mom&quot;), (&quot;Adam&quot;, &quot;adam&quot;)):
+    l1, l100, fin, w, b = train(key)
+    print(f&quot;{name:&lt;16}{l1:&gt;9.4f}{l100:&gt;10.4f}{fin:&gt;10.4f}&quot;
+          f&quot;{w[0]:&gt;9.4f}{w[1]:&gt;10.5f}{b:&gt;9.4f}&quot;)
+print(&quot;truth: w1 = 3, w2 = -0.02, b = 1, noise floor MSE ~ 0.01&quot;)
+print(&quot;\nWIN: same loop, same data, same epochs - the stepper alone&quot;)
+print(&quot;decides whether the x100 feature poisons the whole fit.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the ravine: loss = 0.5*(x^2 + 100*y^2), start (6, 0.6)
+first step from start (gradient = (6, 60)):
+  SGD  steps (0.090, 0.900)   &lt;- sized BY the gradient
+  Adam steps (0.200, 0.200)   &lt;- sized by lr alone
+optimizer            lr  steps to loss &lt; 0.01
+SGD                0.015                   248
+SGD + momentum     0.015                    68
+Adam               0.200                    41
+
+Part 2 - regression with a x100 feature (300 full-batch epochs):
+optimizer       loss@1  loss@100     final        w1       w2        b
+SGD             12.9728    9.8222    9.4366    0.0888  -0.01717   0.0289
+SGD + momentum  12.9728    8.3613    5.5815    0.7646  -0.01785   0.2494
+Adam            12.9728    0.0152    0.0111    3.0041  -0.02012   1.0044
+truth: w1 = 3, w2 = -0.02, b = 1, noise floor MSE ~ 0.01</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Run <code>code.py</code> and read the two tables. <strong>Done when:</strong> Part 1 shows
+<strong>248 / 68 / 41</strong>, and Part 2 shows Adam at <strong>MSE 0.0111</strong> with
+<code>w1 = 3.0041</code> recovered while SGD is still stuck at <code>9.4366</code> &mdash;
+then say the mechanism out loud once: <em>&ldquo;Adam divides each weight's gradient
+by its own typical size, so every weight strides ~lr per step, whatever its
+scale.&rdquo;</em> You now know what the <code>step()</code> you've been calling actually
+decides &mdash; and why swapping one line changes whether a model trains at all.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the script and study <strong>Part 1 only</strong>. Five minutes, three numbers:
+248, 68, 41 &mdash; and the first-step pair <code>(0.09, 0.90)</code> vs
+<code>(0.20, 0.20)</code>, which <em>is</em> the entire idea in one line. Then skim
+the Adam paragraph of <strong>The one idea</strong>. Part 2's poisoned regression will
+still be there tomorrow.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: your loops have been handed neat little batches as if by magic. We
+open the pipe between the data on disk and the batch in your loop &mdash; and find
+out the order data arrives in is itself a training decision.</p>
+  </div>
+
+  <div class="footer">Streak: 18 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

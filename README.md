@@ -22,7 +22,6 @@ pip install torch numpy
 ```
 
 ## Lessons
-
 | Day | Lesson (visual) | Lesson (markdown) | Code |
 |-----|-----------------|-------------------|------|
 | 1 | [Build Your AI Lab](day-001-build-your-ai-lab/lesson.html) | [lesson.md](day-001-build-your-ai-lab/lesson.md) | [code.py](day-001-build-your-ai-lab/code.py) |
@@ -42,3 +41,4 @@ pip install torch numpy
 | 15 | [Embeddings: Categories → Vectors](day-015-embeddings-categories-to-vectors/lesson.html) | [lesson.md](day-015-embeddings-categories-to-vectors/lesson.md) | [code.py](day-015-embeddings-categories-to-vectors/code.py) |
 | 16 | [Tiny Classifier on Real Data](day-016-tiny-classifier-real-data/lesson.html) | [lesson.md](day-016-tiny-classifier-real-data/lesson.md) | [code.py](day-016-tiny-classifier-real-data/code.py) |
 | 17 | [Regularization: L2 & Dropout](day-017-regularization-l2-dropout/lesson.html) | [lesson.md](day-017-regularization-l2-dropout/lesson.md) | [code.py](day-017-regularization-l2-dropout/code.py) |
+| 18 | [Optimizers: SGD vs Adam](day-018-optimizers-sgd-vs-adam/lesson.html) | [lesson.md](day-018-optimizers-sgd-vs-adam/lesson.md) | [code.py](day-018-optimizers-sgd-vs-adam/code.py) |
