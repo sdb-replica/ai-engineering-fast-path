@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Loaders &amp; Batching — Day 19 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 19 of 100</span>
+  <h1>Data Loaders &amp; Batching</h1>
+  <p class="outcome">Tonight you'll be able to: replace hand-sliced training data with a DataLoader pipeline — and predict, for any dataset, exactly how many batches, steps, and skipped tails an epoch contains.</p>
+
+  <h2>The one idea</h2>
+  <p>Every training loop so far sliced its data by hand — Day 16's loop chopped the digits set into mini-batches with index arithmetic you had to get right yourself. Today that plumbing becomes a component. A <strong>Dataset</strong> is just storage with two promises: <code>len()</code> says how many examples exist, and <code>dataset[i]</code> returns example <em>i</em> as an <code>(x, y)</code> pair. <code>TensorDataset</code> is the built-in one for tensors you already hold in memory. A <strong>DataLoader</strong> wraps a dataset and does the three jobs around it:</p>
+<ul>
+<li><strong>Sampler — picks the order.</strong> Sequential (0, 1, 2, …) or shuffled. With <code>shuffle=True</code> the loader deals a <em>fresh permutation every epoch</em>: every example seen exactly once per epoch, in an order that changes. No example is skipped, none repeats — the deck is reshuffled, not redrawn.</li>
+<li><strong>Batcher — chops the order into groups of <code>batch_size</code></strong> and stacks each group into one tensor. 250 examples at 64 gives batches of 64, 64, 64 — and a short tail of 58. <code>drop_last=True</code> discards that tail instead (useful when a ragged batch would break a shape assumption downstream).</li>
+<li><strong>Feeder — hands the loop one batch at a time.</strong> Your loop body stops being slicing code and becomes the Day 7 ritual, unchanged: <code>for xb, yb in loader:</code> forward → loss → backward → step.</li>
+</ul>
+<p>Two consequences worth internalizing. <strong>Steps are counted in batches, not epochs:</strong> 256 examples at batch 32 is 8 optimizer steps per epoch — 30 epochs is 240 updates, versus 30 if you'd gone full-batch. Same data, 8× the learning opportunities; that's most of why mini-batch training converges so much faster in wall-clock terms. And <strong>order is a training hyperparameter in disguise:</strong> Part 2 feeds the model a label-sorted dataset without shuffling — batch 1 is 32/32 class 0, batch 5 is 32/32 class 1 — so each half-epoch drags the weights one way, then the other. Sorted inputs (by date, by ticker, by class) are the default state of real data dumps. Shuffling is what makes each batch a fair sample of the whole.</p>
+<p>One honest boundary: shuffling assumes examples are <em>interchangeable</em>. For time series you'll shuffle the <em>training</em> rows only with care, and never shuffle across your train/val/test split — Day 8's chronological-split rule still stands. Tonight's data is i.i.d. (independent draws), so shuffle freely.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>A DataLoader is a batched consumer with backpressure — you've built this a dozen times.</strong> Nobody ships a storage service that reads one object per request when the consumer can chew 64 at a time: per-request overhead dominates, the consumer starves between calls. So you batch — Kafka's <code>max.poll.records</code>, a TCP sender coalescing small writes, Conveyor packing objects into larger units before transfer. The loader is the producer side of that pipe: it assembles the next batch <em>while</em> the model trains on the current one (with <code>num_workers&gt;0</code> it does so in parallel worker processes — on macOS start at 0 and raise carefully). If assembly is slower than training, the GPU idles between batches: that's backpressure made visible, and it shows up as a training loop that's slow for no obvious reason.</p>
+<p>The trading version: <strong>a batch is a block trade, an example is a single print.</strong> Acting on one print at a time is noise-chasing — expensive and jittery. Aggregating into blocks gives each decision statistical weight at the cost of freshness. Batch size is that same dial: too small and gradients are noisy prints; too large and each update is stale and lumbering. 32–256 is where most tabular/image work lives.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+  <rect x="0" y="0" width="680" height="300" fill="#ffffff"/>
+  <text x="340" y="24" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">One epoch, as a pipeline: dataset &#8594; sampler &#8594; batches &#8594; training loop</text>
+  <!-- boxes row -->
+  <rect x="10" y="50" width="120" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="70" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">DATASET</text>
+  <text x="70" y="94" text-anchor="middle" fill="#555">250 examples</text>
+  <text x="70" y="108" text-anchor="middle" fill="#555">just storage</text>
+  <rect x="160" y="50" width="130" height="64" rx="8" fill="#f1efff" stroke="#7a5cff"/>
+  <text x="225" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">SAMPLER</text>
+  <text x="225" y="94" text-anchor="middle" fill="#555">picks the order</text>
+  <text x="225" y="108" text-anchor="middle" fill="#555">new deal each epoch</text>
+  <rect x="320" y="50" width="120" height="64" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="380" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">BATCHER</text>
+  <text x="380" y="94" text-anchor="middle" fill="#555">chops order into</text>
+  <text x="380" y="108" text-anchor="middle" fill="#555">groups of 64</text>
+  <rect x="470" y="50" width="200" height="64" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="570" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">TRAINING LOOP</text>
+  <text x="570" y="94" text-anchor="middle" fill="#555">forward &#8594; loss &#8594; backward &#8594; step</text>
+  <text x="570" y="108" text-anchor="middle" fill="#555">one step per batch</text>
+  <!-- arrows -->
+  <line x1="130" y1="82" x2="154" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="154,77 164,82 154,87" fill="#888"/>
+  <line x1="290" y1="82" x2="314" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="314,77 324,82 314,87" fill="#888"/>
+  <line x1="440" y1="82" x2="464" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="464,77 474,82 464,87" fill="#888"/>
+  <text x="380" y="140" text-anchor="middle" fill="#555">the batches the loop actually receives this epoch:</text>
+  <!-- batch chips -->
+  <rect x="130" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="175" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 1 &#183; 64</text>
+  <rect x="235" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="280" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 2 &#183; 64</text>
+  <rect x="340" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="385" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 3 &#183; 64</text>
+  <rect x="445" y="154" width="90" height="34" rx="6" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="490" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 4 &#183; 58</text>
+  <text x="340" y="212" text-anchor="middle" fill="#555">250 = 64+64+64+58 &#8594; 4 steps this epoch. drop_last=True: the 58-row tail is skipped (3 steps, 192 seen).</text>
+  <rect x="20" y="232" width="640" height="48" rx="8" fill="#fafafa" stroke="#ccc"/>
+  <text x="340" y="252" text-anchor="middle" fill="#1c1c1e">Producer / consumer: the loader assembles the next batch while the model trains on this one.</text>
+  <text x="340" y="270" text-anchor="middle" fill="#1c1c1e">If assembly is slower than training, the model starves &#8212; that gap is backpressure.</text>
+</svg>
+    <div class="caption">The loader as a pipeline: storage (Dataset), ordering (Sampler), grouping (Batcher), consumption (your unchanged training loop). The sampler reshuffles the deck each epoch; the batcher chops whatever order it is handed.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts, all tiny and CPU-only so every number reproduces exactly. <strong>Part 1</strong> is anatomy — watch which rows land in which batch (the data <em>is</em> its own index). <strong>Part 2</strong> is the sorted-by-label trap and the shuffle fix. <strong>Part 3</strong> is your Day 7 loop with the hand-slicing deleted: the ritual inside is untouched, only the feeder changed. Run it in <code>~/ai-lab</code>:</p>
+  <pre><code>&quot;&quot;&quot;Day 19 - Data Loaders &amp; Batching.
+
+Until today every training loop sliced the data by hand. The DataLoader
+is the pipeline that replaces the hand-slicing: a Dataset stores the
+examples, a Sampler picks the order for this epoch, and the loader
+hands the training loop one stacked batch tensor at a time.
+
+  Part 1  Anatomy. 250 examples, batch_size=64: 4 batches, sizes
+          [64, 64, 64, 58] - the tail batch is short. drop_last=True
+          throws the tail away: 3 batches, 192 seen, 58 skipped.
+  Part 2  Order matters. A dataset sorted by label (128 zeros, then
+          128 ones) with shuffle=False feeds the model pure single-class
+          batches - half the epoch pushes one way, half the other.
+          shuffle=True deals a fresh permutation every epoch: same 256
+          examples, each exactly once, in an order that changes.
+  Part 3  The Day 7 loop, loader-fed. 256 examples, batch 32 -&gt; 8
+          steps per epoch, 240 steps over 30 epochs. Loss walks
+          3.8638 -&gt; 0.0097 (the noise floor); w, b land on the truth.
+
+Runs on the ~/ai-lab venv: torch only, CPU on purpose (tiny data,
+seeded, deterministic). No CUDA, no paid APIs. On your Mac the same
+script also works unchanged on MPS - the loader doesn&#x27;t care which
+device the tensors move to afterwards.
+
+Expected output:
+
+  Part 1 - anatomy: 250 examples, batch_size=64
+  dataset: 250 examples
+  drop_last=False -&gt; 4 batches, sizes [64, 64, 64, 58]
+  first batch: X shape (64, 1), rows 0..63
+  drop_last=True  -&gt; 3 batches, 192 examples seen, 58 skipped per epoch
+
+  Part 2 - sorted-by-label data, batch_size=32
+  shuffle=False: batch 1 classes {0: 32, 1: 0}, batch 5 classes {0: 0, 1: 32}
+  shuffle=True : every epoch covers all 256 examples exactly once: True
+  shuffle=True : epoch 1 order == epoch 2 order: False (fresh deal each epoch)
+
+  Part 3 - Day 7 loop on loader batches (256 examples, batch 32, SGD lr=0.05)
+  steps per epoch: 8, total steps over 30 epochs: 240
+    epoch   1  loss 3.8638
+    epoch   2  loss 0.7389
+    epoch   3  loss 0.1480
+    epoch   5  loss 0.0147
+    epoch  10  loss 0.0097
+    epoch  30  loss 0.0097
+  learned w = 2.4890, b = -1.0076  (truth: w = 2.5, b = -1, noise floor MSE ~ 0.01)
+&quot;&quot;&quot;
+import random
+
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+
+# ---------- Part 1: anatomy - dataset, batcher, the short tail ----------
+# X[i] = i on purpose: you can watch exactly which rows land where.
+print(&quot;Part 1 - anatomy: 250 examples, batch_size=64&quot;)
+X = torch.arange(250, dtype=torch.float32).reshape(250, 1)
+y = torch.arange(250) % 2
+ds = TensorDataset(X, y)
+print(f&quot;dataset: {len(ds)} examples&quot;)
+
+loader = DataLoader(ds, batch_size=64)                 # drop_last=False
+sizes = [xb.shape[0] for xb, _ in loader]
+print(f&quot;drop_last=False -&gt; {len(loader)} batches, sizes {sizes}&quot;)
+xb0, _ = next(iter(loader))
+print(f&quot;first batch: X shape {tuple(xb0.shape)}, &quot;
+      f&quot;rows {int(xb0[0, 0])}..{int(xb0[-1, 0])}&quot;)
+
+loader_dl = DataLoader(ds, batch_size=64, drop_last=True)
+seen = sum(xb.shape[0] for xb, _ in loader_dl)
+print(f&quot;drop_last=True  -&gt; {len(loader_dl)} batches, {seen} examples seen, &quot;
+      f&quot;{250 - seen} skipped per epoch&quot;)
+
+# ---------- Part 2: order matters - the sorted-by-label trap ----------
+# Labels sorted like a dataset dumped in date order: 128 down-days,
+# then 128 up-days. With shuffle=False the batches are pure.
+print(&quot;\nPart 2 - sorted-by-label data, batch_size=32&quot;)
+labels = torch.cat([torch.zeros(128), torch.ones(128)]).long()
+ds2 = TensorDataset(torch.zeros(256, 1), labels)
+plain = DataLoader(ds2, batch_size=32, shuffle=False)
+batches = list(plain)
+c1 = torch.bincount(batches[0][1], minlength=2)
+c5 = torch.bincount(batches[4][1], minlength=2)
+print(f&quot;shuffle=False: batch 1 classes {{0: {int(c1[0])}, 1: {int(c1[1])}}}, &quot;
+      f&quot;batch 5 classes {{0: {int(c5[0])}, 1: {int(c5[1])}}}&quot;)
+
+g = torch.Generator().manual_seed(19)
+idx = torch.arange(256).reshape(256, 1).float()
+ds_idx = TensorDataset(idx, labels)
+shuffled_idx = DataLoader(ds_idx, batch_size=32, shuffle=True, generator=g)
+e1 = torch.cat([xb[:, 0] for xb, _ in shuffled_idx]).long()
+e2 = torch.cat([xb[:, 0] for xb, _ in shuffled_idx]).long()
+print(f&quot;shuffle=True : every epoch covers all 256 examples exactly once: &quot;
+      f&quot;{bool((e1.sort().values == torch.arange(256)).all())}&quot;)
+print(f&quot;shuffle=True : epoch 1 order == epoch 2 order: &quot;
+      f&quot;{bool((e1 == e2).all())} (fresh deal each epoch)&quot;)
+
+# ---------- Part 3: the Day 7 loop, fed by a loader ----------
+# Same ritual as Day 7 - forward, loss, backward, step - but the inner
+# loop is now `for xb, yb in loader`. Data from the pure-Python RNG
+# (seed 19) so these numbers reproduce exactly.
+print(&quot;\nPart 3 - Day 7 loop on loader batches (256 examples, batch 32, &quot;
+      &quot;SGD lr=0.05)&quot;)
+random.seed(19)
+n = 256
+xs = [random.gauss(0, 1) for _ in range(n)]
+noise = [random.gauss(0, 0.1) for _ in range(n)]
+X3 = torch.tensor(xs, dtype=torch.float32).reshape(n, 1)
+y3 = torch.tensor([2.5 * a - 1 + e for a, e in zip(xs, noise)],
+                  dtype=torch.float32)
+train_loader = DataLoader(TensorDataset(X3, y3), batch_size=32,
+                          shuffle=False)
+w = torch.zeros((), requires_grad=True)
+b = torch.zeros((), requires_grad=True)
+opt = torch.optim.SGD([w, b], lr=0.05)
+steps = 0
+for epoch in range(1, 31):
+    epoch_loss = 0.0
+    for xb, yb in train_loader:
+        opt.zero_grad()                                # Day 7 ritual
+        loss = ((xb[:, 0] * w + b - yb) ** 2).mean()   # forward + loss
+        loss.backward()                                # backward
+        opt.step()                                     # step
+        epoch_loss += loss.item() * len(xb)
+        steps += 1
+    if epoch in (1, 2, 3, 5, 10, 30):
+        print(f&quot;  epoch {epoch:&gt;3}  loss {epoch_loss / n:.4f}&quot;)
+print(f&quot;steps per epoch: {len(train_loader)}, &quot;
+      f&quot;total steps over 30 epochs: {steps}&quot;)
+print(f&quot;learned w = {w.item():.4f}, b = {b.item():.4f}  &quot;
+      f&quot;(truth: w = 2.5, b = -1, noise floor MSE ~ 0.01)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - anatomy: 250 examples, batch_size=64
+dataset: 250 examples
+drop_last=False -&gt; 4 batches, sizes [64, 64, 64, 58]
+first batch: X shape (64, 1), rows 0..63
+drop_last=True  -&gt; 3 batches, 192 examples seen, 58 skipped per epoch
+
+Part 2 - sorted-by-label data, batch_size=32
+shuffle=False: batch 1 classes {0: 32, 1: 0}, batch 5 classes {0: 0, 1: 32}
+shuffle=True : every epoch covers all 256 examples exactly once: True
+shuffle=True : epoch 1 order == epoch 2 order: False (fresh deal each epoch)
+
+Part 3 - Day 7 loop on loader batches (256 examples, batch 32, SGD lr=0.05)
+  epoch   1  loss 3.8638
+  epoch   2  loss 0.7389
+  epoch   3  loss 0.1480
+  epoch   5  loss 0.0147
+  epoch  10  loss 0.0097
+  epoch  30  loss 0.0097
+steps per epoch: 8, total steps over 30 epochs: 240
+learned w = 2.4890, b = -1.0076  (truth: w = 2.5, b = -1, noise floor MSE ~ 0.01)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints batch sizes <code>[64, 64, 64, 58]</code> and drop_last reports <code>192 seen, 58 skipped</code>; Part 2 shows the pure batches (<code>32/0</code> then <code>0/32</code>) and both shuffle checks print as expected; Part 3 ends at loss <code>0.0097</code> with <code>240</code> total steps and w ≈ 2.489. You can now say, for any dataset and batch size, exactly how many optimizer steps one epoch contains — and why the loader, not your loop, owns that answer.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Parts 1 and 2 only (~10 min of code), and read Part 3's loop once: notice it's the Day 7 ritual verbatim with <code>for xb, yb in loader</code> in place of manual slicing. The anatomy and the sorted-label trap are the durable ideas; the training run will wait for you.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow, Day 20 closes Phase A: everything — tensors, autograd, losses, optimizers, regularization, loaders — collapses into one mental model: <em>learning is differentiable programming</em>. One page, whole phase, no new machinery.</p>
+  </div>
+
+  <div class="footer">Streak: 19 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

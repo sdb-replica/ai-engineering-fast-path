@@ -42,3 +42,4 @@ pip install torch numpy
 | 16 | [Tiny Classifier on Real Data](day-016-tiny-classifier-real-data/lesson.html) | [lesson.md](day-016-tiny-classifier-real-data/lesson.md) | [code.py](day-016-tiny-classifier-real-data/code.py) |
 | 17 | [Regularization: L2 & Dropout](day-017-regularization-l2-dropout/lesson.html) | [lesson.md](day-017-regularization-l2-dropout/lesson.md) | [code.py](day-017-regularization-l2-dropout/code.py) |
 | 18 | [Optimizers: SGD vs Adam](day-018-optimizers-sgd-vs-adam/lesson.html) | [lesson.md](day-018-optimizers-sgd-vs-adam/lesson.md) | [code.py](day-018-optimizers-sgd-vs-adam/code.py) |
+| 19 | [Data Loaders & Batching](day-019-data-loaders-and-batching/lesson.html) | [lesson.md](day-019-data-loaders-and-batching/lesson.md) | [code.py](day-019-data-loaders-and-batching/code.py) |

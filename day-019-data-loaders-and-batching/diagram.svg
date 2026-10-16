@@ -1,0 +1,42 @@
+<svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+  <rect x="0" y="0" width="680" height="300" fill="#ffffff"/>
+  <text x="340" y="24" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">One epoch, as a pipeline: dataset &#8594; sampler &#8594; batches &#8594; training loop</text>
+  <!-- boxes row -->
+  <rect x="10" y="50" width="120" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="70" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">DATASET</text>
+  <text x="70" y="94" text-anchor="middle" fill="#555">250 examples</text>
+  <text x="70" y="108" text-anchor="middle" fill="#555">just storage</text>
+  <rect x="160" y="50" width="130" height="64" rx="8" fill="#f1efff" stroke="#7a5cff"/>
+  <text x="225" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">SAMPLER</text>
+  <text x="225" y="94" text-anchor="middle" fill="#555">picks the order</text>
+  <text x="225" y="108" text-anchor="middle" fill="#555">new deal each epoch</text>
+  <rect x="320" y="50" width="120" height="64" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="380" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">BATCHER</text>
+  <text x="380" y="94" text-anchor="middle" fill="#555">chops order into</text>
+  <text x="380" y="108" text-anchor="middle" fill="#555">groups of 64</text>
+  <rect x="470" y="50" width="200" height="64" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="570" y="76" text-anchor="middle" font-weight="bold" fill="#1c1c1e">TRAINING LOOP</text>
+  <text x="570" y="94" text-anchor="middle" fill="#555">forward &#8594; loss &#8594; backward &#8594; step</text>
+  <text x="570" y="108" text-anchor="middle" fill="#555">one step per batch</text>
+  <!-- arrows -->
+  <line x1="130" y1="82" x2="154" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="154,77 164,82 154,87" fill="#888"/>
+  <line x1="290" y1="82" x2="314" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="314,77 324,82 314,87" fill="#888"/>
+  <line x1="440" y1="82" x2="464" y2="82" stroke="#888" stroke-width="2"/>
+  <polygon points="464,77 474,82 464,87" fill="#888"/>
+  <text x="380" y="140" text-anchor="middle" fill="#555">the batches the loop actually receives this epoch:</text>
+  <!-- batch chips -->
+  <rect x="130" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="175" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 1 &#183; 64</text>
+  <rect x="235" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="280" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 2 &#183; 64</text>
+  <rect x="340" y="154" width="90" height="34" rx="6" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="385" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 3 &#183; 64</text>
+  <rect x="445" y="154" width="90" height="34" rx="6" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="490" y="175" text-anchor="middle" font-weight="bold" fill="#1c1c1e">batch 4 &#183; 58</text>
+  <text x="340" y="212" text-anchor="middle" fill="#555">250 = 64+64+64+58 &#8594; 4 steps this epoch. drop_last=True: the 58-row tail is skipped (3 steps, 192 seen).</text>
+  <rect x="20" y="232" width="640" height="48" rx="8" fill="#fafafa" stroke="#ccc"/>
+  <text x="340" y="252" text-anchor="middle" fill="#1c1c1e">Producer / consumer: the loader assembles the next batch while the model trains on this one.</text>
+  <text x="340" y="270" text-anchor="middle" fill="#1c1c1e">If assembly is slower than training, the model starves &#8212; that gap is backpressure.</text>
+</svg>
