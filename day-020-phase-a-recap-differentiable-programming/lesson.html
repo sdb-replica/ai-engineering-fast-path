@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase A Recap: Learning = Differentiable Programming — Day 20 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 20 of 100</span>
+  <h1>Phase A Recap: Learning = Differentiable Programming</h1>
+  <p class="outcome">Tonight you'll be able to: look at any model you meet from here on and name its five moving parts — data, program, loss, backward, optimizer — and say why the whole field is just programs that can take criticism, quantitatively.</p>
+
+  <h2>The one idea</h2>
+  <p>A normal program takes inputs and produces outputs. A <strong>differentiable program</strong> does one extra thing: every operation inside it also records how much its output would move if an input wiggled a hair. That sensitivity record is the <em>derivative</em>; chaining the records end-to-end is the chain rule; autograd (Day 4) is the tape recorder that keeps them. The <strong>gradient</strong> is all of those records collected for the parameters at once — the program's <em>blame vector</em>: one signed number per knob, saying “this knob pushed the error up; turn it this way to push it down.”</p>
+<p><strong>Learning is what happens when you wrap such a program in four more pieces and loop.</strong> Nothing else has arrived in 20 days — every lesson was one slot of this machine:</p>
+<ul>
+<li><strong>DATA</strong> — tensors and their shapes (Days 2–3), fed in batches by loaders (Day 19), split honestly into train/val/test (Day 8). Distributions (Day 10) and expectation/variance (Day 11) are the vocabulary this slot speaks.</li>
+<li><strong>PROGRAM</strong> — a composition of tensor ops: matmul (Day 12), embeddings (Day 15), the little digits classifier (Day 16). Its adjustable knobs are the <em>parameters</em>, written θ. Why GPUs exist (Day 13) is why this slot runs fast.</li>
+<li><strong>LOSS</strong> — one differentiable number scoring wrongness: MSE, cross-entropy (Days 5, 14) — and Day 11's reveal, that minimizing them <em>is</em> maximum likelihood in disguise. Day 17's regularization is just an extra term added to this same slot.</li>
+<li><strong>BACKWARD</strong> — autograd replays the tape and returns ∂loss/∂θ for every knob (Day 4). Part 1 below checks its arithmetic by hand.</li>
+<li><strong>STEP</strong> — an optimizer moves θ a little against the gradient (Days 6–7 by hand; Day 18, SGD vs Adam), and the loop repeats. Guardrails ride along: Day 8's split discipline and Day 17's penalties keep the loop honest.</li>
+</ul>
+<p>Two payoffs. <strong>First, slots swap independently:</strong> you have already done it three times — Day 17 changed the loss, Day 18 changed the optimizer, Day 19 changed the feeder — and the rest of the machine never noticed. <strong>Second, there is exactly one admission requirement:</strong> every op between θ and the loss must be differentiable. Break it — a <code>round()</code>, a <code>.detach()</code> — and the blame vector comes back all zeros, or never exists at all (Part 3). When a model “isn't learning,” this is the first place to look. And Day 9 was this whole machine pointed at real SPY closes: trend, regime change, honest failure and all.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You have run this loop in two other uniforms. In <strong>incident response</strong>, a total — “the service dropped 50K requests” — is useless until attribution says <em>which stage</em> dropped them; then you fix that stage and watch the total again. In <strong>trading</strong>, end-of-day P&amp;L is just a number until attribution splits it by position: which name bled, which carried, by how much.</p>
+<p>A plain program reports only the total — the loss. <strong>A differentiable program ships the attribution built in:</strong> <code>backward()</code> is a postmortem that runs on <em>every step</em>, naming each parameter's exact contribution to the error and the direction that would have helped. The optimizer is the on-call engineer who trusts the report and turns exactly those knobs, a little, thousands of times. Gradient descent is incident response with the postmortem automated.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 330" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="330" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Phase A on one page: the differentiable-program loop</text>
+<rect x="8" y="48" width="124" height="72" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+<text x="70" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">DATA</text>
+<text x="70" y="92" text-anchor="middle" fill="#555">tensors · loaders</text>
+<text x="70" y="108" text-anchor="middle" fill="#555">batches · splits</text>
+<rect x="142" y="48" width="124" height="72" rx="8" fill="#f1efff" stroke="#7a5cff"/>
+<text x="204" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">PROGRAM (θ)</text>
+<text x="204" y="92" text-anchor="middle" fill="#555">ops · matmul</text>
+<text x="204" y="108" text-anchor="middle" fill="#555">embeddings · θ</text>
+<rect x="276" y="48" width="124" height="72" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+<text x="338" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">LOSS</text>
+<text x="338" y="92" text-anchor="middle" fill="#555">pred vs target y</text>
+<text x="338" y="108" text-anchor="middle" fill="#555">MSE · CE loss</text>
+<rect x="410" y="48" width="124" height="72" rx="8" fill="#ffeef2" stroke="#d6336c"/>
+<text x="472" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">BACKWARD</text>
+<text x="472" y="92" text-anchor="middle" fill="#555">autograd replay</text>
+<text x="472" y="108" text-anchor="middle" fill="#555">blame: ∂loss/∂θ</text>
+<rect x="544" y="48" width="128" height="72" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+<text x="608" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">OPTIMIZER</text>
+<text x="608" y="92" text-anchor="middle" fill="#555">SGD · Adam</text>
+<text x="608" y="108" text-anchor="middle" fill="#555">θ ← θ − lr·grad</text>
+<line x1="134" y1="84" x2="136" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="136,79 142,84 136,89" fill="#888"/>
+<line x1="268" y1="84" x2="270" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="270,79 276,84 270,89" fill="#888"/>
+<line x1="402" y1="84" x2="404" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="404,79 410,84 404,89" fill="#888"/>
+<line x1="536" y1="84" x2="538" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="538,79 544,84 538,89" fill="#888"/>
+<path d="M 608 120 V 152 H 204 V 124" fill="none" stroke="#22a355" stroke-width="2"/>
+<polygon points="199,124 209,124 204,116" fill="#22a355"/>
+<text x="406" y="146" text-anchor="middle" fill="#177245">repeat for every batch, every epoch — the Day 7 ritual, now with names for every part</text>
+<rect x="20" y="176" width="640" height="62" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="340" y="198" text-anchor="middle" font-weight="bold" fill="#1c1c1e">Swap any one slot without touching the others:</text>
+<text x="340" y="218" text-anchor="middle" fill="#555">Day 17 changed the loss · Day 18 changed the optimizer · Day 19 changed the feeder — the loop never noticed.</text>
+<rect x="20" y="252" width="640" height="58" rx="8" fill="#fff5f5" stroke="#d6336c"/>
+<text x="340" y="274" text-anchor="middle" font-weight="bold" fill="#a61e4d">The contract: every op between θ and the loss must be differentiable.</text>
+<text x="340" y="294" text-anchor="middle" fill="#555">One round() or .detach() in the path and the blame signal dies — no gradient, no learning (Part 3).</text>
+</svg>
+    <div class="caption">The whole of Phase A as one loop: data feeds a differentiable program, the loss scores it, backward assigns blame to every parameter, the optimizer turns the knobs. Swap any slot and keep the loop — that has been the last 20 days.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts, all CPU and RNG-free so every digit reproduces exactly. <strong>Part 1</strong> dissects one tiny program and checks autograd's blame against the by-hand formula from Day 6. <strong>Part 2</strong> hands one generic <code>train()</code> loop two different programs — a line and a curve — to prove the loop never cared which program it was training. <strong>Part 3</strong> breaks the one contract on purpose. Run it in <code>~/ai-lab</code>:</p>
+  <pre><code>&quot;&quot;&quot;Day 20 - Phase A Recap: Learning = Differentiable Programming.
+
+Phase A in one sentence: a model is an ordinary program built from
+tensor ops; what makes it *learnable* is that every op also records
+how its output moves when an input wiggles - its derivative. Chain
+those records together and an optimizer can assign blame to every
+parameter. That is the whole machine:
+
+    DATA -&gt; PROGRAM(theta) -&gt; LOSS -&gt; BACKWARD -&gt; OPTIMIZER -&gt; repeat
+
+  Part 1  Dissect one program. pred = w*x + b on three points, scored
+          by MSE. Autograd&#x27;s gradients match the by-hand formula
+          (&quot;error times input&quot;, Day 6) exactly: dw = -18, db = -8.
+  Part 2  One generic train() loop, two different programs - a line
+          and a quadratic. The loop never inspects the program; swap
+          the program and the parameter list and it just works.
+  Part 3  Break the contract. Put round() between the parameters and
+          the loss and the gradients come back exactly 0; detach()
+          the output and the loss has no tape at all. If it is not
+          differentiable, it cannot learn - no exceptions.
+
+Runs on the ~/ai-lab venv: torch only, CPU on purpose (tiny data, no
+RNG, every number exact). No CUDA, no paid APIs.
+
+Expected output:
+
+  Part 1 - one program, blame checked by hand
+    predictions 0.5000, 1.0000, 1.5000, loss 17.5000
+    autograd: dw = -18.0000, db = -8.0000
+    by hand : dw = -18.0000, db = -8.0000  (match: True)
+
+  Part 2 - same loop, two programs (full-batch SGD)
+    program A (line,  lr=0.10, 100 epochs): loss 13.1525 -&gt; 0.009800
+      learned w = 2.4700, b = -0.9700  (truth: w = 2.5, b = -1)
+    program B (curve, lr=0.05, 300 epochs): loss 15.9167 -&gt; 0.000000
+      learned a = 1.0000, b = -2.0000, c = 1.0000  (truth: a = 1, b = -2, c = 1)
+
+  Part 3 - break the contract
+    round() in the program: loss 16.6667, grads dw = 0.0000, db = 0.0000
+    detached output: loss.requires_grad = False (no tape, nothing to replay)
+&quot;&quot;&quot;
+import torch
+
+# ---------- Part 1: one program, blame checked by hand ----------
+# The program: pred = w*x + b. The truth: y = 2x + 1. Start w=0.5, b=0.
+print(&quot;Part 1 - one program, blame checked by hand&quot;)
+x = torch.tensor([1.0, 2.0, 3.0])
+y = torch.tensor([3.0, 5.0, 7.0])
+w = torch.tensor(0.5, requires_grad=True)
+b = torch.tensor(0.0, requires_grad=True)
+pred = w * x + b                                   # the program runs
+loss = ((pred - y) ** 2).mean()                    # one number: how wrong
+loss.backward()                                    # blame, per parameter
+preds = &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in pred.tolist())
+print(f&quot;  predictions {preds}, loss {loss.item():.4f}&quot;)
+print(f&quot;  autograd: dw = {w.grad.item():.4f}, db = {b.grad.item():.4f}&quot;)
+dw_hand = (2 * (pred.detach() - y) * x).mean()     # Day 6: error x input
+db_hand = (2 * (pred.detach() - y)).mean()
+print(f&quot;  by hand : dw = {dw_hand.item():.4f}, db = {db_hand.item():.4f}&quot;
+      f&quot;  (match: {bool(w.grad == dw_hand and b.grad == db_hand)})&quot;)
+
+# ---------- Part 2: same loop, two programs ----------
+# One generic loop. It knows nothing about lines or curves - hand it a
+# differentiable program, its parameters, data, and a loss, and it trains.
+print(&quot;\nPart 2 - same loop, two programs (full-batch SGD)&quot;)
+
+
+def train(program, params, X, Y, lr, epochs):
+    opt = torch.optim.SGD(params, lr=lr)
+    first = None
+    for _ in range(epochs):
+        opt.zero_grad()
+        loss = ((program(X, *params) - Y) ** 2).mean()
+        if first is None:
+            first = loss.item()
+        loss.backward()
+        opt.step()
+    with torch.no_grad():
+        final = ((program(X, *params) - Y) ** 2).mean().item()
+    return first, final
+
+
+# Program A: a line, y = 2.5x - 1 plus a fixed wiggle (the &quot;noise&quot;).
+XA = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0])
+YA = torch.tensor([-5.8, -3.6, -1.0, 1.6, 3.95])
+wA = torch.zeros((), requires_grad=True)
+bA = torch.zeros((), requires_grad=True)
+first, final = train(lambda X, w, b: w * X + b, [wA, bA], XA, YA,
+                     lr=0.10, epochs=100)
+print(f&quot;  program A (line,  lr=0.10, 100 epochs): &quot;
+      f&quot;loss {first:.4f} -&gt; {final:.6f}&quot;)
+print(f&quot;    learned w = {wA.item():.4f}, b = {bA.item():.4f}  &quot;
+      f&quot;(truth: w = 2.5, b = -1)&quot;)
+
+# Program B: a curve, y = (x-1)^2 = x^2 - 2x + 1, no noise at all.
+XB = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0])
+YB = (XB - 1) ** 2
+aB = torch.zeros((), requires_grad=True)
+bB = torch.zeros((), requires_grad=True)
+cB = torch.zeros((), requires_grad=True)
+first, final = train(lambda X, a, b, c: a * X ** 2 + b * X + c,
+                     [aB, bB, cB], XB, YB, lr=0.05, epochs=300)
+print(f&quot;  program B (curve, lr=0.05, 300 epochs): &quot;
+      f&quot;loss {first:.4f} -&gt; {final:.6f}&quot;)
+print(f&quot;    learned a = {aB.item():.4f}, b = {bB.item():.4f}, &quot;
+      f&quot;c = {cB.item():.4f}  (truth: a = 1, b = -2, c = 1)&quot;)
+
+# ---------- Part 3: break the contract ----------
+# Same program as Part 1, but round() sits between theta and the loss.
+# Rounding is flat almost everywhere, so its derivative is 0 - the
+# blame signal arrives as exactly zero and the optimizer has nothing.
+print(&quot;\nPart 3 - break the contract&quot;)
+w3 = torch.tensor(0.5, requires_grad=True)
+b3 = torch.tensor(0.0, requires_grad=True)
+loss3 = ((torch.round(w3 * x + b3) - y) ** 2).mean()
+loss3.backward()
+print(f&quot;  round() in the program: loss {loss3.item():.4f}, &quot;
+      f&quot;grads dw = {w3.grad.item():.4f}, db = {b3.grad.item():.4f}&quot;)
+w4 = torch.tensor(0.5, requires_grad=True)
+b4 = torch.tensor(0.0, requires_grad=True)
+loss4 = (((w4 * x + b4).detach() - y) ** 2).mean()
+print(f&quot;  detached output: loss.requires_grad = {loss4.requires_grad} &quot;
+      f&quot;(no tape, nothing to replay)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one program, blame checked by hand
+  predictions 0.5000, 1.0000, 1.5000, loss 17.5000
+  autograd: dw = -18.0000, db = -8.0000
+  by hand : dw = -18.0000, db = -8.0000  (match: True)
+
+Part 2 - same loop, two programs (full-batch SGD)
+  program A (line,  lr=0.10, 100 epochs): loss 13.1525 -&gt; 0.009800
+    learned w = 2.4700, b = -0.9700  (truth: w = 2.5, b = -1)
+  program B (curve, lr=0.05, 300 epochs): loss 15.9167 -&gt; 0.000000
+    learned a = 1.0000, b = -2.0000, c = 1.0000  (truth: a = 1, b = -2, c = 1)
+
+Part 3 - break the contract
+  round() in the program: loss 16.6667, grads dw = 0.0000, db = 0.0000
+  detached output: loss.requires_grad = False (no tape, nothing to replay)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints loss <code>17.5000</code> with autograd grads <code>−18.0000 / −8.0000</code> and <code>match: True</code>; Part 2 trains both programs through the <em>same</em> <code>train()</code> — line to loss <code>0.009800</code> (w 2.4700, b −0.9700), curve to <code>0.000000</code> (a/b/c = 1.0000 / −2.0000 / 1.0000); Part 3 prints grads of exactly <code>0.0000</code> and <code>requires_grad = False</code>. The bigger test: close the lesson and name the five slots — data, program, loss, backward, optimizer — and which day each came from. That is Phase A, held in one hand. Phase A: complete. 🎉</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Part 1 and Part 3 only (~12 min): the hand-checked gradient <em>is</em> the idea, and the zero gradients are its boundary. Skim the slot list in “The one idea.” Do run Part 2 once this week, though — watching one loop train a curve it was never written for is the moment the mental model clicks shut.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow Phase B begins. The loop you just named does not change at all — the program in the middle starts to grow.</p>
+  </div>
+
+  <div class="footer">Streak: 20 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

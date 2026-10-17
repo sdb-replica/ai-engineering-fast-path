@@ -1,0 +1,41 @@
+<svg viewBox="0 0 680 330" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="330" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Phase A on one page: the differentiable-program loop</text>
+<rect x="8" y="48" width="124" height="72" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+<text x="70" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">DATA</text>
+<text x="70" y="92" text-anchor="middle" fill="#555">tensors · loaders</text>
+<text x="70" y="108" text-anchor="middle" fill="#555">batches · splits</text>
+<rect x="142" y="48" width="124" height="72" rx="8" fill="#f1efff" stroke="#7a5cff"/>
+<text x="204" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">PROGRAM (θ)</text>
+<text x="204" y="92" text-anchor="middle" fill="#555">ops · matmul</text>
+<text x="204" y="108" text-anchor="middle" fill="#555">embeddings · θ</text>
+<rect x="276" y="48" width="124" height="72" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+<text x="338" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">LOSS</text>
+<text x="338" y="92" text-anchor="middle" fill="#555">pred vs target y</text>
+<text x="338" y="108" text-anchor="middle" fill="#555">MSE · CE loss</text>
+<rect x="410" y="48" width="124" height="72" rx="8" fill="#ffeef2" stroke="#d6336c"/>
+<text x="472" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">BACKWARD</text>
+<text x="472" y="92" text-anchor="middle" fill="#555">autograd replay</text>
+<text x="472" y="108" text-anchor="middle" fill="#555">blame: ∂loss/∂θ</text>
+<rect x="544" y="48" width="128" height="72" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+<text x="608" y="72" text-anchor="middle" font-weight="bold" fill="#1c1c1e">OPTIMIZER</text>
+<text x="608" y="92" text-anchor="middle" fill="#555">SGD · Adam</text>
+<text x="608" y="108" text-anchor="middle" fill="#555">θ ← θ − lr·grad</text>
+<line x1="134" y1="84" x2="136" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="136,79 142,84 136,89" fill="#888"/>
+<line x1="268" y1="84" x2="270" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="270,79 276,84 270,89" fill="#888"/>
+<line x1="402" y1="84" x2="404" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="404,79 410,84 404,89" fill="#888"/>
+<line x1="536" y1="84" x2="538" y2="84" stroke="#888" stroke-width="2"/>
+<polygon points="538,79 544,84 538,89" fill="#888"/>
+<path d="M 608 120 V 152 H 204 V 124" fill="none" stroke="#22a355" stroke-width="2"/>
+<polygon points="199,124 209,124 204,116" fill="#22a355"/>
+<text x="406" y="146" text-anchor="middle" fill="#177245">repeat for every batch, every epoch — the Day 7 ritual, now with names for every part</text>
+<rect x="20" y="176" width="640" height="62" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="340" y="198" text-anchor="middle" font-weight="bold" fill="#1c1c1e">Swap any one slot without touching the others:</text>
+<text x="340" y="218" text-anchor="middle" fill="#555">Day 17 changed the loss · Day 18 changed the optimizer · Day 19 changed the feeder — the loop never noticed.</text>
+<rect x="20" y="252" width="640" height="58" rx="8" fill="#fff5f5" stroke="#d6336c"/>
+<text x="340" y="274" text-anchor="middle" font-weight="bold" fill="#a61e4d">The contract: every op between θ and the loss must be differentiable.</text>
+<text x="340" y="294" text-anchor="middle" fill="#555">One round() or .detach() in the path and the blame signal dies — no gradient, no learning (Part 3).</text>
+</svg>
