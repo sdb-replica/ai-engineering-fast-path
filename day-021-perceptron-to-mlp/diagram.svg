@@ -1,0 +1,57 @@
+<svg viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="560" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">One neuron draws one line — a hidden layer with ReLU bends it</text>
+<text x="40" y="58" font-weight="bold" fill="#1c1c1e">The MLP: inputs → hidden layer (ReLU) → output</text>
+<line x1="130" y1="110" x2="312" y2="75" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="125" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="175" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="225" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="75" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="125" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="175" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="225" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="348" y1="75" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="125" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="175" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="225" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<circle cx="110" cy="110" r="20" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+<text x="110" y="114" text-anchor="middle" font-weight="bold" fill="#1c1c1e">x1</text>
+<circle cx="110" cy="200" r="20" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+<text x="110" y="204" text-anchor="middle" font-weight="bold" fill="#1c1c1e">x2</text>
+<text x="110" y="248" text-anchor="middle" fill="#555">2 inputs</text>
+<circle cx="330" cy="75" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="79" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h1</text>
+<circle cx="330" cy="125" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="129" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h2</text>
+<circle cx="330" cy="175" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="179" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h3</text>
+<circle cx="330" cy="225" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="229" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h4</text>
+<text x="330" y="262" text-anchor="middle" fill="#555">4 hidden neurons, each: ReLU(w·x + b)</text>
+<circle cx="550" cy="150" r="20" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+<text x="550" y="154" text-anchor="middle" font-weight="bold" fill="#1c1c1e">ŷ</text>
+<text x="550" y="190" text-anchor="middle" fill="#555">1 output</text>
+<text x="550" y="208" text-anchor="middle" fill="#555">a score for “1”</text>
+<rect x="40" y="278" width="290" height="76" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="185" y="300" text-anchor="middle" font-weight="bold" fill="#1c1c1e">A perceptron is ONE neuron</text>
+<text x="185" y="320" text-anchor="middle" fill="#555">ŷ = w·x + b — a weighted vote,</text>
+<text x="185" y="338" text-anchor="middle" fill="#555">then a threshold. Its boundary is one straight line.</text>
+<rect x="350" y="278" width="290" height="76" rx="8" fill="#fff5f5" stroke="#d6336c"/>
+<text x="495" y="300" text-anchor="middle" font-weight="bold" fill="#a61e4d">No bend? Stacked linears collapse</text>
+<text x="495" y="320" text-anchor="middle" fill="#555">W₂(W₁x + b₁) + b₂  =  (W₂W₁)x + (W₂b₁ + b₂)</text>
+<text x="495" y="338" text-anchor="middle" fill="#555">Two layers, still one line. ReLU is the fix.</text>
+<text x="40" y="388" font-weight="bold" fill="#1c1c1e">Why it matters — XOR: the diagonal corners share a class</text>
+<rect x="80" y="410" width="140" height="120" fill="#fafafa" stroke="#ccc"/>
+<line x1="80" y1="470" x2="220" y2="470" stroke="#d6336c" stroke-width="2" stroke-dasharray="6 4"/>
+<circle cx="95" cy="515" r="10" fill="#0a7aff"/>
+<circle cx="205" cy="425" r="10" fill="#0a7aff"/>
+<rect x="86" y="416" width="18" height="18" fill="#d99a00"/>
+<rect x="196" y="506" width="18" height="18" fill="#d99a00"/>
+<text x="150" y="552" text-anchor="middle" fill="#555">x₁ →</text>
+<text x="52" y="474" text-anchor="middle" fill="#555">x₂</text>
+<text x="430" y="432" text-anchor="middle" fill="#1c1c1e">● = target 0 at (0,0) and (1,1)</text>
+<text x="430" y="456" text-anchor="middle" fill="#1c1c1e">■ = target 1 at (0,1) and (1,0)</text>
+<text x="430" y="488" text-anchor="middle" fill="#555">The dashed line is the best a perceptron can do —</text>
+<text x="430" y="508" text-anchor="middle" fill="#555">both classes end up on both sides of it.</text>
+<text x="430" y="536" text-anchor="middle" font-weight="bold" fill="#177245">Hidden ReLU neurons bend the boundary around the corners.</text>
+</svg>

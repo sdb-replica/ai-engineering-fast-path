@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perceptron → MLP: Stacking Layers With Non-Linearities — Day 21 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 21 of 100</span>
+  <h1>Perceptron → MLP: Stacking Layers With Non-Linearities</h1>
+  <p class="outcome">Tonight you'll be able to: explain why stacking linear layers alone buys nothing, watch one neuron fail XOR in a very specific way, and train a tiny 2→4→1 MLP that solves it — your first real neural network.</p>
+
+  <h2>The one idea</h2>
+  <p>Everything you have trained so far — the Day 6 line, the Day 16 digits classifier's last layer, Day 20's two programs — is built from one unit: the <strong>neuron</strong>, <code>w·x + b</code>. Day 12 showed it is just a dot product plus an offset: a weighted vote over the inputs. The original 1950s name for a single neuron with a threshold on its output is a <strong>perceptron</strong>: vote, then call it 1 if the vote clears the bar, else 0.</p>
+<p>A perceptron's limit is geometric. The set of inputs where <code>w·x + b = 0</code> is a <em>straight line</em> (a plane in 3D, a hyperplane beyond that), and the perceptron can only ever split the world with that one line. If the classes are not <strong>linearly separable</strong> — no single line puts all of class 0 on one side and all of class 1 on the other — a perceptron cannot represent the answer, no matter how long it trains. Part 2 makes one try anyway.</p>
+<p>The obvious fix is stacking: feed several neurons' outputs into another neuron — a <strong>hidden layer</strong>, so called because you never set its outputs directly; they are internal features the network invents. But stacking alone buys nothing, and Part 1 proves it with arithmetic: <code>W₂(W₁x + b₁) + b₂ = (W₂W₁)x + (W₂b₁ + b₂)</code>. Two linear layers in a row are <em>exactly</em> one linear layer with multiplied-out weights — still one straight line, just with extra steps and extra parameters saying the same thing.</p>
+<p>The ingredient that changes everything is a <strong>non-linearity</strong> between the layers — tonight, <strong>ReLU</strong>: <code>max(0, z)</code>, pass positive votes through, floor the rest at zero. Each hidden neuron now computes a <em>folded</em> feature: its line still exists, but its output bends flat on one side of it. The output neuron adds up several folded pieces, and a sum of bends is a genuinely bent boundary — piecewise-straight segments that can wrap around corners a single line never could.</p>
+<p>That stack — input → one or more hidden layers with non-linearities → output — is a <strong>multi-layer perceptron (MLP)</strong>, and it is the template for almost everything ahead: later architectures mostly change <em>what the layers compute</em>, not this stacking idea. The test case is <strong>XOR</strong>: output 1 when exactly one input is on. Its 1-corners sit diagonally opposite each other, so no line separates them (the diagram shows the best attempt) — the textbook example that killed perceptron hype in 1969 and that a two-layer MLP solves in Part 3.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already own this intuition twice. In <strong>trading</strong>, an EMA of an EMA feels like a new indicator, but both are weighted averages of price — the composition is still just a weighted average of price, one linear filter wearing two coats. No genuinely new behavior appears until a rule has a <em>kink</em>: a stop that only fires below a level, a breakout rule that does nothing until price crosses — flat on one side, active on the other. That kink is ReLU's shape exactly.</p>
+<p>In <strong>systems</strong>, the same law holds: chain two pipeline stages that only rescale and offset a metric and you have configured one rescale, however many boxes the diagram shows. Insert a circuit breaker — closed below a threshold, open above it — and the composed system can do things neither stage could alone. <strong>Depth without non-linearity is bookkeeping; the kink is where new capability comes from.</strong></p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="560" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">One neuron draws one line — a hidden layer with ReLU bends it</text>
+<text x="40" y="58" font-weight="bold" fill="#1c1c1e">The MLP: inputs → hidden layer (ReLU) → output</text>
+<line x1="130" y1="110" x2="312" y2="75" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="125" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="175" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="110" x2="312" y2="225" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="75" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="125" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="175" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="130" y1="200" x2="312" y2="225" stroke="#c9d4e8" stroke-width="1.5"/>
+<line x1="348" y1="75" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="125" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="175" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<line x1="348" y1="225" x2="530" y2="150" stroke="#d8c9e8" stroke-width="1.5"/>
+<circle cx="110" cy="110" r="20" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+<text x="110" y="114" text-anchor="middle" font-weight="bold" fill="#1c1c1e">x1</text>
+<circle cx="110" cy="200" r="20" fill="#eef4ff" stroke="#0a7aff" stroke-width="2"/>
+<text x="110" y="204" text-anchor="middle" font-weight="bold" fill="#1c1c1e">x2</text>
+<text x="110" y="248" text-anchor="middle" fill="#555">2 inputs</text>
+<circle cx="330" cy="75" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="79" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h1</text>
+<circle cx="330" cy="125" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="129" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h2</text>
+<circle cx="330" cy="175" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="179" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h3</text>
+<circle cx="330" cy="225" r="18" fill="#f1efff" stroke="#7a5cff" stroke-width="2"/>
+<text x="330" y="229" text-anchor="middle" font-weight="bold" fill="#1c1c1e">h4</text>
+<text x="330" y="262" text-anchor="middle" fill="#555">4 hidden neurons, each: ReLU(w·x + b)</text>
+<circle cx="550" cy="150" r="20" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+<text x="550" y="154" text-anchor="middle" font-weight="bold" fill="#1c1c1e">ŷ</text>
+<text x="550" y="190" text-anchor="middle" fill="#555">1 output</text>
+<text x="550" y="208" text-anchor="middle" fill="#555">a score for “1”</text>
+<rect x="40" y="278" width="290" height="76" rx="8" fill="#fafafa" stroke="#ccc"/>
+<text x="185" y="300" text-anchor="middle" font-weight="bold" fill="#1c1c1e">A perceptron is ONE neuron</text>
+<text x="185" y="320" text-anchor="middle" fill="#555">ŷ = w·x + b — a weighted vote,</text>
+<text x="185" y="338" text-anchor="middle" fill="#555">then a threshold. Its boundary is one straight line.</text>
+<rect x="350" y="278" width="290" height="76" rx="8" fill="#fff5f5" stroke="#d6336c"/>
+<text x="495" y="300" text-anchor="middle" font-weight="bold" fill="#a61e4d">No bend? Stacked linears collapse</text>
+<text x="495" y="320" text-anchor="middle" fill="#555">W₂(W₁x + b₁) + b₂  =  (W₂W₁)x + (W₂b₁ + b₂)</text>
+<text x="495" y="338" text-anchor="middle" fill="#555">Two layers, still one line. ReLU is the fix.</text>
+<text x="40" y="388" font-weight="bold" fill="#1c1c1e">Why it matters — XOR: the diagonal corners share a class</text>
+<rect x="80" y="410" width="140" height="120" fill="#fafafa" stroke="#ccc"/>
+<line x1="80" y1="470" x2="220" y2="470" stroke="#d6336c" stroke-width="2" stroke-dasharray="6 4"/>
+<circle cx="95" cy="515" r="10" fill="#0a7aff"/>
+<circle cx="205" cy="425" r="10" fill="#0a7aff"/>
+<rect x="86" y="416" width="18" height="18" fill="#d99a00"/>
+<rect x="196" y="506" width="18" height="18" fill="#d99a00"/>
+<text x="150" y="552" text-anchor="middle" fill="#555">x₁ →</text>
+<text x="52" y="474" text-anchor="middle" fill="#555">x₂</text>
+<text x="430" y="432" text-anchor="middle" fill="#1c1c1e">● = target 0 at (0,0) and (1,1)</text>
+<text x="430" y="456" text-anchor="middle" fill="#1c1c1e">■ = target 1 at (0,1) and (1,0)</text>
+<text x="430" y="488" text-anchor="middle" fill="#555">The dashed line is the best a perceptron can do —</text>
+<text x="430" y="508" text-anchor="middle" fill="#555">both classes end up on both sides of it.</text>
+<text x="430" y="536" text-anchor="middle" font-weight="bold" fill="#177245">Hidden ReLU neurons bend the boundary around the corners.</text>
+</svg>
+    <div class="caption">Top: the MLP — two inputs, a hidden layer of four ReLU neurons, one output. Middle: two linear layers collapse into one; a perceptron is a single neuron whose boundary is one straight line. Bottom: XOR's diagonal classes defeat every straight line — the hidden layer's bends are what get around the corners.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts, all CPU and RNG-free — the MLP's starting weights are set by hand (real training would draw them at random; Day 33 covers why the starting values matter), so every digit reproduces exactly. <strong>Part 1</strong> collapses two linear layers into one and checks the outputs match to the last decimal. <strong>Part 2</strong> trains a single neuron on XOR and watches it give up gracefully. <strong>Part 3</strong> adds the hidden ReLU layer and solves it. Run it in <code>~/ai-lab</code>:</p>
+  <pre><code>&quot;&quot;&quot;Day 21 - Perceptron to MLP: Stacking Layers With Non-Linearities.
+
+Phase B opens with the smallest neural network there is. A perceptron
+is one neuron: pred = w.x + b, a weighted vote whose decision boundary
+is a single straight line. Stacking neurons into a hidden layer is
+what turns that line into a curve - but ONLY if a non-linearity sits
+between the layers.
+
+  Part 1  Stack two linear layers with no bend and they collapse into
+          one: W2(W1x + b1) + b2 = (W2W1)x + (W2b1 + b2). The two-layer
+          outputs match the single effective layer exactly (diff 0).
+  Part 2  One neuron vs XOR, the classic inseparable problem: the
+          targets are 1 on the off-diagonal corners, 0 on the diagonal.
+          Training converges to predicting 0.5 for everything - the
+          loss parks at 0.2500, the honest &quot;I cannot draw this line.&quot;
+  Part 3  The same data, an MLP (2 -&gt; 4 with ReLU -&gt; 1), weights set
+          by hand so every digit reproduces: loss 0.070625 -&gt; 0.000005,
+          all four corners called correctly. The hidden layer did not
+          add a fancier line; it bent the boundary.
+
+Runs on the ~/ai-lab venv: torch only, CPU on purpose (tiny data, no
+RNG, every number exact). No CUDA, no paid APIs.
+
+Expected output:
+
+  Part 1 - two linear layers collapse into one
+    effective W = [3.0000, 5.0000], b = 2.5000
+    two layers : 5.5000, 7.5000, 10.5000, 3.5000
+    one layer  : 5.5000, 7.5000, 10.5000, 3.5000
+    max difference: 0.000000
+
+  Part 2 - one neuron vs XOR (SGD, lr=0.5, 300 epochs)
+    loss 0.4650 -&gt; 0.2500
+    predictions 0.5000, 0.5000, 0.5000, 0.5000  (correct: 2/4)
+
+  Part 3 - MLP with a ReLU hidden layer vs XOR (SGD, lr=0.5, 100 epochs)
+    loss 0.070625 -&gt; 0.000005
+    predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+# ---------- Part 1: two linear layers collapse into one ----------
+# Layer 1 maps 2 -&gt; 3, layer 2 maps 3 -&gt; 1. No non-linearity anywhere.
+print(&quot;Part 1 - two linear layers collapse into one&quot;)
+lin1 = nn.Linear(2, 3)
+lin2 = nn.Linear(3, 1)
+with torch.no_grad():
+    lin1.weight.copy_(torch.tensor([[1.0, 2.0], [-1.0, 0.5], [0.0, 3.0]]))
+    lin1.bias.copy_(torch.tensor([0.5, -1.0, 2.0]))
+    lin2.weight.copy_(torch.tensor([[2.0, -1.0, 0.5]]))
+    lin2.bias.copy_(torch.tensor([-0.5]))
+X = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, -1.0]])
+with torch.no_grad():
+    two = lin2(lin1(X))                                # through both layers
+    W_eff = lin2.weight @ lin1.weight                  # the collapse, in math
+    b_eff = lin2.weight @ lin1.bias + lin2.bias
+    one = X @ W_eff.T + b_eff                          # one single layer
+print(f&quot;  effective W = [{W_eff[0, 0]:.4f}, {W_eff[0, 1]:.4f}], &quot;
+      f&quot;b = {b_eff.item():.4f}&quot;)
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+print(f&quot;  two layers : {fmt(two)}&quot;)
+print(f&quot;  one layer  : {fmt(one)}&quot;)
+print(f&quot;  max difference: {(two - one).abs().max().item():.6f}&quot;)
+
+# ---------- Part 2: one neuron vs XOR ----------
+# XOR targets: 1 when exactly one input is on. No straight line splits
+# the 1-corners from the 0-corners (see the diagram), so the best a
+# single neuron can do is shrug: predict 0.5 for every corner.
+print(&quot;\nPart 2 - one neuron vs XOR (SGD, lr=0.5, 300 epochs)&quot;)
+Xx = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+y = torch.tensor([[0.0], [1.0], [1.0], [0.0]])
+neuron = nn.Linear(2, 1)
+with torch.no_grad():
+    neuron.weight.copy_(torch.tensor([[0.2, -0.1]]))
+    neuron.bias.copy_(torch.tensor([0.0]))
+opt = torch.optim.SGD(neuron.parameters(), lr=0.5)
+first = None
+for _ in range(300):
+    opt.zero_grad()
+    loss = ((neuron(Xx) - y) ** 2).mean()
+    if first is None:
+        first = loss.item()
+    loss.backward()
+    opt.step()
+with torch.no_grad():
+    pred = neuron(Xx)
+    final = ((pred - y) ** 2).mean().item()
+    correct = int(((pred &gt; 0.5) == (y &gt; 0.5)).sum())
+print(f&quot;  loss {first:.4f} -&gt; {final:.4f}&quot;)
+print(f&quot;  predictions {fmt(pred)}  (correct: {correct}/4)&quot;)
+
+# ---------- Part 3: an MLP bends the boundary ----------
+# Same XOR data, one new ingredient: a hidden layer of 4 neurons with
+# ReLU between the two linear maps. Each hidden neuron still draws
+# its own line, but ReLU folds its output at zero, and the output
+# neuron adds up folded pieces - a bent, piecewise boundary.
+# (Weights are set by hand instead of drawn at random, so the run is
+# RNG-free and every digit below reproduces exactly.)
+print(&quot;\nPart 3 - MLP with a ReLU hidden layer vs XOR (SGD, lr=0.5, 100 epochs)&quot;)
+mlp = nn.Sequential(nn.Linear(2, 4), nn.ReLU(), nn.Linear(4, 1))
+with torch.no_grad():
+    mlp[0].weight.copy_(torch.tensor([[1.0, -1.0], [-1.0, 1.0],
+                                      [0.5, 0.5], [-0.5, 0.8]]))
+    mlp[0].bias.copy_(torch.tensor([0.0, 0.0, -0.5, 0.0]))
+    mlp[2].weight.copy_(torch.tensor([[1.0, 1.0, 1.0, -0.5]]))
+    mlp[2].bias.copy_(torch.tensor([0.0]))
+opt = torch.optim.SGD(mlp.parameters(), lr=0.5)
+first = None
+for _ in range(100):
+    opt.zero_grad()
+    loss = ((mlp(Xx) - y) ** 2).mean()
+    if first is None:
+        first = loss.item()
+    loss.backward()
+    opt.step()
+with torch.no_grad():
+    pred = mlp(Xx)
+    final = ((pred - y) ** 2).mean().item()
+    correct = int(((pred &gt; 0.5) == (y &gt; 0.5)).sum())
+print(f&quot;  loss {first:.6f} -&gt; {final:.6f}&quot;)
+print(f&quot;  predictions {fmt(pred)}  (correct: {correct}/4)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - two linear layers collapse into one
+  effective W = [3.0000, 5.0000], b = 2.5000
+  two layers : 5.5000, 7.5000, 10.5000, 3.5000
+  one layer  : 5.5000, 7.5000, 10.5000, 3.5000
+  max difference: 0.000000
+
+Part 2 - one neuron vs XOR (SGD, lr=0.5, 300 epochs)
+  loss 0.4650 -&gt; 0.2500
+  predictions 0.5000, 0.5000, 0.5000, 0.5000  (correct: 2/4)
+
+Part 3 - MLP with a ReLU hidden layer vs XOR (SGD, lr=0.5, 100 epochs)
+  loss 0.070625 -&gt; 0.000005
+  predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints effective <code>W = [3.0000, 5.0000]</code>, <code>b = 2.5000</code> and a max difference of <code>0.000000</code> — the collapse, proven by your own run; Part 2 ends at loss <code>0.2500</code> predicting <code>0.5000</code> for all four corners (2/4 — a coin flip, the perceptron's honest surrender); Part 3 drives the loss from <code>0.070625</code> to <code>0.000005</code> with predictions <code>0.0032, 1.0000, 0.9999, −0.0029</code> and <code>correct: 4/4</code>. The bigger test: say out loud why the MLP won — not “more layers,” but “a non-linearity between the layers, so the boundary could bend.” Phase B is open. 🎉</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Part 1 and Part 3 only (~15 min): the zero difference <em>is</em> the collapse argument, and Part 3 is the payoff. Skim Part 2's output in the expected-output block — but do run it once this week; watching the loss park itself at exactly 0.2500 makes “linearly inseparable” a thing you have seen, not a phrase.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: a closer look at the bend itself — there is more than one way to make one, and which you pick changes how training behaves.</p>
+  </div>
+
+  <div class="footer">Streak: 21 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

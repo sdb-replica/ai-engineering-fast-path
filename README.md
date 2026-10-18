@@ -44,3 +44,4 @@ pip install torch numpy
 | 18 | [Optimizers: SGD vs Adam](day-018-optimizers-sgd-vs-adam/lesson.html) | [lesson.md](day-018-optimizers-sgd-vs-adam/lesson.md) | [code.py](day-018-optimizers-sgd-vs-adam/code.py) |
 | 19 | [Data Loaders & Batching](day-019-data-loaders-and-batching/lesson.html) | [lesson.md](day-019-data-loaders-and-batching/lesson.md) | [code.py](day-019-data-loaders-and-batching/code.py) |
 | 20 | [Phase A Recap: Learning = Differentiable Programming](day-020-phase-a-recap-differentiable-programming/lesson.html) | [lesson.md](day-020-phase-a-recap-differentiable-programming/lesson.md) | [code.py](day-020-phase-a-recap-differentiable-programming/code.py) |
+| 21 | [Perceptron → MLP: Stacking Layers With Non-Linearities](day-021-perceptron-to-mlp/lesson.html) | [lesson.md](day-021-perceptron-to-mlp/lesson.md) | [code.py](day-021-perceptron-to-mlp/code.py) |
