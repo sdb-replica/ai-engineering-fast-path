@@ -1,0 +1,70 @@
+<svg viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="560" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Backprop: one loss, assigned backwards as credit and blame</text>
+<text x="34" y="62" text-anchor="start" font-size="12" font-weight="bold" fill="#0a54c2">FORWARD — values flow right (the receipts)</text>
+<rect x="16" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="68.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">input x</text>
+<text x="68.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">[1.0, 2.0]</text>
+<rect x="134" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="186.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Linear 1</text>
+<text x="186.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">z1 = W1x + b1</text>
+<rect x="252" y="74" width="118" height="74" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="311.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">z1 = [2.0, 1.5]</text>
+<text x="311.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">ReLU → h same</text>
+<rect x="388" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="440.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Linear 2</text>
+<text x="440.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">y = W2h + b2</text>
+<rect x="506" y="74" width="164" height="74" rx="8" fill="#fafafa" stroke="#d99a00" stroke-width="1.5"/>
+<text x="588.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">y = 3.0 · target 1.0</text>
+<text x="588.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">loss = (3−1)² = 4.0</text>
+<line x1="122" y1="111.0" x2="125" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 132 111.0 L 125 107.0 L 125 115.0 Z" fill="#0a7aff"/>
+<line x1="240" y1="111.0" x2="243" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 250 111.0 L 243 107.0 L 243 115.0 Z" fill="#0a7aff"/>
+<line x1="372" y1="111.0" x2="379" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 386 111.0 L 379 107.0 L 379 115.0 Z" fill="#0a7aff"/>
+<line x1="494" y1="111.0" x2="497" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 504 111.0 L 497 107.0 L 497 115.0 Z" fill="#0a7aff"/>
+<text x="34" y="190" text-anchor="start" font-size="12" font-weight="bold" fill="#c22f2f">BACKWARD — blame flows left (each hop applies one rule)</text>
+<text x="664" y="214" text-anchor="end" font-size="11.5" font-weight="bold" fill="#c22f2f">starts at the loss: dL/dy = +4.0</text>
+<rect x="16" y="226" width="150" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="91.0" y="256.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">grad W1</text>
+<text x="91.0" y="272.0" text-anchor="middle" font-size="11" fill="#1c1c1e">[[8, 16], [−4, −8]]</text>
+<text x="91.0" y="288.0" text-anchor="middle" font-size="11" fill="#1c1c1e">grad b1 = [8, −4]</text>
+<rect x="182" y="226" width="110" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="237.0" y="264.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">delta z1</text>
+<text x="237.0" y="280.0" text-anchor="middle" font-size="11" fill="#1c1c1e">[8, −4]</text>
+<rect x="308" y="226" width="110" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="363.0" y="264.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">ReLU gate</text>
+<text x="363.0" y="280.0" text-anchor="middle" font-size="11" fill="#1c1c1e">× [1, 1] live</text>
+<rect x="434" y="226" width="230" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="549.0" y="256.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">delta h = [8, −4]</text>
+<text x="549.0" y="272.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">grad W2 = [8, 6]</text>
+<text x="549.0" y="288.0" text-anchor="middle" font-size="11" fill="#1c1c1e">dL/dy × W2 · dL/dy × h</text>
+<line x1="180" y1="268.0" x2="175" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 168 268.0 L 175 264.0 L 175 272.0 Z" fill="#c22f2f"/>
+<line x1="306" y1="268.0" x2="301" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 294 268.0 L 301 264.0 L 301 272.0 Z" fill="#c22f2f"/>
+<line x1="432" y1="268.0" x2="427" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 420 268.0 L 427 264.0 L 427 272.0 Z" fill="#c22f2f"/>
+<line x1="588" y1="150" x2="588" y2="222" stroke="#c22f2f" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M 588 226 L 583 218 L 593 218 Z" fill="#c22f2f"/>
+<rect x="16" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="118.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 1 — grade a weight</text>
+<text x="118.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">grad = delta × the input</text>
+<text x="118.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">that weight scaled</text>
+<text x="118.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">W2: 4 × [2, 1.5] = [8, 6]</text>
+<rect x="238" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="340.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 2 — pass blame down</text>
+<text x="340.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">delta × the weights it fed,</text>
+<text x="340.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">summed over all paths</text>
+<text x="340.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">h: 4 × [2, −1] = [8, −4]</text>
+<rect x="460" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="562.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 3 — the gate</text>
+<text x="562.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">× activation derivative</text>
+<text x="562.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">on the way through</text>
+<text x="562.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">live ReLU ×1 · dead ×0</text>
+<rect x="16" y="470" width="648" height="62" rx="8" fill="#fafafa" stroke="#d99a00" stroke-width="1.5"/>
+<text x="340.0" y="497.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">One backward sweep grades all 9 parameters at once.</text>
+<text x="340.0" y="513.0" text-anchor="middle" font-size="11" fill="#1c1c1e">Numeric checking would take 9+ extra forwards — that economy is why deep nets train.</text>
+</svg>

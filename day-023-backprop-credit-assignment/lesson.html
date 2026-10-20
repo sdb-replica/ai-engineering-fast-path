@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backprop Intuition: Credit Assignment Through Layers — Day 23 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 23 of 100</span>
+  <h1>Backprop Intuition: Credit Assignment Through Layers</h1>
+  <p class="outcome">Tonight you'll be able to: trace one loss backwards through a small network by hand — assigning each layer its share of the blame with three local rules — and watch your hand-computed gradients match autograd on all 9 parameters, exactly.</p>
+
+  <h2>The one idea</h2>
+  <p>Every backward pass you've run since Day 4 has been a black box with a button: <code>loss.backward()</code>. Today we open the box — not with a derivation, but by following the money. <strong>Backpropagation</strong> is just <strong>credit assignment</strong>: the loss is a single number at the end, and backprop decides, for every weight in the network, <em>how much of that number was your fault, and in which direction</em>. It does it with one signal and three local rules.</p>
+<p>The signal is <strong>delta</strong> (δ) — the blame arriving at a value: <code>dL/d(value)</code>, "if this value had been a little bigger, how much would the loss have changed?" Backprop starts at the output, where delta is easy: for your by-now-familiar <code>loss = (y − t)²</code>, <code>dL/dy = 2(y − t)</code>. Today's network predicts 3.0 against a target of 1.0, so delta starts at <strong>+4.0</strong> — positive, meaning "y being <em>smaller</em> would have helped." Everything upstream is computed from that one number, working backwards, one hop at a time.</p>
+<p><strong>Rule 1 — a weight's gradient is delta times the input that weight scaled.</strong> The output weights multiplied the hidden activations <code>h = [2.0, 1.5]</code>, so <code>grad W2 = 4.0 × [2.0, 1.5] = [8.0, 6.0]</code> — the weight that amplified the bigger activation gets the bigger grade. You already know this rule: it's Day 6's hand-derived <em>"error times input,"</em> and Day 20's blame vector, just seen one layer up. A bias is the same rule with input 1, so its gradient is delta itself. <strong>Rule 2 — blame passed down is delta times the weights.</strong> Hidden neuron 1 fed the output through weight 2.0 and neuron 2 through −1.0, so the blame arriving at <code>h</code> is <code>4.0 × [2.0, −1.0] = [8.0, −4.0]</code>: neuron 2's blame is <em>negative</em> because its weight was — had it fired <em>more</em>, the loss would have dropped. When a value feeds several neurons, it collects the sum over all of them — blame adds up across every path it influenced. <strong>Rule 3 — crossing an activation multiplies by its derivative.</strong> That's Day 22's gate, doing its job in situ: both hidden neurons are live ReLUs here, so blame passes ×1 unchanged; Part 2 shows the ×0 case.</p>
+<p>Apply the same three rules one more hop and you get <code>grad W1 = [[8, 16], [−4, −8]]</code> — delta as a column, input as a row, multiplied out (an <em>outer product</em>). And here's the economy that makes deep learning possible: <strong>one forward pass plus one backward sweep grades every parameter in the network</strong> — all 9 here, all billions in a big model, at roughly the cost of the forward pass itself. The naive alternative — nudge each weight, re-run, measure — costs a full forward pass <em>per weight</em>. Backprop isn't a nicety; it's the only reason networks with more than a handful of weights can train at all.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Backprop is an <strong>incident postmortem with numbers</strong>. The loss is the outage cost, measured at the edge. The review walks the request trace <em>backwards</em> — the same trace Day 4's autograd recorded — and at each service asks: how much of this damage passed through you, and how strongly were you coupled to the failure? A service on the hot path with a big multiplier (a retry storm amplifying a downstream error ×2) gets most of the blame; a service that was <strong>feature-flagged off</strong> for that request gets none — and, just as important, passes none further back, because nothing flowed through it. That's Part 2's dead ReLU, exactly: zero in, zero out, zero blame, in both directions.</p>
+<p>Trading version: it's <strong>P&amp;L attribution</strong>. The book lost $4.0 — you don't shrug at the total, you decompose it by position: attribution = price move × exposure. The position held at twice the size takes twice the blame; a hedge with the opposite sign shows up as <em>negative</em> blame — it was pulling the right way. A position you didn't hold (exposure 0) gets exactly zero attribution no matter how violently its market moved. Delta × what-it-scaled is how every trading desk already assigns credit; backprop is that habit, mechanized and run backwards through a function.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="560" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Backprop: one loss, assigned backwards as credit and blame</text>
+<text x="34" y="62" text-anchor="start" font-size="12" font-weight="bold" fill="#0a54c2">FORWARD — values flow right (the receipts)</text>
+<rect x="16" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="68.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">input x</text>
+<text x="68.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">[1.0, 2.0]</text>
+<rect x="134" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="186.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Linear 1</text>
+<text x="186.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">z1 = W1x + b1</text>
+<rect x="252" y="74" width="118" height="74" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="311.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">z1 = [2.0, 1.5]</text>
+<text x="311.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">ReLU → h same</text>
+<rect x="388" y="74" width="104" height="74" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="440.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Linear 2</text>
+<text x="440.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">y = W2h + b2</text>
+<rect x="506" y="74" width="164" height="74" rx="8" fill="#fafafa" stroke="#d99a00" stroke-width="1.5"/>
+<text x="588.0" y="107.0" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">y = 3.0 · target 1.0</text>
+<text x="588.0" y="123.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">loss = (3−1)² = 4.0</text>
+<line x1="122" y1="111.0" x2="125" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 132 111.0 L 125 107.0 L 125 115.0 Z" fill="#0a7aff"/>
+<line x1="240" y1="111.0" x2="243" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 250 111.0 L 243 107.0 L 243 115.0 Z" fill="#0a7aff"/>
+<line x1="372" y1="111.0" x2="379" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 386 111.0 L 379 107.0 L 379 115.0 Z" fill="#0a7aff"/>
+<line x1="494" y1="111.0" x2="497" y2="111.0" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 504 111.0 L 497 107.0 L 497 115.0 Z" fill="#0a7aff"/>
+<text x="34" y="190" text-anchor="start" font-size="12" font-weight="bold" fill="#c22f2f">BACKWARD — blame flows left (each hop applies one rule)</text>
+<text x="664" y="214" text-anchor="end" font-size="11.5" font-weight="bold" fill="#c22f2f">starts at the loss: dL/dy = +4.0</text>
+<rect x="16" y="226" width="150" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="91.0" y="256.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">grad W1</text>
+<text x="91.0" y="272.0" text-anchor="middle" font-size="11" fill="#1c1c1e">[[8, 16], [−4, −8]]</text>
+<text x="91.0" y="288.0" text-anchor="middle" font-size="11" fill="#1c1c1e">grad b1 = [8, −4]</text>
+<rect x="182" y="226" width="110" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="237.0" y="264.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">delta z1</text>
+<text x="237.0" y="280.0" text-anchor="middle" font-size="11" fill="#1c1c1e">[8, −4]</text>
+<rect x="308" y="226" width="110" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="363.0" y="264.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">ReLU gate</text>
+<text x="363.0" y="280.0" text-anchor="middle" font-size="11" fill="#1c1c1e">× [1, 1] live</text>
+<rect x="434" y="226" width="230" height="84" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="549.0" y="256.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">delta h = [8, −4]</text>
+<text x="549.0" y="272.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">grad W2 = [8, 6]</text>
+<text x="549.0" y="288.0" text-anchor="middle" font-size="11" fill="#1c1c1e">dL/dy × W2 · dL/dy × h</text>
+<line x1="180" y1="268.0" x2="175" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 168 268.0 L 175 264.0 L 175 272.0 Z" fill="#c22f2f"/>
+<line x1="306" y1="268.0" x2="301" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 294 268.0 L 301 264.0 L 301 272.0 Z" fill="#c22f2f"/>
+<line x1="432" y1="268.0" x2="427" y2="268.0" stroke="#c22f2f" stroke-width="2"/>
+<path d="M 420 268.0 L 427 264.0 L 427 272.0 Z" fill="#c22f2f"/>
+<line x1="588" y1="150" x2="588" y2="222" stroke="#c22f2f" stroke-width="2" stroke-dasharray="4 3"/>
+<path d="M 588 226 L 583 218 L 593 218 Z" fill="#c22f2f"/>
+<rect x="16" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="118.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 1 — grade a weight</text>
+<text x="118.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">grad = delta × the input</text>
+<text x="118.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">that weight scaled</text>
+<text x="118.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">W2: 4 × [2, 1.5] = [8, 6]</text>
+<rect x="238" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="340.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 2 — pass blame down</text>
+<text x="340.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">delta × the weights it fed,</text>
+<text x="340.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">summed over all paths</text>
+<text x="340.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">h: 4 × [2, −1] = [8, −4]</text>
+<rect x="460" y="344" width="204" height="104" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="562.0" y="376.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Rule 3 — the gate</text>
+<text x="562.0" y="392.0" text-anchor="middle" font-size="11" fill="#1c1c1e">× activation derivative</text>
+<text x="562.0" y="408.0" text-anchor="middle" font-size="11" fill="#1c1c1e">on the way through</text>
+<text x="562.0" y="424.0" text-anchor="middle" font-size="11" fill="#1c1c1e">live ReLU ×1 · dead ×0</text>
+<rect x="16" y="470" width="648" height="62" rx="8" fill="#fafafa" stroke="#d99a00" stroke-width="1.5"/>
+<text x="340.0" y="497.0" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">One backward sweep grades all 9 parameters at once.</text>
+<text x="340.0" y="513.0" text-anchor="middle" font-size="11" fill="#1c1c1e">Numeric checking would take 9+ extra forwards — that economy is why deep nets train.</text>
+</svg>
+    <div class="caption">Top: the forward pass — every value it computes is a receipt the backward pass will use. Bottom: blame starts at the loss as dL/dy = +4.0 and flows left; each hop either grades the weights it passes (delta × input), routes blame onward (delta × weights), or gates it (× the activation&#x27;s derivative).</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts, all CPU, all RNG-free — every weight is set by hand, so every digit reproduces. <strong>Part 1</strong> runs the forward pass, then applies the three rules by hand and checks them against autograd. <strong>Part 2</strong> feeds an input that kills one hidden neuron and watches its credit stop in both directions. <strong>Part 3</strong> takes one real SGD step using only the hand-computed gradients. Run it in <code>~/ai-lab</code>:</p>
+  <pre><code>&quot;&quot;&quot;Day 23 - Backprop Intuition: Credit Assignment Through Layers.
+
+Days 4 and 7 let autograd do the backward pass. Today we do ONE
+backward pass by hand on a tiny 2 -&gt; 2 (ReLU) -&gt; 1 network and watch
+how the loss&#x27;s blame is assigned, layer by layer. No derivation -
+just three local rules, applied in reverse:
+
+  Rule 1  A weight&#x27;s gradient = the delta arriving at its output
+          TIMES the input that weight multiplied.
+          (Day 6&#x27;s &quot;error times input&quot;, one layer up.)
+  Rule 2  Blame passed down to an input = delta TIMES the weights
+          that input fed, summed over every neuron it touched.
+  Rule 3  Crossing an activation multiplies by its derivative
+          (Day 22): a live ReLU passes blame x1, a dead one x0.
+
+  Part 1  Forward + hand backprop on x = (1, 2): the prediction is
+          3.0 against a target of 1.0, loss 4.0. The hand-computed
+          gradients match autograd on all 9 parameters exactly.
+  Part 2  A second input, x = (2, 0), leaves hidden neuron 2 dead
+          (z = -1.5). It gets a double zero: its outgoing weight&#x27;s
+          gradient is 0 because its activation was 0, and its
+          incoming weights get 0 because the ReLU gate blocks the
+          blame on its way down.
+  Part 3  One SGD step (lr = 0.01) using Part 1&#x27;s hand gradients:
+          loss 4.000000 -&gt; 0.285156. Nine parameters graded, one
+          backward sweep - that economy is why deep nets can train
+          at all.
+
+Runs on the ~/ai-lab venv: torch only, CPU on purpose (tiny data, no
+RNG - every weight is set by hand, so every digit reproduces
+exactly). No CUDA, no paid APIs.
+
+Expected output:
+
+  Part 1 - forward pass: x = (1.0, 2.0), target 1.0
+    z1 (pre-activation): 2.0000, 1.5000
+    h  (after ReLU)    : 2.0000, 1.5000
+    y = 3.0000   loss = 4.0000   dL/dy = 4.0000
+
+  Part 1 - backward pass, by hand (the three rules)
+    grad W2 = delta * h        : 8.0000, 6.0000   grad b2 = 4.0000
+    delta_h = delta * W2       : 8.0000, -4.0000
+    delta_z1 = delta_h * ReLU&#x27; : 8.0000, -4.0000
+    grad W1 = delta_z1 x x     : [8.0000, 16.0000], [-4.0000, -8.0000]
+    grad b1                    : 8.0000, -4.0000
+    grad x  = W1^T x delta_z1  : 12.0000, 0.0000
+    autograd max diff vs hand  : 0.000000  (9 parameters, 1 backward sweep)
+
+  Part 2 - the dead neuron gets no credit and passes none
+    z1: 2.0000, -1.5000   h: 2.0000, 0.0000   y = 4.5000   loss = 12.2500
+    dL/dy = 7.0000
+    grad W2: 14.0000, 0.0000  &lt;- dead neuron&#x27;s activation was 0
+    delta_h: 14.0000, -7.0000
+    delta_z1 after the ReLU gate: 14.0000, 0.0000  &lt;- gate blocks the rest
+    grad W1 row for the dead neuron: 0.0000, 0.0000
+
+  Part 3 - one SGD step on Part 1&#x27;s hand gradients (lr = 0.01)
+    loss 4.000000 -&gt; 0.285156   new y = 1.534000
+&quot;&quot;&quot;
+import torch
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+# The network, with every weight set by hand (no RNG anywhere):
+#   z1 = W1 @ x + b1   (2 hidden pre-activations)
+#   h  = relu(z1)
+#   y  = W2 @ h + b2   (one number out)
+W1 = torch.tensor([[1.0, 0.5], [-1.0, 1.0]])
+b1 = torch.tensor([0.0, 0.5])
+W2 = torch.tensor([2.0, -1.0])
+b2 = torch.tensor(0.5)
+TARGET = 1.0
+
+
+def forward(x):
+    z1 = W1 @ x + b1
+    h = torch.relu(z1)
+    y = W2 @ h + b2
+    return z1, h, y
+
+
+def manual_backward(x, z1, h, y):
+    &quot;&quot;&quot;The three rules, in reverse order. Returns every gradient.&quot;&quot;&quot;
+    dy = 2.0 * (y - TARGET)              # dL/dy for loss = (y - t)^2
+    gW2 = dy * h                         # Rule 1: delta x what it scaled
+    gb2 = dy                             # bias multiplied &quot;1&quot;
+    dh = dy * W2                         # Rule 2: blame down, per neuron
+    dz1 = torch.where(z1 &gt; 0, dh, torch.zeros_like(dh))  # Rule 3: gate
+    gW1 = torch.outer(dz1, x)            # Rule 1 again, as an outer product
+    gb1 = dz1
+    gx = W1.T @ dz1                      # Rule 2 again, summed over neurons
+    return dy, gW2, gb2, dh, dz1, gW1, gb1, gx
+
+
+# ---------- Part 1: forward, then backprop by hand ----------
+print(&quot;Part 1 - forward pass: x = (1.0, 2.0), target 1.0&quot;)
+x = torch.tensor([1.0, 2.0])
+z1, h, y = forward(x)
+loss = (y - TARGET) ** 2
+print(f&quot;  z1 (pre-activation): {fmt(z1)}&quot;)
+print(f&quot;  h  (after ReLU)    : {fmt(h)}&quot;)
+dy, gW2, gb2, dh, dz1, gW1, gb1, gx = manual_backward(x, z1, h, y)
+print(f&quot;  y = {y.item():.4f}   loss = {loss.item():.4f}   &quot;
+      f&quot;dL/dy = {dy.item():.4f}&quot;)
+
+print(&quot;\nPart 1 - backward pass, by hand (the three rules)&quot;)
+print(f&quot;  grad W2 = delta * h        : {fmt(gW2)}   &quot;
+      f&quot;grad b2 = {gb2.item():.4f}&quot;)
+print(f&quot;  delta_h = delta * W2       : {fmt(dh)}&quot;)
+print(f&quot;  delta_z1 = delta_h * ReLU&#x27; : {fmt(dz1)}&quot;)
+print(f&quot;  grad W1 = delta_z1 x x     : [{fmt(gW1[0])}], [{fmt(gW1[1])}]&quot;)
+print(f&quot;  grad b1                    : {fmt(gb1)}&quot;)
+print(f&quot;  grad x  = W1^T x delta_z1  : {fmt(gx)}&quot;)
+
+# Check the hand work against autograd (Day 4&#x27;s tape recorder).
+aW1 = W1.clone().requires_grad_(True)
+ab1 = b1.clone().requires_grad_(True)
+aW2 = W2.clone().requires_grad_(True)
+ab2 = b2.clone().requires_grad_(True)
+ay = aW2 @ torch.relu(aW1 @ x + ab1) + ab2
+((ay - TARGET) ** 2).backward()
+diffs = [(aW1.grad - gW1).abs().max(), (ab1.grad - gb1).abs().max(),
+         (aW2.grad - gW2).abs().max(), (ab2.grad - gb2).abs().max()]
+n_params = W1.numel() + b1.numel() + W2.numel() + b2.numel()
+print(f&quot;  autograd max diff vs hand  : &quot;
+      f&quot;{max(d.item() for d in diffs):.6f}  &quot;
+      f&quot;({n_params} parameters, 1 backward sweep)&quot;)
+
+# ---------- Part 2: the dead neuron ----------
+# Same weights, new input: hidden neuron 2&#x27;s pre-activation goes
+# negative, so ReLU outputs 0 - and BOTH directions of credit stop.
+print(&quot;\nPart 2 - the dead neuron gets no credit and passes none&quot;)
+x2 = torch.tensor([2.0, 0.0])
+z1d, hd, yd = forward(x2)
+lossd = (yd - TARGET) ** 2
+dyd, gW2d, _, dhd, dz1d, gW1d, _, _ = manual_backward(x2, z1d, hd, yd)
+print(f&quot;  z1: {fmt(z1d)}   h: {fmt(hd)}   &quot;
+      f&quot;y = {yd.item():.4f}   loss = {lossd.item():.4f}&quot;)
+print(f&quot;  dL/dy = {dyd.item():.4f}&quot;)
+print(f&quot;  grad W2: {fmt(gW2d)}  &lt;- dead neuron&#x27;s activation was 0&quot;)
+print(f&quot;  delta_h: {fmt(dhd)}&quot;)
+print(f&quot;  delta_z1 after the ReLU gate: {fmt(dz1d)}  &quot;
+      f&quot;&lt;- gate blocks the rest&quot;)
+print(f&quot;  grad W1 row for the dead neuron: {fmt(gW1d[1])}&quot;)
+
+# ---------- Part 3: one step on the hand gradients ----------
+# Plain SGD, p &lt;- p - lr * grad, using Part 1&#x27;s gradients - then a
+# fresh forward pass to grade the step. This is Day 7&#x27;s loop with
+# the backward pass done by hand instead of by autograd.
+print(&quot;\nPart 3 - one SGD step on Part 1&#x27;s hand gradients (lr = 0.01)&quot;)
+lr = 0.01
+W1s = W1 - lr * gW1
+b1s = b1 - lr * gb1
+W2s = W2 - lr * gW2
+b2s = b2 - lr * gb2
+y_new = W2s @ torch.relu(W1s @ x + b1s) + b2s
+loss_new = (y_new - TARGET) ** 2
+print(f&quot;  loss {loss.item():.6f} -&gt; {loss_new.item():.6f}   &quot;
+      f&quot;new y = {y_new.item():.6f}&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - forward pass: x = (1.0, 2.0), target 1.0
+  z1 (pre-activation): 2.0000, 1.5000
+  h  (after ReLU)    : 2.0000, 1.5000
+  y = 3.0000   loss = 4.0000   dL/dy = 4.0000
+
+Part 1 - backward pass, by hand (the three rules)
+  grad W2 = delta * h        : 8.0000, 6.0000   grad b2 = 4.0000
+  delta_h = delta * W2       : 8.0000, -4.0000
+  delta_z1 = delta_h * ReLU&#x27; : 8.0000, -4.0000
+  grad W1 = delta_z1 x x     : [8.0000, 16.0000], [-4.0000, -8.0000]
+  grad b1                    : 8.0000, -4.0000
+  grad x  = W1^T x delta_z1  : 12.0000, 0.0000
+  autograd max diff vs hand  : 0.000000  (9 parameters, 1 backward sweep)
+
+Part 2 - the dead neuron gets no credit and passes none
+  z1: 2.0000, -1.5000   h: 2.0000, 0.0000   y = 4.5000   loss = 12.2500
+  dL/dy = 7.0000
+  grad W2: 14.0000, 0.0000  &lt;- dead neuron&#x27;s activation was 0
+  delta_h: 14.0000, -7.0000
+  delta_z1 after the ReLU gate: 14.0000, 0.0000  &lt;- gate blocks the rest
+  grad W1 row for the dead neuron: 0.0000, 0.0000
+
+Part 3 - one SGD step on Part 1&#x27;s hand gradients (lr = 0.01)
+  loss 4.000000 -&gt; 0.285156   new y = 1.534000</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1's hand gradients match autograd with <code>max diff 0.000000</code> across all 9 parameters — <code>grad W2 = [8.0000, 6.0000]</code>, <code>grad W1 = [[8.0000, 16.0000], [−4.0000, −8.0000]]</code>, <code>grad x = [12.0000, 0.0000]</code>; Part 2's dead neuron shows the double zero (its outgoing weight's gradient <code>0.0000</code> because its activation was 0, its incoming row <code>0.0000, 0.0000</code> because the gate blocked the blame); and Part 3's single step on <em>your</em> gradients — no autograd anywhere in it — cuts the loss from <code>4.000000</code> to <code>0.285156</code>. The bigger test: state the three rules out loud — delta × input grades a weight, delta × weights passes blame down, × derivative at every activation gate.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Part 1 only (~15 min) and stare at each line until you can say <em>which rule</em> produced it. Parts 2–3 are short and worth the remaining minutes if you have them — the dead-neuron double zero is the single most useful debugging intuition in this phase.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: stop hand-wiring tensors — package this network as a proper reusable model you can instantiate, inspect, and save.</p>
+  </div>
+
+  <div class="footer">Streak: 23 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
