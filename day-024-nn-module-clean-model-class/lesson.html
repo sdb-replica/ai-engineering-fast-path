@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PyTorch nn.Module: Writing a Clean Model Class — Day 24 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 24 of 100</span>
+  <h1>PyTorch nn.Module: Writing a Clean Model Class</h1>
+  <p class="outcome">Tonight you'll be able to: write any small network as a clean, reusable <code>nn.Module</code> class — declare its layers once, let PyTorch find all 17 parameters automatically, train the Days 21–22 XOR net through it, and snapshot + restore its exact state with <code>state_dict()</code>.</p>
+
+  <h2>The one idea</h2>
+  <p>Until now your networks have been loose tensors wired by hand (Days 21–23) or a straight-line <code>nn.Sequential</code> chain (Day 21). That works for a demo and falls apart for anything real: no single place owns the weights, nothing can list them, save them, or move them as one unit. <strong><code>nn.Module</code> is PyTorch's packaging unit</strong> — the base class that <em>every</em> layer (<code>nn.Linear</code> included) and every real model inherits from. A model class has exactly two jobs.</p>
+  <p><strong><code>__init__</code> declares the pieces.</strong> Call <code>super().__init__()</code> first — that switches on Module's bookkeeping — then assign each layer to <code>self</code>: <code>self.fc1 = nn.Linear(2, 4)</code>. The assignment is the whole trick: Module overrides attribute assignment, so anything assigned to <code>self</code> is <strong>registered</strong> — tracked, recursively, along with everything inside it. Registration is what makes the free services work: <code>model.parameters()</code> walks the registry and hands the optimizer every trainable tensor in <em>one call</em> (add a layer later and it is enlisted automatically — no list to update, no weight silently left untrained), <code>state_dict()</code> snapshots the whole model as a name → tensor dict you can save and reload into a fresh instance, and <code>model.to("mps")</code> or <code>model.train()</code> / <code>model.eval()</code> apply to the entire tree at once. The failure mode is silent: build a layer into a plain local variable inside <code>__init__</code> and it is <em>never registered</em> — invisible to the optimizer, missing from the snapshot, gone when <code>__init__</code> returns.</p>
+  <p><strong><code>forward(x)</code> defines the flow</strong> — how an input moves through the declared pieces, in any shape you like: branches, reuse of one layer twice, a loop. That freedom is exactly what <code>nn.Sequential</code> cannot express, and why the class wins the moment a forward pass stops being a straight pipe. One convention is load-bearing in every codebase you will read: you call <code>model(x)</code>, <em>never</em> <code>model.forward(x)</code> — the call routes through Module's machinery (hooks and bookkeeping) on its way into your <code>forward</code>. Today's proof that the wrapper changes nothing underneath: the class version of your XOR net, given Day 21's hand-set weights, trains to the byte-identical result — loss <code>0.070625 → 0.000005</code>, 4/4 corners.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>An <code>nn.Module</code> class is a <strong>well-structured service</strong>. <code>__init__</code> is its dependency-injection wiring: every dependency you register with the container is discoverable by the framework — health checks, metrics, and config all find it automatically — while a dependency you construct into a local and forget to register is invisible to all of it and dies with the constructor. <code>forward</code> is the request handler: pure flow over the wired pieces. And <code>state_dict()</code> is the service's <strong>serializable state snapshot</strong> — the etcd snapshot / checkpoint manifest that lets you spin up a fresh replica, hand it the snapshot, and get a byte-identical service back. Part 3 is exactly that restore drill, and it passes with max diff <code>0.000000</code>.</p>
+  <p>Trading version: it's the difference between a strategy as a <strong>class</strong> — parameters declared in one place, state saveable and restorable, new instances spun up for a backtest and a live run — and a strategy as a pile of loose variables in a notebook, where nobody can say what the full position is. Registration is position-keeping for weights.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">nn.Module: you write the class, the registry keeps the books</text>
+<rect x="16" y="52" width="204" height="159" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="118.0" y="74" text-anchor="middle" font-size="11" font-weight="bold" fill="#0a54c2">YOU WRITE</text>
+<text x="118.0" y="93" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">class XORNet(nn.Module):</text>
+<text x="118.0" y="112" text-anchor="middle" font-size="11" fill="#1c1c1e">__init__: declare layers</text>
+<text x="118.0" y="131" text-anchor="middle" font-size="11" fill="#1c1c1e">self.fc1 = Linear(2, 4)</text>
+<text x="118.0" y="150" text-anchor="middle" font-size="11" fill="#1c1c1e">self.fc2 = Linear(4, 1)</text>
+<text x="118.0" y="169" text-anchor="middle" font-size="11" fill="#1c1c1e">forward(x): the flow</text>
+<text x="118.0" y="188" text-anchor="middle" font-size="11" fill="#1c1c1e">fc1 -&gt; ReLU -&gt; fc2</text>
+<rect x="238" y="52" width="204" height="159" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="340.0" y="74" text-anchor="middle" font-size="11" font-weight="bold" fill="#0a54c2">MODULE REGISTRY</text>
+<text x="340.0" y="93" text-anchor="middle" font-size="11" fill="#1c1c1e">parameters(): 17 found</text>
+<text x="340.0" y="112" text-anchor="middle" font-size="11" fill="#1c1c1e">named_parameters()</text>
+<text x="340.0" y="131" text-anchor="middle" font-size="11" fill="#1c1c1e">state_dict(): snapshot</text>
+<text x="340.0" y="150" text-anchor="middle" font-size="11" fill="#1c1c1e">train() / eval(): mode</text>
+<text x="340.0" y="169" text-anchor="middle" font-size="11" fill="#1c1c1e">to(device): moves all</text>
+<text x="340.0" y="188" text-anchor="middle" font-size="11" fill="#1c1c1e">all recursive, for free</text>
+<rect x="460" y="52" width="204" height="159" rx="8" fill="#fafafa" stroke="#d99a00" stroke-width="1.5"/>
+<text x="562.0" y="74" text-anchor="middle" font-size="11" font-weight="bold" fill="#0a54c2">YOU USE</text>
+<text x="562.0" y="93" text-anchor="middle" font-size="11" fill="#1c1c1e">model = XORNet()</text>
+<text x="562.0" y="112" text-anchor="middle" font-size="11" fill="#1c1c1e">pred = model(x)</text>
+<text x="562.0" y="131" text-anchor="middle" font-size="11" fill="#1c1c1e">never model.forward(x)</text>
+<text x="562.0" y="150" text-anchor="middle" font-size="11" fill="#1c1c1e">SGD(model.parameters())</text>
+<text x="562.0" y="169" text-anchor="middle" font-size="11" fill="#1c1c1e">fresh.load_state_dict(sd)</text>
+<text x="562.0" y="188" text-anchor="middle" font-size="11" fill="#1c1c1e">save / restore / deploy</text>
+<line x1="222" y1="115" x2="229" y2="115" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 236 115 L 229 111 L 229 119 Z" fill="#0a7aff"/>
+<line x1="444" y1="115" x2="451" y2="115" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 458 115 L 451 111 L 451 119 Z" fill="#0a7aff"/>
+<text x="340" y="236" text-anchor="middle" font-size="12" font-weight="bold" fill="#0a54c2">ONE INSTANCE, END TO END — the XOR net from Days 21-22, packaged</text>
+<rect x="16" y="254" width="112" height="62" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="72" y="280" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">x</text>
+<text x="72" y="298" text-anchor="middle" font-size="11" fill="#1c1c1e">[4, 2] batch</text>
+<rect x="150" y="254" width="112" height="62" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="206" y="280" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">fc1</text>
+<text x="206" y="298" text-anchor="middle" font-size="11" fill="#1c1c1e">Linear 2-&gt;4</text>
+<rect x="284" y="254" width="112" height="62" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="340" y="280" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">ReLU</text>
+<text x="340" y="298" text-anchor="middle" font-size="11" fill="#1c1c1e">the bend</text>
+<rect x="418" y="254" width="112" height="62" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="474" y="280" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">fc2</text>
+<text x="474" y="298" text-anchor="middle" font-size="11" fill="#1c1c1e">Linear 4-&gt;1</text>
+<rect x="552" y="254" width="112" height="62" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="608" y="280" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">pred</text>
+<text x="608" y="298" text-anchor="middle" font-size="11" fill="#1c1c1e">[4, 1] out</text>
+<line x1="130" y1="285" x2="141" y2="285" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 148 285 L 141 281 L 141 289 Z" fill="#0a7aff"/>
+<line x1="264" y1="285" x2="275" y2="285" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 282 285 L 275 281 L 275 289 Z" fill="#0a7aff"/>
+<line x1="398" y1="285" x2="409" y2="285" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 416 285 L 409 281 L 409 289 Z" fill="#0a7aff"/>
+<line x1="532" y1="285" x2="543" y2="285" stroke="#0a7aff" stroke-width="2"/>
+<path d="M 550 285 L 543 281 L 543 289 Z" fill="#0a7aff"/>
+<text x="340" y="344" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">fc1: 8 weights + 4 biases  -  fc2: 4 weights + 1 bias  -  17 parameters, all registered</text>
+<rect x="16" y="366" width="648" height="56" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="340" y="390" text-anchor="middle" font-size="12" font-weight="bold" fill="#c22f2f">Assigned to self in __init__ = registered and found forever.</text>
+<text x="340" y="410" text-anchor="middle" font-size="11.5" fill="#c22f2f">Created as a plain local variable = gone when __init__ returns.</text>
+<text x="340" y="452" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Same class, many instances: a fresh XORNet() + the saved state_dict</text>
+<text x="340" y="472" text-anchor="middle" font-size="11.5" fill="#1c1c1e">reproduces the trained model exactly - max diff 0.000000 (Part 3).</text>
+</svg>
+    <div class="caption">Left: the only two methods you write. Middle: the registry services registration buys you — parameter discovery, snapshots, mode and device moves, all recursive. Right: how the instance is actually used. Bottom: the one XORNet, end to end — 17 parameters, every one of them found automatically.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts in <code>~/ai-lab</code>, all CPU, no RNG in any printed number — the weights are hand-loaded exactly as on Days 21–22. <strong>Part 1</strong> defines <code>XORNet</code> and inspects what registration produced. <strong>Part 2</strong> trains XOR through the class, the optimizer fed by a single <code>model.parameters()</code> call. <strong>Part 3</strong> snapshots <code>state_dict()</code>, restores it into a fresh instance, and flips the train/eval flag.</p>
+  <pre><code>&quot;&quot;&quot;Day 24 - PyTorch nn.Module: Writing a Clean Model Class.
+
+Every model you have built so far was loose tensors or an
+nn.Sequential chain (Day 21). Real PyTorch code packages a network
+as a subclass of nn.Module - the base class every layer and every
+model in PyTorch already is. Two methods do all the work:
+
+  __init__  Declare the pieces. Call super().__init__() FIRST, then
+            assign each layer to self (self.fc1 = nn.Linear(...)).
+            That assignment REGISTERS the layer: nn.Module tracks
+            it, so parameters() and state_dict() find it - and
+            everything inside it - automatically, recursively.
+            A layer left in a plain local variable is never
+            registered, and vanishes when __init__ returns.
+  forward   Define the computation: how an input flows through the
+            declared pieces. Call the model itself - model(x) -
+            never model.forward(x): the call runs PyTorch&#x27;s hooks
+            and bookkeeping around forward for you.
+
+  Part 1  XORNet, a 2 -&gt; 4 (ReLU) -&gt; 1 class. Printing it shows the
+          architecture; named_parameters() lists all 4 tensors -
+          17 trainable parameters - without you enumerating any.
+  Part 2  The Days 21-22 XOR net, hand-loaded weights and all,
+          trained through the class. The optimizer takes
+          model.parameters() in ONE call, so adding a layer later
+          enlists its weights automatically. Same init, same math:
+          loss 0.070625 -&gt; 0.000005, 4/4 corners - byte-identical
+          to the nn.Sequential version, as it must be.
+  Part 3  state_dict(): an ordered name -&gt; tensor snapshot of the
+          whole model. Load it into a FRESH instance and its
+          predictions match exactly (max diff 0.000000) - that is
+          checkpointing and deployment in embryo. Plus the
+          train()/eval() mode flag every Module carries.
+
+Runs on the ~/ai-lab venv: torch only, CPU on purpose (tiny data,
+hand-set weights - no RNG in any printed number). The MPS device
+move you already know (.to(&quot;mps&quot;)) works on the whole Module at
+once; Day 25 puts it to work. No CUDA, no paid APIs.
+
+Expected output:
+
+  Part 1 - one class, and the registry fills itself in
+  XORNet(
+    (fc1): Linear(in_features=2, out_features=4, bias=True)
+    (fc2): Linear(in_features=4, out_features=1, bias=True)
+  )
+  fc1.weight   shape [4, 2]   8 params
+  fc1.bias     shape [4]      4 params
+  fc2.weight   shape [1, 4]   4 params
+  fc2.bias     shape [1]      1 params
+    total trainable parameters: 17
+
+  Part 2 - the Days 21-22 XOR net, trained through the class
+    loss 0.070625 -&gt; 0.000005
+    predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)
+    optimizer received 4 tensors from model.parameters() in one call
+
+  Part 3 - state_dict: snapshot it, load it into a fresh instance
+    state_dict keys: fc1.weight, fc1.bias, fc2.weight, fc2.bias
+    fresh instance predictions match: max diff 0.000000
+    after model.train(): training = True
+    after model.eval() : training = False
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+
+class XORNet(nn.Module):
+    &quot;&quot;&quot;The Days 21-22 XOR MLP, packaged as a reusable class.&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()          # register-tracking starts here
+        self.fc1 = nn.Linear(2, 4)  # assigned to self = registered
+        self.fc2 = nn.Linear(4, 1)
+
+    def forward(self, x):
+        return self.fc2(torch.relu(self.fc1(x)))
+
+
+# ---------- Part 1: inspection - the registry fills itself in ----------
+print(&quot;Part 1 - one class, and the registry fills itself in&quot;)
+model = XORNet()
+print(model)
+total = 0
+for name, p in model.named_parameters():
+    total += p.numel()
+    print(f&quot;  {name:&lt;12} shape {str(list(p.shape)):&lt;8} {p.numel()} params&quot;)
+print(f&quot;  total trainable parameters: {total}&quot;)
+
+# ---------- Part 2: train the XOR net through the class ----------
+# Identical hand-set init to Days 21-22 (no RNG), identical SGD -
+# the class wrapper changes the packaging, never the math.
+print(&quot;\nPart 2 - the Days 21-22 XOR net, trained through the class&quot;)
+with torch.no_grad():
+    model.fc1.weight.copy_(torch.tensor([[1.0, -1.0], [-1.0, 1.0],
+                                         [0.5, 0.5], [-0.5, 0.8]]))
+    model.fc1.bias.copy_(torch.tensor([0.0, 0.0, -0.5, 0.0]))
+    model.fc2.weight.copy_(torch.tensor([[1.0, 1.0, 1.0, -0.5]]))
+    model.fc2.bias.copy_(torch.tensor([0.0]))
+X = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+y = torch.tensor([[0.0], [1.0], [1.0], [0.0]])
+opt = torch.optim.SGD(model.parameters(), lr=0.5)  # one call, all 4 tensors
+n_tensors = len(list(model.parameters()))
+first = None
+for _ in range(100):
+    opt.zero_grad()
+    loss = ((model(X) - y) ** 2).mean()   # model(X), never model.forward(X)
+    if first is None:
+        first = loss.item()
+    loss.backward()
+    opt.step()
+with torch.no_grad():
+    pred = model(X)
+    final = ((pred - y) ** 2).mean().item()
+    correct = int(((pred &gt; 0.5) == (y &gt; 0.5)).sum())
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+print(f&quot;  loss {first:.6f} -&gt; {final:.6f}&quot;)
+print(f&quot;  predictions {fmt(pred)}  (correct: {correct}/4)&quot;)
+print(f&quot;  optimizer received {n_tensors} tensors &quot;
+      f&quot;from model.parameters() in one call&quot;)
+
+# ---------- Part 3: state_dict snapshot + the mode flag ----------
+# state_dict is the model&#x27;s entire learned state as name -&gt; tensor.
+# Saving it (torch.save) is a checkpoint; loading it into a fresh
+# instance of the same class restores the model exactly.
+print(&quot;\nPart 3 - state_dict: snapshot it, load it into a fresh instance&quot;)
+sd = model.state_dict()
+print(f&quot;  state_dict keys: {&#x27;, &#x27;.join(sd.keys())}&quot;)
+fresh = XORNet()
+fresh.load_state_dict(sd)
+with torch.no_grad():
+    diff = (fresh(X) - model(X)).abs().max().item()
+print(f&quot;  fresh instance predictions match: max diff {diff:.6f}&quot;)
+model.train()
+print(f&quot;  after model.train(): training = {model.training}&quot;)
+model.eval()
+print(f&quot;  after model.eval() : training = {model.training}&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one class, and the registry fills itself in
+XORNet(
+  (fc1): Linear(in_features=2, out_features=4, bias=True)
+  (fc2): Linear(in_features=4, out_features=1, bias=True)
+)
+  fc1.weight   shape [4, 2]   8 params
+  fc1.bias     shape [4]      4 params
+  fc2.weight   shape [1, 4]   4 params
+  fc2.bias     shape [1]      1 params
+  total trainable parameters: 17
+
+Part 2 - the Days 21-22 XOR net, trained through the class
+  loss 0.070625 -&gt; 0.000005
+  predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)
+  optimizer received 4 tensors from model.parameters() in one call
+
+Part 3 - state_dict: snapshot it, load it into a fresh instance
+  state_dict keys: fc1.weight, fc1.bias, fc2.weight, fc2.bias
+  fresh instance predictions match: max diff 0.000000
+  after model.train(): training = True
+  after model.eval() : training = False</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: <code>print(model)</code> shows the two-layer architecture; <code>named_parameters()</code> lists <code>fc1.weight [4, 2]</code>, <code>fc1.bias [4]</code>, <code>fc2.weight [1, 4]</code>, <code>fc2.bias [1]</code> — <strong>17 trainable parameters</strong> you never enumerated by hand; Part 2 trains to loss <code>0.070625 → 0.000005</code> with predictions <code>0.0032, 1.0000, 0.9999, -0.0029</code> (4/4), byte-identical to Day 21's Sequential version; and Part 3's fresh instance, given only the <code>state_dict</code>, reproduces the trained model with <strong>max diff 0.000000</strong>. The bigger test: you can state the two jobs cold — <code>__init__</code> declares and registers, <code>forward</code> defines the flow — and why you call <code>model(x)</code>, never <code>model.forward(x)</code>.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Parts 1 and 3 only (~15 min): define the class, list its parameters, snapshot and restore it. That registry round-trip is the concept. Part 2 is a 100-epoch confirmation that the wrapper trains identically — run it if you have the remaining minutes; it takes seconds.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: your clean model meets an equally clean loop — the small disciplines that keep training honest once a model can also be <em>checked</em>, not just trained. Same <code>XORNet</code>, production habits.</p>
+  </div>
+
+  <div class="footer">Streak: 24 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

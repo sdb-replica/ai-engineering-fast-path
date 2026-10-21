@@ -47,3 +47,4 @@ pip install torch numpy
 | 21 | [Perceptron → MLP: Stacking Layers With Non-Linearities](day-021-perceptron-to-mlp/lesson.html) | [lesson.md](day-021-perceptron-to-mlp/lesson.md) | [code.py](day-021-perceptron-to-mlp/code.py) |
 | 22 | [Activation Functions: ReLU, Sigmoid & Tanh](day-022-activation-functions/lesson.html) | [lesson.md](day-022-activation-functions/lesson.md) | [code.py](day-022-activation-functions/code.py) |
 | 23 | [Backprop Intuition: Credit Assignment Through Layers](day-023-backprop-credit-assignment/lesson.html) | [lesson.md](day-023-backprop-credit-assignment/lesson.md) | [code.py](day-023-backprop-credit-assignment/code.py) |
+| 24 | [PyTorch nn.Module: Writing a Clean Model Class](day-024-nn-module-clean-model-class/lesson.html) | [lesson.md](day-024-nn-module-clean-model-class/lesson.md) | [code.py](day-024-nn-module-clean-model-class/code.py) |
