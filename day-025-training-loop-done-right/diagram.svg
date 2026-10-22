@@ -1,0 +1,41 @@
+<svg viewBox="0 0 680 540" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="540" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">One loop, two modes — and everything on one device</text>
+<rect x="16" y="44" width="312" height="168" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="172" y="66" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">TRAIN — model.train()</text>
+<text x="172" y="90" text-anchor="middle" font-size="11" fill="#1c1c1e">tape ON: every op recorded (Day 4)</text>
+<text x="172" y="114" text-anchor="middle" font-size="11" fill="#1c1c1e">dropout ON: a fresh mask per pass</text>
+<text x="172" y="138" text-anchor="middle" font-size="11" fill="#1c1c1e">zero_grad -&gt; backward -&gt; step</text>
+<text x="172" y="162" text-anchor="middle" font-size="11" fill="#1c1c1e">weights CHANGE — this is learning</text>
+<text x="172" y="186" text-anchor="middle" font-size="11" fill="#1c1c1e">use for: training batches only</text>
+<rect x="352" y="44" width="312" height="168" rx="8" fill="#fafafa" stroke="#22a355" stroke-width="1.5"/>
+<text x="508" y="66" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">EVAL — model.eval() + no_grad()</text>
+<text x="508" y="90" text-anchor="middle" font-size="11" fill="#1c1c1e">tape OFF: nothing recorded, no grads</text>
+<text x="508" y="114" text-anchor="middle" font-size="11" fill="#1c1c1e">dropout OFF: identity — deterministic</text>
+<text x="508" y="138" text-anchor="middle" font-size="11" fill="#1c1c1e">forward only: no step, no update</text>
+<text x="508" y="162" text-anchor="middle" font-size="11" fill="#1c1c1e">weights FROZEN — this is measuring</text>
+<text x="508" y="186" text-anchor="middle" font-size="11" fill="#1c1c1e">use for: validation, test, inference</text>
+<text x="340" y="238" text-anchor="middle" font-size="12" font-weight="bold" fill="#0a54c2">evaluate(): measure, then put the flag back</text>
+<rect x="16" y="254" width="140" height="44" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="86.0" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">model.eval()</text>
+<rect x="188" y="254" width="140" height="44" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="258.0" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">no_grad forward</text>
+<rect x="360" y="254" width="140" height="44" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="430.0" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">loss / accuracy</text>
+<rect x="532" y="254" width="132" height="44" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="598.0" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">train() restored</text>
+<line x1="158" y1="276" x2="179" y2="276" stroke="#7a5cff" stroke-width="2"/>
+<path d="M 186 276 L 179 272 L 179 280 Z" fill="#7a5cff"/>
+<line x1="330" y1="276" x2="351" y2="276" stroke="#7a5cff" stroke-width="2"/>
+<path d="M 358 276 L 351 272 L 351 280 Z" fill="#7a5cff"/>
+<line x1="502" y1="276" x2="523" y2="276" stroke="#7a5cff" stroke-width="2"/>
+<path d="M 530 276 L 523 272 L 523 280 Z" fill="#7a5cff"/>
+<rect x="16" y="322" width="648" height="118" rx="8" fill="#fafafa" stroke="#c22f2f" stroke-width="1.5"/>
+<text x="340" y="344" text-anchor="middle" font-size="12" font-weight="bold" fill="#c22f2f">DEVICE — pick once, co-locate everything</text>
+<text x="340" y="368" text-anchor="middle" font-size="11" fill="#1c1c1e">device = "mps" if available else "cpu"</text>
+<text x="340" y="390" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">model.to(device)  AND  batch.to(device)</text>
+<text x="340" y="412" text-anchor="middle" font-size="11" fill="#1c1c1e">model on MPS + data on CPU = RuntimeError: split brain, no forward pass</text>
+<text x="340" y="466" text-anchor="middle" font-size="11.5" fill="#1c1c1e">eval() is not no_grad(): eval changes how layers BEHAVE,</text>
+<text x="340" y="486" text-anchor="middle" font-size="11.5" fill="#1c1c1e">no_grad changes whether the tape RECORDS. Measuring needs both.</text>
+<text x="340" y="518" text-anchor="middle" font-size="11" fill="#555555">Three switches, three jobs: where it lives · how it behaves · whether it records</text>
+</svg>
