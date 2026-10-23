@@ -49,3 +49,4 @@ pip install torch numpy
 | 23 | [Backprop Intuition: Credit Assignment Through Layers](day-023-backprop-credit-assignment/lesson.html) | [lesson.md](day-023-backprop-credit-assignment/lesson.md) | [code.py](day-023-backprop-credit-assignment/code.py) |
 | 24 | [PyTorch nn.Module: Writing a Clean Model Class](day-024-nn-module-clean-model-class/lesson.html) | [lesson.md](day-024-nn-module-clean-model-class/lesson.md) | [code.py](day-024-nn-module-clean-model-class/code.py) |
 | 25 | [Training Loop, Done Right: Device, Eval Mode & no_grad](day-025-training-loop-done-right/lesson.html) | [lesson.md](day-025-training-loop-done-right/lesson.md) | [code.py](day-025-training-loop-done-right/code.py) |
+| 26 | [CNNs 1: Convolution — The Sliding Pattern Scanner](day-026-cnns-1-convolution-intuition/lesson.html) | [lesson.md](day-026-cnns-1-convolution-intuition/lesson.md) | [code.py](day-026-cnns-1-convolution-intuition/code.py) |

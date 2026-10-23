@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNNs 1: Convolution — The Sliding Pattern Scanner — Day 26 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 26 of 100</span>
+  <h1>CNNs 1: Convolution — The Sliding Pattern Scanner</h1>
+  <p class="outcome">Tonight you'll be able to: run a 3×3 kernel across an image by hand and in PyTorch, read the feature map it leaves behind, and explain why sharing 9 weights beats a dense layer’s millions — the layer every image model is built from.</p>
+
+  <h2>The one idea</h2>
+  <p>Every layer you have built so far is <strong>dense</strong>: flatten the input into one long vector, and let every neuron look at every value. For the 4-number XOR inputs of Days 21–25 that is fine. For images it throws away the one thing images are made of — <strong>structure</strong>. Flatten a 28×28 digit and position becomes just an index: pixel 1 and pixel 29 (vertical neighbours) look no closer than pixel 1 and pixel 700. Worse, an edge detector learned at the top-left is a completely separate set of weights from one at the bottom-right, so the model must re-learn the same pattern at every location — and pay for it: Part 3 counts <strong>4,245,280</strong> parameters for one dense layer doing a job a conv layer does with <strong>80</strong>.</p>
+<p><strong>Convolution</strong> is the layer built for data where neighbours matter. Instead of one giant weight matrix, it uses a small grid of weights called a <strong>kernel</strong> (or filter) — 3×3, so 9 numbers — which is a tiny pattern template. The kernel <strong>slides</strong> across the image, one step at a time. At each stop it computes a single <strong>dot product</strong> (Day 12’s core op: flatten the patch and the kernel, multiply, sum) between the kernel and the patch underneath it, and writes that one number into the output, the <strong>feature map</strong>. A high number means “a pattern shaped like me lives here”; the feature map is literally a map of where the pattern occurs. Each output number sees only its 3×3 patch — that patch is its <strong>receptive field</strong>.</p>
+<p>Two consequences do all the work. <strong>Locality:</strong> a value is judged by its neighbourhood, the way a pixel should be. <strong>Weight sharing:</strong> the <em>same</em> 9 weights are reused at every stop, so the detector fires wherever the pattern appears (Part 2: move the edge, the response moves with it) and the parameter count stops depending on image size. Those kernel weights are ordinary parameters — in a real network they are <em>learned</em> by the same backprop from Days 4 and 23. Today they are hand-set edge detectors so you can watch the mechanics with no training noise. Real layers run many kernels at once, producing a stack of feature maps, one per pattern; and a kernel spans all input channels (1 for grayscale, 3 for colour) as it slides. A ReLU (Day 22) usually follows, clipping negative responses — a pattern seen backwards — to zero (Part 3).</p>
+<p><strong>The two knobs.</strong> <strong>Stride</strong> is the step size of the slide: stride 2 skips every other stop, halving the map — a coarser, cheaper scan. <strong>Padding</strong> adds a ring of zeros around the border so edge pixels get fully scanned and the map can keep the input’s size. One just-in-time formula sizes any conv layer: <code>output = (H + 2P − K) / S + 1</code> per side, where H is input size, K kernel size, P padding, S stride. Part 3 checks all three cases against PyTorch’s actual shapes.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already run this algorithm — in stream processing. A <strong>sliding window</strong> in Kafka Streams or Flink takes the last N events, computes one aggregate, hops forward by a smaller step, and computes again: one output per window position, the same function at every position. Convolution is that, turned sideways into 2D: the window is a 3×3 patch instead of a time range, the aggregate is a <em>learned</em> dot product instead of a sum or average, and the hop is the stride. Same discipline, too: the window function does not care where in the stream it is — that indifference is exactly what makes it scale.</p>
+<p>Trading version: scanning a chart for a three-candle pattern with one fixed checklist, applied at every bar. Wherever the pattern prints, it counts — not only at bar 1. A moving average is the 1-D cousin you already know: a sliding window with fixed, equal weights. A conv kernel is a moving average whose weights got to <em>learn</em> what shape they are looking for.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 392" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="392" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Convolution: slide a pattern detector, take a dot at every stop</text>
+<text x="111" y="58" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">INPUT 5x5</text>
+<text x="111" y="74" text-anchor="middle" font-size="10.5" fill="#555555">one vertical edge</text>
+<rect x="36" y="84" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="51.0" y="103.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="66" y="84" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="81.0" y="103.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="96" y="84" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="111.0" y="103.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="126" y="84" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="141.0" y="103.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="156" y="84" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="171.0" y="103.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="36" y="114" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="51.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="66" y="114" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="81.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="96" y="114" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="111.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="126" y="114" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="141.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="156" y="114" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="171.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="36" y="144" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="51.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="66" y="144" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="81.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="96" y="144" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="111.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="126" y="144" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="141.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="156" y="144" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="171.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="36" y="174" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="51.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="66" y="174" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="81.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="96" y="174" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="111.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="126" y="174" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="141.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="156" y="174" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="171.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="36" y="204" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="51.0" y="223.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="66" y="204" width="30" height="30" fill="#e2e2e2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="81.0" y="223.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="96" y="204" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="111.0" y="223.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="126" y="204" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="141.0" y="223.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="156" y="204" width="30" height="30" fill="#a9c8f5" stroke="#ffffff" stroke-width="1.5"/>
+<text x="171.0" y="223.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="36" y="84" width="90" height="90" fill="none" stroke="#d97706" stroke-width="3"/>
+<rect x="66" y="84" width="90" height="90" fill="none" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="111" y="252" text-anchor="middle" font-size="10.5" fill="#555555">orange window = one stop</text>
+<text x="111" y="268" text-anchor="middle" font-size="10.5" fill="#555555">it slides right, then down</text>
+<text x="297" y="58" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">KERNEL 3x3</text>
+<text x="297" y="74" text-anchor="middle" font-size="10.5" fill="#555555">9 shared weights</text>
+<rect x="252" y="114" width="30" height="30" fill="#f3c2c2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="267.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">-1</text>
+<rect x="282" y="114" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="297.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="312" y="114" width="30" height="30" fill="#bfe3c8" stroke="#ffffff" stroke-width="1.5"/>
+<text x="327.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="252" y="144" width="30" height="30" fill="#f3c2c2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="267.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">-1</text>
+<rect x="282" y="144" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="297.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="312" y="144" width="30" height="30" fill="#bfe3c8" stroke="#ffffff" stroke-width="1.5"/>
+<text x="327.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<rect x="252" y="174" width="30" height="30" fill="#f3c2c2" stroke="#ffffff" stroke-width="1.5"/>
+<text x="267.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">-1</text>
+<rect x="282" y="174" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="297.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="312" y="174" width="30" height="30" fill="#bfe3c8" stroke="#ffffff" stroke-width="1.5"/>
+<text x="327.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">1</text>
+<text x="297" y="226" text-anchor="middle" font-size="10.5" fill="#555555">vertical-edge detector:</text>
+<text x="297" y="242" text-anchor="middle" font-size="10.5" fill="#555555">dark left, bright right</text>
+<text x="297" y="262" text-anchor="middle" font-size="10.5" fill="#555555">weights are LEARNED in</text>
+<text x="297" y="278" text-anchor="middle" font-size="10.5" fill="#555555">real nets (hand-set today)</text>
+<text x="523" y="58" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">FEATURE MAP 3x3</text>
+<text x="523" y="74" text-anchor="middle" font-size="10.5" fill="#555555">where the pattern fired</text>
+<rect x="478" y="114" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="493.0" y="133.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="508" y="114" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="523.0" y="133.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="538" y="114" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="553.0" y="133.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="478" y="144" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="493.0" y="163.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="508" y="144" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="523.0" y="163.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="538" y="144" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="553.0" y="163.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<rect x="478" y="174" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="493.0" y="193.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="508" y="174" width="30" height="30" fill="#8fd0a0" stroke="#ffffff" stroke-width="1.5"/>
+<text x="523.0" y="193.0" text-anchor="middle" font-size="12" font-weight="bold" fill="#1c1c1e">3</text>
+<rect x="538" y="174" width="30" height="30" fill="#ececec" stroke="#ffffff" stroke-width="1.5"/>
+<text x="553.0" y="193.0" text-anchor="middle" font-size="11.5" fill="#1c1c1e">0</text>
+<text x="523" y="226" text-anchor="middle" font-size="10.5" fill="#555555">3 = strong match</text>
+<text x="523" y="242" text-anchor="middle" font-size="10.5" fill="#555555">0 = no edge here</text>
+<text x="523" y="262" text-anchor="middle" font-size="10.5" fill="#555555">the 3s trace the edge:</text>
+<text x="523" y="278" text-anchor="middle" font-size="10.5" fill="#555555">response follows pattern</text>
+<line x1="192" y1="129" x2="237" y2="129" stroke="#555555" stroke-width="2"/>
+<path d="M 244 129 L 237 125.5 L 237 132.5 Z" fill="#555555"/>
+<line x1="348" y1="129" x2="463" y2="129" stroke="#555555" stroke-width="2"/>
+<path d="M 470 129 L 463 125.5 L 463 132.5 Z" fill="#555555"/>
+<text x="218" y="116" text-anchor="middle" font-size="10.5" fill="#555555">slide</text>
+<text x="409" y="116" text-anchor="middle" font-size="10.5" fill="#555555">dot per stop</text>
+<text x="340" y="300" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Top-left stop, by hand: each row (0, 0, 1) . (-1, 0, 1) = 1, summed over 3 rows = 3</text>
+<rect x="16" y="314" width="648" height="52" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="340" y="336" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Same 9 weights at all 9 stops = weight sharing. Output size: (H + 2P - K) / S + 1</text>
+<text x="340" y="356" text-anchor="middle" font-size="11" fill="#1c1c1e">stride S = step size of the slide  -  padding P = ring of zeros so edge pixels get scanned too</text>
+<text x="340" y="384" text-anchor="middle" font-size="11" fill="#555555">An MLP flattens and forgets neighbourhoods. A conv layer scans for patterns, wherever they occur.</text>
+</svg>
+    <div class="caption">One stop of the scan, frozen. Left: Part 1’s 5×5 image — the solid orange window is the kernel’s first stop, the dashed one its next. Middle: the hand-set vertical-edge kernel. Right: the feature map it writes — the 3s sit exactly on the edge, and the response moves when the edge moves (Part 2).</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Three parts in <code>~/ai-lab</code>, all hand-set and RNG-free — every printed number is exact. <strong>Part 1</strong> writes convolution as nested loops over a 5×5 image with one vertical edge, then checks the loop against <code>F.conv2d</code>. <strong>Part 2</strong> moves the edge one column and loads the same kernel into <code>nn.Conv2d</code>. <strong>Part 3</strong> turns the stride/padding knobs, runs a reversed edge through ReLU, and counts the parameter dividend on a 28×28 input.</p>
+  <pre><code>&quot;&quot;&quot;Day 26 - CNNs 1: Convolution - The Sliding Pattern Scanner.
+
+Every layer so far (Days 21-25) was dense: flatten the input, and
+every neuron looks at every value. Images break that idea. A 28x28
+image flattens to 784 numbers where position is just an index, an
+edge detector trained at the top-left is a different set of weights
+from one at the bottom-right, and the parameter bill explodes.
+
+Convolution is the layer built for data where neighbours matter:
+
+  kernel   A small grid of weights - here 3x3, so 9 numbers - called
+           a kernel (or filter). It is a pattern template.
+  slide    The kernel visits every patch of the image in turn,
+           stepping by the stride (1 unless you say otherwise).
+  dot      At each stop it computes ONE dot product (Day 12):
+           patch * kernel, summed - plus an optional bias. High
+           output means &quot;a pattern like me lives here.&quot;
+  map      Each stop writes one number to the feature map, so the
+           map is a picture of WHERE the pattern occurs.
+  sharing  The SAME 9 weights are reused at every position - weight
+           sharing. The detector works anywhere, and the parameter
+           count stops caring about image size.
+
+In a real network the kernel weights are learned by the same
+backprop you met on Days 4 and 23. Today they are hand-set edge
+detectors, so the mechanics are visible with zero training.
+
+  Part 1  Convolution by hand: nested loops over a 5x5 image with
+          a vertical edge. The vertical kernel fires (map of 3s on
+          the edge, 0s past it); the horizontal kernel stays silent
+          (all 0s). A hand loop and F.conv2d agree exactly.
+  Part 2  Weight sharing: shift the edge one column right and the
+          response shifts with it - same 9 weights, no retraining.
+          nn.Conv2d loaded with the same kernel reproduces the
+          hand map; its weight holds exactly 9 numbers.
+  Part 3  The knobs and the dividend. Stride 2 scans coarser
+          (output 2x2); padding 1 adds a zero border so the scan
+          covers the edges (output 5x5). Output size follows
+          (H + 2P - K) / S + 1. A reversed edge scores -3s and
+          ReLU (Day 22) clips them to 0: the detector fires one
+          way only. And on a 28x28 image, Conv2d(1, 8, 3) makes
+          5408 outputs from 80 parameters, where a Linear layer
+          making the same outputs needs 4,245,280.
+
+Runs on the ~/ai-lab venv: torch only, hand-set weights, no RNG
+anywhere - every printed number is exact. Tiny CPU grids on
+purpose: tonight the device is irrelevant, the geometry is the
+point. No CUDA, no paid APIs.
+
+Expected output:
+
+  Part 1 - convolution by hand: slide, dot, write one number
+    input image (5x5): dark left, bright right
+      0  0  1  1  1
+      0  0  1  1  1
+      0  0  1  1  1
+      0  0  1  1  1
+      0  0  1  1  1
+    vertical-edge kernel (3x3):
+      -1  0  1
+      -1  0  1
+      -1  0  1
+    feature map, vertical kernel (3x3):
+      3  3  0
+      3  3  0
+      3  3  0
+    feature map, horizontal kernel (3x3):
+      0  0  0
+      0  0  0
+      0  0  0
+    hand loop vs F.conv2d max diff: 0.000000
+
+  Part 2 - weight sharing: same 9 weights, every position
+    edge shifted one column right, vertical kernel:
+      0  3  3
+      0  3  3
+      0  3  3
+    nn.Conv2d weight shape: (1, 1, 3, 3)
+    parameters in that kernel: 9
+    nn.Conv2d output matches hand map: True
+
+  Part 3 - stride, padding, and the sharing dividend
+    stride 1, pad 0: (5 + 0 - 3)/1 + 1 = 3 -&gt; output (1, 1, 3, 3)
+    stride 2, pad 0: (5 + 0 - 3)/2 + 1 = 2 -&gt; output (1, 1, 2, 2)
+    stride 1, pad 1: (5 + 2 - 3)/1 + 1 = 5 -&gt; output (1, 1, 5, 5)
+    reversed edge, raw map row 0: 0  -3  -3 -&gt; after ReLU: 0  0  0
+    Conv2d(1, 8, 3) on 28x28: 80 params for 5408 outputs
+    Linear(784, 5408), same outputs: 4245280 params
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# A 5x5 &quot;image&quot;: dark (0) on the left, bright (1) on the right -
+# one vertical edge. Every row is identical, on purpose.
+img = torch.tensor([[0.0, 0.0, 1.0, 1.0, 1.0]] * 5)
+img_shifted = torch.tensor([[0.0, 0.0, 0.0, 1.0, 1.0]] * 5)
+img_reversed = torch.tensor([[1.0, 1.0, 1.0, 0.0, 0.0]] * 5)
+
+# Hand-set kernels. Vertical-edge detector: -1s where the pattern
+# should be dark, +1s where it should be bright.
+k_vert = torch.tensor([[-1.0, 0.0, 1.0]] * 3)
+k_horiz = torch.tensor([[-1.0, -1.0, -1.0],
+                        [0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0]])
+
+
+def grid(t, indent=&quot;    &quot;):
+    &quot;&quot;&quot;Print a 2D tensor as aligned rows of whole numbers.&quot;&quot;&quot;
+    return &quot;\n&quot;.join(
+        indent + &quot;  &quot;.join(f&quot;{v:.0f}&quot; for v in row)
+        for row in t.tolist())
+
+
+def conv_by_hand(image, kernel):
+    &quot;&quot;&quot;Convolution with the machinery showing: slide the kernel,
+    take one dot product (Day 12) per stop, write one number.&quot;&quot;&quot;
+    H, W = image.shape
+    KH, KW = kernel.shape
+    out = torch.zeros(H - KH + 1, W - KW + 1)
+    for i in range(out.shape[0]):
+        for j in range(out.shape[1]):
+            patch = image[i:i + KH, j:j + KW]
+            out[i, j] = (patch * kernel).sum()
+    return out
+
+
+# ---------- Part 1: convolution by hand ----------
+print(&quot;Part 1 - convolution by hand: slide, dot, write one number&quot;)
+print(&quot;  input image (5x5): dark left, bright right&quot;)
+print(grid(img))
+print(&quot;  vertical-edge kernel (3x3):&quot;)
+print(grid(k_vert))
+map_v = conv_by_hand(img, k_vert)
+map_h = conv_by_hand(img, k_horiz)
+print(&quot;  feature map, vertical kernel (3x3):&quot;)
+print(grid(map_v))
+print(&quot;  feature map, horizontal kernel (3x3):&quot;)
+print(grid(map_h))
+fast = F.conv2d(img.view(1, 1, 5, 5),
+                k_vert.view(1, 1, 3, 3)).view(3, 3)
+print(f&quot;  hand loop vs F.conv2d max diff: &quot;
+      f&quot;{(fast - map_v).abs().max().item():.6f}&quot;)
+
+# ---------- Part 2: weight sharing ----------
+print(&quot;\nPart 2 - weight sharing: same 9 weights, every position&quot;)
+map_s = conv_by_hand(img_shifted, k_vert)
+print(&quot;  edge shifted one column right, vertical kernel:&quot;)
+print(grid(map_s))
+conv = nn.Conv2d(1, 1, kernel_size=3, bias=False)
+with torch.no_grad():
+    conv.weight.copy_(k_vert.view(1, 1, 3, 3))
+out_s = conv(img_shifted.view(1, 1, 5, 5)).view(3, 3)
+print(f&quot;  nn.Conv2d weight shape: {tuple(conv.weight.shape)}&quot;)
+print(f&quot;  parameters in that kernel: &quot;
+      f&quot;{sum(p.numel() for p in conv.parameters())}&quot;)
+print(f&quot;  nn.Conv2d output matches hand map: &quot;
+      f&quot;{bool((out_s == map_s).all())}&quot;)
+
+# ---------- Part 3: stride, padding, the dividend ----------
+print(&quot;\nPart 3 - stride, padding, and the sharing dividend&quot;)
+x = img.view(1, 1, 5, 5)
+w = k_vert.view(1, 1, 3, 3)
+s1 = F.conv2d(x, w)
+s2 = F.conv2d(x, w, stride=2)
+p1 = F.conv2d(x, w, padding=1)
+print(f&quot;  stride 1, pad 0: (5 + 0 - 3)/1 + 1 = 3 &quot;
+      f&quot;-&gt; output {tuple(s1.shape)}&quot;)
+print(f&quot;  stride 2, pad 0: (5 + 0 - 3)/2 + 1 = 2 &quot;
+      f&quot;-&gt; output {tuple(s2.shape)}&quot;)
+print(f&quot;  stride 1, pad 1: (5 + 2 - 3)/1 + 1 = 5 &quot;
+      f&quot;-&gt; output {tuple(p1.shape)}&quot;)
+raw_row = conv_by_hand(img_reversed, k_vert)[0]
+relu_row = torch.relu(raw_row)
+row = lambda t: &quot;  &quot;.join(f&quot;{v:.0f}&quot; for v in t.tolist())
+print(f&quot;  reversed edge, raw map row 0: {row(raw_row)} &quot;
+      f&quot;-&gt; after ReLU: {row(relu_row)}&quot;)
+conv28 = nn.Conv2d(1, 8, kernel_size=3)
+n_conv = sum(p.numel() for p in conv28.parameters())
+n_out = 8 * 26 * 26          # 8 maps, each (28 - 3)/1 + 1 = 26 wide
+dense = nn.Linear(28 * 28, n_out)
+n_dense = sum(p.numel() for p in dense.parameters())
+print(f&quot;  Conv2d(1, 8, 3) on 28x28: {n_conv} params &quot;
+      f&quot;for {n_out} outputs&quot;)
+print(f&quot;  Linear(784, 5408), same outputs: {n_dense} params&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - convolution by hand: slide, dot, write one number
+  input image (5x5): dark left, bright right
+    0  0  1  1  1
+    0  0  1  1  1
+    0  0  1  1  1
+    0  0  1  1  1
+    0  0  1  1  1
+  vertical-edge kernel (3x3):
+    -1  0  1
+    -1  0  1
+    -1  0  1
+  feature map, vertical kernel (3x3):
+    3  3  0
+    3  3  0
+    3  3  0
+  feature map, horizontal kernel (3x3):
+    0  0  0
+    0  0  0
+    0  0  0
+  hand loop vs F.conv2d max diff: 0.000000
+
+Part 2 - weight sharing: same 9 weights, every position
+  edge shifted one column right, vertical kernel:
+    0  3  3
+    0  3  3
+    0  3  3
+  nn.Conv2d weight shape: (1, 1, 3, 3)
+  parameters in that kernel: 9
+  nn.Conv2d output matches hand map: True
+
+Part 3 - stride, padding, and the sharing dividend
+  stride 1, pad 0: (5 + 0 - 3)/1 + 1 = 3 -&gt; output (1, 1, 3, 3)
+  stride 2, pad 0: (5 + 0 - 3)/2 + 1 = 2 -&gt; output (1, 1, 2, 2)
+  stride 1, pad 1: (5 + 2 - 3)/1 + 1 = 5 -&gt; output (1, 1, 5, 5)
+  reversed edge, raw map row 0: 0  -3  -3 -&gt; after ReLU: 0  0  0
+  Conv2d(1, 8, 3) on 28x28: 80 params for 5408 outputs
+  Linear(784, 5408), same outputs: 4245280 params</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1’s vertical-kernel map reads <code>3 3 0</code> on every row, the horizontal kernel’s map is all zeros, and hand loop vs <code>F.conv2d</code> differ by <strong>0.000000</strong>. Part 2’s shifted-edge map reads <code>0 3 3</code> per row, <code>nn.Conv2d</code> reports exactly <strong>9 parameters</strong> and matches the hand map (<code>True</code>). Part 3 prints shapes <code>(1, 1, 3, 3)</code> / <code>(1, 1, 2, 2)</code> / <code>(1, 1, 5, 5)</code>, the reversed edge clips to all zeros under ReLU, and the count lands at <strong>80 vs 4,245,280</strong>. The bigger test: you can say it cold — <em>slide, dot, write one number; same weights everywhere</em> — and size any conv layer with <code>(H + 2P − K) / S + 1</code>.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run Part 1 only (~15 min) and read Part 3’s last two lines. The hand loop <em>is</em> the concept; Parts 2–3 are the payoff and take two minutes to skim.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the hand-set weights go away — this same slide, with kernels the model learns itself, reads real handwritten digits.</p>
+  </div>
+
+  <div class="footer">Streak: 26 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
