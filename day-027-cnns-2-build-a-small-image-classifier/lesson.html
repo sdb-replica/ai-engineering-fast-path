@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNNs 2: Build a Small Image Classifier — Day 27 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 27 of 100</span>
+  <h1>CNNs 2: Build a Small Image Classifier</h1>
+  <p class="outcome">Tonight you'll be able to: assemble a conv &rarr; ReLU &rarr; pool stack into a working image classifier, calculate every shape and parameter count before you run it, and train it on real handwritten digits to about 98% held-out accuracy &mdash; beating your Day 16 dense model with fewer parameters.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday you slid <em>one</em> hand-set kernel over a toy grid and watched a feature map light up on an edge. A real CNN classifier is that same slide, industrialised: <strong>many kernels, learned by backprop</strong> instead of hand-set, <strong>stacked in blocks</strong>, and finished with a plain classifier head. The model tonight has two halves, and keeping them separate in your head is the whole lesson. The <strong>feature extractor</strong> learns <em>what to look at</em> in the image. The <strong>head</strong> decides <em>what the answer is</em> from what the extractor found. You already own the head &mdash; it is Day 16&rsquo;s flatten &rarr; Linear &rarr; 10 logits, unchanged. Everything new lives in the extractor.</p>
+<p>An extractor block is three layers. <strong>Conv</strong> (Day 26): a stack of kernels slides at once &mdash; 8 kernels in block 1 &mdash; producing 8 feature maps, called <strong>channels</strong>: 8 different &ldquo;where does <em>my</em> pattern occur&rdquo; maps of the same image. <strong>ReLU</strong> (Day 22) keeps positive responses and zeroes the rest. Then the one genuinely new layer: <strong>max pooling</strong>. <code>MaxPool2d(2)</code> cuts the map into 2&times;2 patches and keeps only the <em>maximum</em> in each, discarding the other three numbers. The map halves on each side &mdash; 8&times;8 becomes 4&times;4 &mdash; and what survives is the strongest pattern response in each neighbourhood. Exact position within the patch is traded away; in exchange the next layer gets a smaller, sturdier map, and a pattern shifted by a pixel often produces the same pooled output.</p>
+<p>Stack a second block and something qualitative changes. Block 2&rsquo;s kernels do not look at pixels &mdash; each of its 16 kernels spans <em>all 8</em> of block 1&rsquo;s maps (8&times;9 weights + bias = 73 parameters per kernel), so it detects <em>combinations</em> of edges: corners, curves, loops. Nobody programs &ldquo;find a loop&rdquo;; the hierarchy &mdash; edges, then shapes built from edges &mdash; is what gradient descent finds, because shapes are what separate a 6 from an 8. After block 2 pools again, the image has been distilled to 16 maps of 2&times;2: 64 numbers that say which shapes fired where, roughly. Flatten those, and the head takes it from there.</p>
+<p><strong>Shape is the contract.</strong> With padding 1, a 3&times;3 conv preserves size (Day 26&rsquo;s formula: (8 + 2 &minus; 3)/1 + 1 = 8), so pooling is the <em>only</em> shrinker &mdash; one thing to reason about. That makes the flatten size pure arithmetic: 16 channels &times; 2 &times; 2 = <strong>64</strong>, which must match the head&rsquo;s <code>in_features</code> exactly. A mismatch there is the #1 beginner CNN bug, and PyTorch reports it as a shape error at the head, far from its cause. Part 1 walks a dummy batch through every joint and prints each shape <em>before</em> any training, so the contract is checked the way you&rsquo;d check an API schema before deploying against it. The parameter bill is the Day 26 dividend, cashed: <strong>1,898 total</strong> &mdash; fewer than Day 16&rsquo;s dense model (2,410) &mdash; because shared kernels do the looking and the head only ever sees 64 distilled numbers, not 64 raw pixels pretending position doesn&rsquo;t matter.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think of your metrics pipeline. Raw samples pour in per host; a first rollup keeps the <strong>max</strong> per minute &mdash; not the average, because the spike is the signal and averaging would bury it; a second rollup aggregates across hosts. Each level carries fewer numbers and more meaning, and nobody downstream wants the raw firehose. Max pooling is the max-rollup: the strongest response in each neighbourhood is the spike worth keeping, and the coarser map is what the next level can actually reason over. The head is just the alert rule reading the final rollup.</p>
+<p>Trading version: multi-timeframe analysis. You don&rsquo;t read a day of 1-minute candles bar by bar to judge the daily trend &mdash; you let each timeframe compress the one below it, keeping the extremes (session highs and lows, the maxes) and discarding the jitter. Edges on the small timeframe, structure on the large one. A CNN does the same compression &mdash; except every timeframe&rsquo;s &ldquo;what counts as structure&rdquo; is learned from data instead of fixed by convention.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 404" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="404" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">A small CNN classifier: shrink the picture, grow the meaning</text>
+<rect x="16" y="48" width="118" height="84" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="75.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">INPUT</text>
+<text x="75.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">(B, 1, 8, 8)</text>
+<text x="75.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">one 8x8 digit</text>
+<text x="75.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">greyscale</text>
+<rect x="148" y="48" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="207.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">CONV 1 + ReLU</text>
+<text x="207.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">8 kernels, 3x3</text>
+<text x="207.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 8, 8, 8)</text>
+<text x="207.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">edges fire</text>
+<rect x="280" y="48" width="118" height="84" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="339.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">MAX POOL 2x2</text>
+<text x="339.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">keep the max</text>
+<text x="339.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 8, 4, 4)</text>
+<text x="339.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">half the size</text>
+<rect x="412" y="48" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="471.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">CONV 2 + ReLU</text>
+<text x="471.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">16 kernels, 3x3</text>
+<text x="471.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 16, 4, 4)</text>
+<text x="471.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">shapes fire</text>
+<rect x="544" y="48" width="118" height="84" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="603.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">MAX POOL 2x2</text>
+<text x="603.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">keep the max</text>
+<text x="603.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 16, 2, 2)</text>
+<text x="603.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">half again</text>
+<line x1="134" y1="90" x2="142" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 148 90 L 141 86.5 L 141 93.5 Z" fill="#555555"/>
+<line x1="266" y1="90" x2="274" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 280 90 L 273 86.5 L 273 93.5 Z" fill="#555555"/>
+<line x1="398" y1="90" x2="406" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 412 90 L 405 86.5 L 405 93.5 Z" fill="#555555"/>
+<line x1="530" y1="90" x2="538" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 544 90 L 537 86.5 L 537 93.5 Z" fill="#555555"/>
+<line x1="603" y1="132" x2="603" y2="154" stroke="#555555" stroke-width="2"/>
+<path d="M 603 160 L 599.5 153 L 606.5 153 Z" fill="#555555"/>
+<rect x="196" y="160" width="466" height="62" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="429" y="180" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">FLATTEN 16 x 2 x 2 = 64  -&gt;  LINEAR 64 -&gt; 10 logits  -&gt;  argmax</text>
+<text x="429" y="202" text-anchor="middle" font-size="10.5" fill="#555555">the head is Day 16&#x27;s classifier — only the feature extractor is new</text>
+<rect x="16" y="160" width="164" height="62" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.5"/>
+<text x="98" y="180" text-anchor="middle" font-size="11" font-weight="bold" fill="#177245">POOLING, ZOOMED</text>
+<text x="98" y="198" text-anchor="middle" font-size="10.5" fill="#333333">[1, 3; 2, 0] -&gt; 3</text>
+<text x="98" y="214" text-anchor="middle" font-size="9.5" fill="#555555">only the strongest survives</text>
+<rect x="16" y="238" width="648" height="52" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="340" y="260" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Whole model: 1,898 parameters — conv1 80 + conv2 1,168 + head 650</text>
+<text x="340" y="280" text-anchor="middle" font-size="11" fill="#1c1c1e">fewer than Day 16&#x27;s dense model (2,410) — sharing pays the bill (Day 26)</text>
+<text x="340" y="318" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Early kernels see edges. Later kernels see combinations of edges — shapes.</text>
+<text x="340" y="340" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Pooling after each conv trades exact position for a smaller, sturdier map.</text>
+<text x="340" y="372" text-anchor="middle" font-size="11" fill="#555555">Same training loop as always (Day 25): forward, loss, backward, step — eval under no_grad.</text>
+</svg>
+    <div class="caption">The whole classifier on one line. Two conv blocks (orange) learn what to look at; pooling (green) halves the map after each, keeping only the strongest response per 2&times;2 patch; the purple head &mdash; flatten, linear, argmax &mdash; is Day 16&rsquo;s classifier reading 64 distilled numbers instead of raw pixels.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file in <code>~/ai-lab</code>, three parts. <strong>Part 1</strong> is the architecture on paper: a dummy batch walks the joints and prints every shape, plus the per-layer parameter count &mdash; check 64 and 1,898 by hand before scrolling on. <strong>Part 2</strong> trains for 15 epochs on the Day 16 digits split (same <code>random_state=16</code>, so the comparison is honest), images kept as <code>(N, 1, 8, 8)</code>, fed by a <code>DataLoader</code> (Day 19), optimised by Adam (Day 18), evaluated with Day 25&rsquo;s <code>eval()</code> + <code>no_grad</code> helper. <strong>Part 3</strong> prints the receipts next to Day 16&rsquo;s 0.9556. Reference numbers below: your MacBook&rsquo;s RNG stream differs, so last digits will vary &mdash; the arc and the win are the same.</p>
+  <pre><code>&quot;&quot;&quot;Day 27 - CNNs 2: Build a Small Image Classifier.
+
+Day 26 slid ONE hand-set kernel over a toy grid. Tonight the kernels
+are learned, there are stacks of them, and the stack reads real
+handwriting: the same sklearn digits from Day 16 (1,797 images) --
+but this time kept AS images, (N, 1, 8, 8), never flattened first.
+
+The recipe is two halves:
+
+  feature extractor  Learns WHAT to look at. Conv block 1: eight
+      3x3 kernels (Day 26) + ReLU (Day 22), then max pooling --
+      keep only the strongest response in each 2x2 patch, halving
+      the map. Conv block 2: sixteen kernels over those 8 maps,
+      ReLU, pool again. Early kernels learn edges; later kernels
+      learn combinations of edges -- shapes. Each pool trades
+      exact position for a smaller, sturdier map.
+  head  Decides the answer. Flatten (16, 2, 2) to 64 numbers and
+      one Linear layer to 10 logits -- Day 16&#x27;s classifier,
+      unchanged. Only the extractor is new.
+
+Shape is the contract at every joint, and Part 1 prints it:
+  (B,1,8,8) -&gt; conv1 (B,8,8,8) -&gt; pool (B,8,4,4)
+            -&gt; conv2 (B,16,4,4) -&gt; pool (B,16,2,2)
+            -&gt; flatten 64 -&gt; linear (B,10)
+Padding 1 keeps a 3x3 conv&#x27;s output the same size as its input
+(Day 26 formula: (8 + 2 - 3)/1 + 1 = 8), so only pooling shrinks
+the map -- one shrinker to reason about, not two.
+
+The training is Day 25&#x27;s loop done right -- model on the device,
+batches moved to it, eval under eval() + no_grad -- fed by Day 19&#x27;s
+DataLoader. The optimizer is Adam (Day 18) at lr 0.01: conv nets
+have features at very different scales, Adam&#x27;s home turf.
+
+Parameter bill: conv1 80 + conv2 1,168 + head 650 = 1,898 total,
+FEWER than Day 16&#x27;s dense model (2,410) -- weight sharing (Day 26)
+pays again. Watch whether fewer params + image structure also
+beats Day 16&#x27;s val accuracy of 0.9556.
+
+  Part 1  The architecture on paper: stage-by-stage shapes from a
+          dummy batch, and the per-layer parameter count.
+  Part 2  Train 15 epochs, batch 64, Adam. Print the loss/acc arc
+          at epochs 1, 5, 10, 15.
+  Part 3  Receipts: sample predictions on held-out digits and the
+          final val accuracy, next to Day 16&#x27;s number.
+
+Runs on the ~/ai-lab venv: torch + scikit-learn (free), CPU or MPS,
+no CUDA, no paid APIs, no downloads -- digits ships with sklearn.
+
+Expected output (reference numbers -- your MacBook&#x27;s RNG stream
+differs from the reference run, so last digits will vary; the arc
+and the win are the same):
+
+  device: mps
+  Part 1 - the architecture: shapes are the contract
+    input            (2, 1, 8, 8)
+    after conv1+ReLU (2, 8, 8, 8)
+    after pool1      (2, 8, 4, 4)
+    after conv2+ReLU (2, 16, 4, 4)
+    after pool2      (2, 16, 2, 2)
+    after flatten    (2, 64)
+    logits           (2, 10)
+    params: conv1 80  conv2 1168  head 650  total 1898
+    Day 16 dense model params: 2410
+  Part 2 - train: Day 25&#x27;s loop, Day 19&#x27;s loader, Adam
+    dataset: 1797 samples, images (1, 8, 8), 10 classes
+    train: 1437  val: 360
+    epoch   1  train loss 0.8715  val acc 0.7722
+    epoch   5  train loss 0.1058  val acc 0.9417
+    epoch  10  train loss 0.0468  val acc 0.9722
+    epoch  15  train loss 0.0150  val acc 0.9833
+  Part 3 - receipts
+    sample predictions (true -&gt; pred):
+      6 -&gt; 6
+      8 -&gt; 8
+      3 -&gt; 3
+      1 -&gt; 1
+      8 -&gt; 8
+      9 -&gt; 9
+    WIN: CNN val accuracy 0.9833 vs Day 16 MLP 0.9556
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
+
+torch.manual_seed(27)
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+print(&quot;device:&quot;, device)
+
+
+class SmallCNN(nn.Module):
+    &quot;&quot;&quot;Day 24&#x27;s class discipline, Day 26&#x27;s layers.
+
+    Extractor: conv -&gt; ReLU -&gt; pool, twice. Head: flatten -&gt; linear.
+    &quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+        self.head = nn.Linear(16 * 2 * 2, 10)
+
+    def forward(self, x):
+        x = self.pool(torch.relu(self.conv1(x)))   # (B, 8, 4, 4)
+        x = self.pool(torch.relu(self.conv2(x)))   # (B, 16, 2, 2)
+        x = torch.flatten(x, 1)                    # (B, 64)
+        return self.head(x)                        # (B, 10) logits
+
+
+model = SmallCNN().to(device)
+
+# ---------- Part 1: the architecture, shapes are the contract ----------
+print(&quot;Part 1 - the architecture: shapes are the contract&quot;)
+dummy = torch.zeros(2, 1, 8, 8, device=device)
+with torch.no_grad():
+    a = torch.relu(model.conv1(dummy))
+    b = model.pool(a)
+    c = torch.relu(model.conv2(b))
+    d = model.pool(c)
+    flat = torch.flatten(d, 1)
+    logits = model.head(flat)
+print(f&quot;  input            {tuple(dummy.shape)}&quot;)
+print(f&quot;  after conv1+ReLU {tuple(a.shape)}&quot;)
+print(f&quot;  after pool1      {tuple(b.shape)}&quot;)
+print(f&quot;  after conv2+ReLU {tuple(c.shape)}&quot;)
+print(f&quot;  after pool2      {tuple(d.shape)}&quot;)
+print(f&quot;  after flatten    {tuple(flat.shape)}&quot;)
+print(f&quot;  logits           {tuple(logits.shape)}&quot;)
+n1 = sum(p.numel() for p in model.conv1.parameters())
+n2 = sum(p.numel() for p in model.conv2.parameters())
+n3 = sum(p.numel() for p in model.head.parameters())
+print(f&quot;  params: conv1 {n1}  conv2 {n2}  head {n3}  total {n1 + n2 + n3}&quot;)
+print(&quot;  Day 16 dense model params: 2410&quot;)
+
+# ---------- Part 2: train ----------
+print(&quot;Part 2 - train: Day 25&#x27;s loop, Day 19&#x27;s loader, Adam&quot;)
+X, y = load_digits(return_X_y=True)
+X = (X / 16.0).astype(&quot;float32&quot;).reshape(-1, 1, 8, 8)  # keep the image!
+print(f&quot;  dataset: {X.shape[0]} samples, images (1, 8, 8), 10 classes&quot;)
+Xtr, Xva, ytr, yva = train_test_split(X, y, test_size=0.2, random_state=16)
+print(f&quot;  train: {len(Xtr)}  val: {len(Xva)}&quot;)
+Xtr = torch.tensor(Xtr).to(device)
+Xva = torch.tensor(Xva).to(device)
+ytr = torch.tensor(ytr, dtype=torch.long).to(device)
+yva = torch.tensor(yva, dtype=torch.long).to(device)
+loader = DataLoader(TensorDataset(Xtr, ytr), batch_size=64, shuffle=True)
+opt = torch.optim.Adam(model.parameters(), lr=0.01)   # Day 18
+loss_fn = nn.CrossEntropyLoss()                       # Day 14
+
+
+def evaluate():
+    &quot;&quot;&quot;Day 25&#x27;s helper: eval mode + no_grad, restore training after.&quot;&quot;&quot;
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        acc = (model(Xva).argmax(1) == yva).float().mean().item()
+        tr_loss = loss_fn(model(Xtr), ytr).item()
+    if was_training:
+        model.train()
+    return tr_loss, acc
+
+
+for epoch in range(1, 16):
+    model.train()
+    for xb, yb in loader:
+        opt.zero_grad()
+        loss = loss_fn(model(xb), yb)   # forward -&gt; loss
+        loss.backward()                 # backward (Day 4)
+        opt.step()                      # step (Day 6)
+    if epoch in (1, 5, 10, 15):
+        tr_loss, vacc = evaluate()
+        print(f&quot;  epoch {epoch:3d}  train loss {tr_loss:.4f}  val acc {vacc:.4f}&quot;)
+
+# ---------- Part 3: receipts ----------
+print(&quot;Part 3 - receipts&quot;)
+model.eval()
+with torch.no_grad():
+    pred = model(Xva).argmax(1)
+print(&quot;  sample predictions (true -&gt; pred):&quot;)
+for i in range(6):
+    print(f&quot;    {yva[i].item()} -&gt; {pred[i].item()}&quot;)
+acc = (pred == yva).float().mean().item()
+print(f&quot;  WIN: CNN val accuracy {acc:.4f} vs Day 16 MLP 0.9556&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - the architecture: shapes are the contract
+  input            (2, 1, 8, 8)
+  after conv1+ReLU (2, 8, 8, 8)
+  after pool1      (2, 8, 4, 4)
+  after conv2+ReLU (2, 16, 4, 4)
+  after pool2      (2, 16, 2, 2)
+  after flatten    (2, 64)
+  logits           (2, 10)
+  params: conv1 80  conv2 1168  head 650  total 1898
+  Day 16 dense model params: 2410
+Part 2 - train: Day 25&#x27;s loop, Day 19&#x27;s loader, Adam
+  dataset: 1797 samples, images (1, 8, 8), 10 classes
+  train: 1437  val: 360
+  epoch   1  train loss 0.8715  val acc 0.7722
+  epoch   5  train loss 0.1058  val acc 0.9417
+  epoch  10  train loss 0.0468  val acc 0.9722
+  epoch  15  train loss 0.0150  val acc 0.9833
+Part 3 - receipts
+  sample predictions (true -&gt; pred):
+    6 -&gt; 6
+    8 -&gt; 8
+    3 -&gt; 3
+    1 -&gt; 1
+    8 -&gt; 8
+    9 -&gt; 9
+  WIN: CNN val accuracy 0.9833 vs Day 16 MLP 0.9556</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints the shape walk ending <code>(2, 16, 2, 2)</code> &rarr; <code>(2, 64)</code> &rarr; <code>(2, 10)</code> and the count <strong>conv1 80, conv2 1168, head 650, total 1898</strong>. Part 2&rsquo;s arc falls from train loss ~0.87 to ~0.02 with val accuracy climbing past <strong>0.97</strong> by epoch 15, and Part 3&rsquo;s WIN line beats Day 16&rsquo;s <strong>0.9556</strong> (reference: <strong>0.9833</strong>) with all six sample digits read correctly. The bigger test: you can say it cold &mdash; <em>the extractor learns what to look at, pooling keeps the strongest and halves the map, the head decides</em> &mdash; and size any flatten layer as channels &times; height &times; width without guessing.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the whole file once (it trains in well under a minute on these 8&times;8 images), but spend your attention on Part 1&rsquo;s shape walk and Part 3&rsquo;s WIN line. If you can predict each shape before it prints, you have the lesson; the training arc is Day 25&rsquo;s loop doing familiar work.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: data that arrives one step at a time &mdash; and a model that has to remember what it saw earlier in the sequence.</p>
+  </div>
+
+  <div class="footer">Streak: 27 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

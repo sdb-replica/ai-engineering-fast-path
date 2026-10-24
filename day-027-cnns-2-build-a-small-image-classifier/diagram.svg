@@ -1,0 +1,52 @@
+<svg viewBox="0 0 680 404" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="404" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">A small CNN classifier: shrink the picture, grow the meaning</text>
+<rect x="16" y="48" width="118" height="84" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="75.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">INPUT</text>
+<text x="75.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">(B, 1, 8, 8)</text>
+<text x="75.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">one 8x8 digit</text>
+<text x="75.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">greyscale</text>
+<rect x="148" y="48" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="207.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">CONV 1 + ReLU</text>
+<text x="207.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">8 kernels, 3x3</text>
+<text x="207.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 8, 8, 8)</text>
+<text x="207.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">edges fire</text>
+<rect x="280" y="48" width="118" height="84" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="339.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">MAX POOL 2x2</text>
+<text x="339.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">keep the max</text>
+<text x="339.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 8, 4, 4)</text>
+<text x="339.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">half the size</text>
+<rect x="412" y="48" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="471.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">CONV 2 + ReLU</text>
+<text x="471.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">16 kernels, 3x3</text>
+<text x="471.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 16, 4, 4)</text>
+<text x="471.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">shapes fire</text>
+<rect x="544" y="48" width="118" height="84" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="603.0" y="70" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#177245">MAX POOL 2x2</text>
+<text x="603.0" y="88" text-anchor="middle" font-size="10.5" fill="#333333">keep the max</text>
+<text x="603.0" y="104" text-anchor="middle" font-size="10.5" fill="#333333">(B, 16, 2, 2)</text>
+<text x="603.0" y="120" text-anchor="middle" font-size="10.5" fill="#333333">half again</text>
+<line x1="134" y1="90" x2="142" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 148 90 L 141 86.5 L 141 93.5 Z" fill="#555555"/>
+<line x1="266" y1="90" x2="274" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 280 90 L 273 86.5 L 273 93.5 Z" fill="#555555"/>
+<line x1="398" y1="90" x2="406" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 412 90 L 405 86.5 L 405 93.5 Z" fill="#555555"/>
+<line x1="530" y1="90" x2="538" y2="90" stroke="#555555" stroke-width="2"/>
+<path d="M 544 90 L 537 86.5 L 537 93.5 Z" fill="#555555"/>
+<line x1="603" y1="132" x2="603" y2="154" stroke="#555555" stroke-width="2"/>
+<path d="M 603 160 L 599.5 153 L 606.5 153 Z" fill="#555555"/>
+<rect x="196" y="160" width="466" height="62" rx="8" fill="#fafafa" stroke="#7a5cff" stroke-width="1.5"/>
+<text x="429" y="180" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">FLATTEN 16 x 2 x 2 = 64  -&gt;  LINEAR 64 -&gt; 10 logits  -&gt;  argmax</text>
+<text x="429" y="202" text-anchor="middle" font-size="10.5" fill="#555555">the head is Day 16&#x27;s classifier — only the feature extractor is new</text>
+<rect x="16" y="160" width="164" height="62" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.5"/>
+<text x="98" y="180" text-anchor="middle" font-size="11" font-weight="bold" fill="#177245">POOLING, ZOOMED</text>
+<text x="98" y="198" text-anchor="middle" font-size="10.5" fill="#333333">[1, 3; 2, 0] -&gt; 3</text>
+<text x="98" y="214" text-anchor="middle" font-size="9.5" fill="#555555">only the strongest survives</text>
+<rect x="16" y="238" width="648" height="52" rx="8" fill="#fafafa" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="340" y="260" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1c1c1e">Whole model: 1,898 parameters — conv1 80 + conv2 1,168 + head 650</text>
+<text x="340" y="280" text-anchor="middle" font-size="11" fill="#1c1c1e">fewer than Day 16&#x27;s dense model (2,410) — sharing pays the bill (Day 26)</text>
+<text x="340" y="318" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Early kernels see edges. Later kernels see combinations of edges — shapes.</text>
+<text x="340" y="340" text-anchor="middle" font-size="11.5" fill="#1c1c1e">Pooling after each conv trades exact position for a smaller, sturdier map.</text>
+<text x="340" y="372" text-anchor="middle" font-size="11" fill="#555555">Same training loop as always (Day 25): forward, loss, backward, step — eval under no_grad.</text>
+</svg>
