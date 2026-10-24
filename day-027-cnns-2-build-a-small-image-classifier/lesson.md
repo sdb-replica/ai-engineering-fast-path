@@ -22,7 +22,7 @@ Trading version: multi-timeframe analysis. You don’t read a day of 1-minute ca
 
 ![A small CNN classifier: shrink the picture, grow the meaning](diagram.svg)
 
-The whole classifier on one line. Two conv blocks (orange) learn what to look at; pooling (green) halves the map after each, keeping only the strongest response per 2&times;2 patch; the purple head &mdash; flatten, linear, argmax &mdash; is Day 16&rsquo;s classifier reading 64 distilled numbers instead of raw pixels.
+The whole classifier on one line. Two conv blocks (orange) learn what to look at; pooling (green) halves the map after each, keeping only the strongest response per 2×2 patch; the purple head — flatten, linear, argmax — is Day 16’s classifier reading 64 distilled numbers instead of raw pixels.
 
 ## Code it (~30 min)
 
