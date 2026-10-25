@@ -1,0 +1,82 @@
+<svg viewBox="0 0 680 392" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="392" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">An RNN unrolled: one cell, reused at every step</text>
+<text x="340" y="44" text-anchor="middle" font-size="10" fill="#666666">Every copy shares the SAME weights — like Day 26&#x27;s kernel, shared across space, now shared across time</text>
+<rect x="84" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="143.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="143.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="143.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="143.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.66, -0.38]</text>
+<rect x="232" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="291.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="291.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="291.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="291.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.60, -0.17]</text>
+<rect x="380" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="439.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="439.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="439.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="439.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [-0.48, +0.57]</text>
+<rect x="528" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="587.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="587.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="587.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="587.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.55, -0.26]</text>
+<rect x="10" y="84" width="52" height="40" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="36" y="102" text-anchor="middle" font-size="11" font-weight="bold" fill="#0a54c2">h0</text>
+<text x="36" y="117" text-anchor="middle" font-size="9.5" fill="#333333">[0, 0]</text>
+<line x1="62" y1="104" x2="80" y2="104" stroke="#555555" stroke-width="2"/><path d="M 84 104 L 77 100.5 L 77 107.5 Z" fill="#555555"/>
+<line x1="202" y1="104" x2="228" y2="104" stroke="#555555" stroke-width="2"/><path d="M 232 104 L 225 100.5 L 225 107.5 Z" fill="#555555"/>
+<text x="217.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h1</text>
+<line x1="350" y1="104" x2="376" y2="104" stroke="#555555" stroke-width="2"/><path d="M 380 104 L 373 100.5 L 373 107.5 Z" fill="#555555"/>
+<text x="365.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h2</text>
+<line x1="498" y1="104" x2="524" y2="104" stroke="#555555" stroke-width="2"/><path d="M 528 104 L 521 100.5 L 521 107.5 Z" fill="#555555"/>
+<text x="513.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h3</text>
+<text x="73.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h0</text>
+<text x="656" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h4</text>
+<line x1="646" y1="104" x2="664" y2="104" stroke="#555555" stroke-width="2"/><path d="M 668 104 L 661 100.5 L 661 107.5 Z" fill="#555555"/>
+<text x="340" y="164" text-anchor="middle" font-size="10" fill="#666666">The hidden state h is the only thing carried forward — a running summary, rewritten each step</text>
+<line x1="143.0" y1="196" x2="143.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 143.0 146 L 139.5 153 L 146.5 153 Z" fill="#555555"/>
+<rect x="105.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="143.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x1 = +1.0</text>
+<text x="143.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="291.0" y1="196" x2="291.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 291.0 146 L 287.5 153 L 294.5 153 Z" fill="#555555"/>
+<rect x="253.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="291.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x2 = +0.5</text>
+<text x="291.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="439.0" y1="196" x2="439.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 439.0 146 L 435.5 153 L 442.5 153 Z" fill="#555555"/>
+<rect x="401.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="439.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x3 = -1.0</text>
+<text x="439.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="587.0" y1="196" x2="587.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 587.0 146 L 583.5 153 L 590.5 153 Z" fill="#555555"/>
+<rect x="549.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="587.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x4 = +1.0</text>
+<text x="587.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<text x="340" y="256" text-anchor="middle" font-size="10" fill="#666666">Inputs arrive one at a time — candles, words, ticks. There is no fixed input width to design around.</text>
+<rect x="16" y="272" width="648" height="104" rx="10" fill="#f7f7f8" stroke="#cccccc" stroke-width="1"/>
+<text x="340" y="292" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Backprop through time: the gradient fades (Part 3 — loss reads only the final h)</text>
+<rect x="52" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.25"/>
+<text x="69" y="368" text-anchor="middle" font-size="9" fill="#666666">t=1</text>
+<rect x="110" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.33"/>
+<text x="127" y="368" text-anchor="middle" font-size="9" fill="#666666">t=2</text>
+<rect x="168" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.42"/>
+<text x="185" y="368" text-anchor="middle" font-size="9" fill="#666666">t=3</text>
+<rect x="226" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.50"/>
+<text x="243" y="368" text-anchor="middle" font-size="9" fill="#666666">t=4</text>
+<rect x="284" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.58"/>
+<text x="301" y="368" text-anchor="middle" font-size="9" fill="#666666">t=5</text>
+<rect x="342" y="350.6" width="34" height="3.4" rx="2" fill="#22a355" opacity="0.67"/>
+<text x="359" y="368" text-anchor="middle" font-size="9" fill="#666666">t=6</text>
+<rect x="400" y="347.8" width="34" height="6.2" rx="2" fill="#22a355" opacity="0.75"/>
+<text x="417" y="368" text-anchor="middle" font-size="9" fill="#666666">t=7</text>
+<rect x="458" y="342.6" width="34" height="11.4" rx="2" fill="#22a355" opacity="0.83"/>
+<text x="475" y="368" text-anchor="middle" font-size="9" fill="#666666">t=8</text>
+<rect x="516" y="332.7" width="34" height="21.3" rx="2" fill="#22a355" opacity="0.92"/>
+<text x="533" y="368" text-anchor="middle" font-size="9" fill="#666666">t=9</text>
+<rect x="574" y="314.0" width="34" height="40.0" rx="2" fill="#22a355" opacity="1.00"/>
+<text x="591" y="368" text-anchor="middle" font-size="9" fill="#666666">t=10</text>
+<text x="69" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.0066</text>
+<text x="301" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.0319</text>
+<text x="591" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.6633</text>
+<text x="614" y="334" text-anchor="middle" font-size="9" fill="#666666">x~0.53/step</text>
+</svg>

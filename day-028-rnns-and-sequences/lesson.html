@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RNNs &amp; Sequences: Recurrence and the Fading Memory — Day 28 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 28 of 100</span>
+  <h1>RNNs &amp; Sequences: Recurrence and the Fading Memory</h1>
+  <p class="outcome">Tonight you'll be able to: run one recurrent cell by hand across a sequence, match it exactly with <code>nn.RNN</code>, and measure with autograd why the first step of a long sequence barely learns &mdash; its gradient arrives about 100&times; smaller than the last step&rsquo;s.</p>
+
+  <h2>The one idea</h2>
+  <p>Everything you have built so far takes a <strong>fixed-size</strong> input and has <strong>no memory</strong>. An MLP sees all its inputs at once; shuffle them and it cannot even tell (Day 19&rsquo;s loader shuffles on purpose). A CNN slides over a grid that is simply <em>there</em>. But a huge class of data is a <strong>sequence</strong>: words in a sentence, candles in a session, ticks in a stream. Two things break. The length <strong>varies</strong> &mdash; there is no fixed input width to design a layer around. And the <strong>order is the information</strong>: step <em>t</em> only makes sense given what came before it.</p>
+<p>The recurrent neural network (RNN) answers with a single <strong>cell</strong>, reused at every step. The cell carries a vector called the <strong>hidden state</strong>, <code>h</code> &mdash; a running summary of everything seen so far. At each step it rewrites that summary from two ingredients, the new input <code>x<sub>t</sub></code> and its own previous value <code>h<sub>t&minus;1</sub></code>:</p>
+<p style="text-align:center"><code>h<sub>t</sub> = tanh(W<sub>xh</sub> &middot; x<sub>t</sub> + W<sub>hh</sub> &middot; h<sub>t&minus;1</sub> + b)</code>,&nbsp; starting from <code>h<sub>0</sub> = 0</code></p>
+<p>Read the two weight matrices as two jobs. <code>W<sub>xh</sub></code> decides what the <em>new input</em> contributes; <code>W<sub>hh</sub></code> decides what of the <em>old summary</em> survives and how it mixes. <code>tanh</code> (Day 22) squashes the result back into (&minus;1, 1), so the summary cannot blow up no matter how long the sequence runs. The same <code>W<sub>xh</sub></code> and <code>W<sub>hh</sub></code> are used at <em>every</em> step &mdash; <strong>weight sharing over time</strong>, exactly the trick Day 26&rsquo;s kernel used over space. That is why the parameter count ignores sequence length, and why any length works: Part 2 runs the same 10-parameter cell at T=4 and T=12.</p>
+<p>Draw the loop stretched out in time (<strong>unrolling</strong>) and an RNN is a very deep network &mdash; one layer per step, all sharing weights. The final summary <code>h<sub>T</sub></code> (or the summary at every step) then feeds an ordinary head, like Day 24&rsquo;s <code>Linear</code> layer: sequence in, fixed-size summary out, decision on top. Keep one honest caveat in view: a fixed-size vector is a <em>lossy</em> summary. Everything the model will ever know about step 1 must survive being rewritten at every later step.</p>
+<p><strong>Why they fade &mdash; in one paragraph.</strong> Training sends the gradient from the final loss back through every step &mdash; <strong>backprop through time</strong>, Day 23&rsquo;s blame chain stretched over steps instead of layers. Each hop backwards multiplies the blame by <code>W<sub>hh</sub></code> and by <code>tanh&prime;</code>, which is at most 1 (Day 22). Tonight that per-hop factor is about 0.53, and products of numbers below 1 shrink <em>exponentially</em>: 0.53<sup>9</sup> &asymp; 1/100 over the 9 hops of Part 3, and effectively zero over 50 steps. So a plain RNN&rsquo;s early steps receive almost no gradient and barely learn &mdash; it masters short-range patterns and goes deaf to distant ones. (Push the factor above 1 and the same product explodes instead; the field&rsquo;s fix is gated cells that protect the gradient&rsquo;s path &mdash; a later day&rsquo;s story. Tonight you just measure the fade.)</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think <strong>stateful stream processing</strong> &mdash; your world. A Kafka Streams aggregation or a Raft log applier does not re-read the whole log for every new event; it carries a compact <strong>state</strong> and folds each event in: <code>state<sub>t</sub> = f(state<sub>t&minus;1</sub>, event<sub>t</sub>)</code>. The hidden state is exactly that state, and the cell is the fold function &mdash; except the fold here is <em>learned</em> instead of hand-written. Same operational shape, same failure mode: if your state summary drops something, no later event can bring it back.</p>
+<p>Trading version: an <strong>EMA is a scalar RNN with frozen weights</strong> &mdash; <code>EMA<sub>t</sub> = &alpha;&middot;price<sub>t</sub> + (1&minus;&alpha;)&middot;EMA<sub>t&minus;1</sub></code>. One number of state, updated by the same rule at every candle, old information decaying by a fixed factor per step. You have watched that decay your whole trading life; tonight the decay factor is learned, the state is a vector &mdash; and in Part 3 you will watch the <em>gradient</em> decay by the same compounding logic.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 392" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="392" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">An RNN unrolled: one cell, reused at every step</text>
+<text x="340" y="44" text-anchor="middle" font-size="10" fill="#666666">Every copy shares the SAME weights — like Day 26&#x27;s kernel, shared across space, now shared across time</text>
+<rect x="84" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="143.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="143.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="143.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="143.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.66, -0.38]</text>
+<rect x="232" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="291.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="291.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="291.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="291.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.60, -0.17]</text>
+<rect x="380" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="439.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="439.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="439.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="439.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [-0.48, +0.57]</text>
+<rect x="528" y="62" width="118" height="84" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="587.0" y="84" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">RNN CELL</text>
+<text x="587.0" y="102" text-anchor="middle" font-size="9.5" fill="#333333">tanh(W·x + W·h + b)</text>
+<text x="587.0" y="120" text-anchor="middle" font-size="10" fill="#333333">same W_xh, W_hh</text>
+<text x="587.0" y="137" text-anchor="middle" font-size="9.5" fill="#333333">h out [+0.55, -0.26]</text>
+<rect x="10" y="84" width="52" height="40" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="36" y="102" text-anchor="middle" font-size="11" font-weight="bold" fill="#0a54c2">h0</text>
+<text x="36" y="117" text-anchor="middle" font-size="9.5" fill="#333333">[0, 0]</text>
+<line x1="62" y1="104" x2="80" y2="104" stroke="#555555" stroke-width="2"/><path d="M 84 104 L 77 100.5 L 77 107.5 Z" fill="#555555"/>
+<line x1="202" y1="104" x2="228" y2="104" stroke="#555555" stroke-width="2"/><path d="M 232 104 L 225 100.5 L 225 107.5 Z" fill="#555555"/>
+<text x="217.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h1</text>
+<line x1="350" y1="104" x2="376" y2="104" stroke="#555555" stroke-width="2"/><path d="M 380 104 L 373 100.5 L 373 107.5 Z" fill="#555555"/>
+<text x="365.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h2</text>
+<line x1="498" y1="104" x2="524" y2="104" stroke="#555555" stroke-width="2"/><path d="M 528 104 L 521 100.5 L 521 107.5 Z" fill="#555555"/>
+<text x="513.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h3</text>
+<text x="73.0" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h0</text>
+<text x="656" y="96" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">h4</text>
+<line x1="646" y1="104" x2="664" y2="104" stroke="#555555" stroke-width="2"/><path d="M 668 104 L 661 100.5 L 661 107.5 Z" fill="#555555"/>
+<text x="340" y="164" text-anchor="middle" font-size="10" fill="#666666">The hidden state h is the only thing carried forward — a running summary, rewritten each step</text>
+<line x1="143.0" y1="196" x2="143.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 143.0 146 L 139.5 153 L 146.5 153 Z" fill="#555555"/>
+<rect x="105.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="143.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x1 = +1.0</text>
+<text x="143.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="291.0" y1="196" x2="291.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 291.0 146 L 287.5 153 L 294.5 153 Z" fill="#555555"/>
+<rect x="253.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="291.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x2 = +0.5</text>
+<text x="291.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="439.0" y1="196" x2="439.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 439.0 146 L 435.5 153 L 442.5 153 Z" fill="#555555"/>
+<rect x="401.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="439.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x3 = -1.0</text>
+<text x="439.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<line x1="587.0" y1="196" x2="587.0" y2="152" stroke="#555555" stroke-width="2"/><path d="M 587.0 146 L 583.5 153 L 590.5 153 Z" fill="#555555"/>
+<rect x="549.0" y="196" width="76" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="587.0" y="213" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">x4 = +1.0</text>
+<text x="587.0" y="228" text-anchor="middle" font-size="9" fill="#333333">step input</text>
+<text x="340" y="256" text-anchor="middle" font-size="10" fill="#666666">Inputs arrive one at a time — candles, words, ticks. There is no fixed input width to design around.</text>
+<rect x="16" y="272" width="648" height="104" rx="10" fill="#f7f7f8" stroke="#cccccc" stroke-width="1"/>
+<text x="340" y="292" text-anchor="middle" font-size="11" font-weight="bold" fill="#1c1c1e">Backprop through time: the gradient fades (Part 3 — loss reads only the final h)</text>
+<rect x="52" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.25"/>
+<text x="69" y="368" text-anchor="middle" font-size="9" fill="#666666">t=1</text>
+<rect x="110" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.33"/>
+<text x="127" y="368" text-anchor="middle" font-size="9" fill="#666666">t=2</text>
+<rect x="168" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.42"/>
+<text x="185" y="368" text-anchor="middle" font-size="9" fill="#666666">t=3</text>
+<rect x="226" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.50"/>
+<text x="243" y="368" text-anchor="middle" font-size="9" fill="#666666">t=4</text>
+<rect x="284" y="352.0" width="34" height="2.0" rx="2" fill="#22a355" opacity="0.58"/>
+<text x="301" y="368" text-anchor="middle" font-size="9" fill="#666666">t=5</text>
+<rect x="342" y="350.6" width="34" height="3.4" rx="2" fill="#22a355" opacity="0.67"/>
+<text x="359" y="368" text-anchor="middle" font-size="9" fill="#666666">t=6</text>
+<rect x="400" y="347.8" width="34" height="6.2" rx="2" fill="#22a355" opacity="0.75"/>
+<text x="417" y="368" text-anchor="middle" font-size="9" fill="#666666">t=7</text>
+<rect x="458" y="342.6" width="34" height="11.4" rx="2" fill="#22a355" opacity="0.83"/>
+<text x="475" y="368" text-anchor="middle" font-size="9" fill="#666666">t=8</text>
+<rect x="516" y="332.7" width="34" height="21.3" rx="2" fill="#22a355" opacity="0.92"/>
+<text x="533" y="368" text-anchor="middle" font-size="9" fill="#666666">t=9</text>
+<rect x="574" y="314.0" width="34" height="40.0" rx="2" fill="#22a355" opacity="1.00"/>
+<text x="591" y="368" text-anchor="middle" font-size="9" fill="#666666">t=10</text>
+<text x="69" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.0066</text>
+<text x="301" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.0319</text>
+<text x="591" y="306" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#177245">0.6633</text>
+<text x="614" y="334" text-anchor="middle" font-size="9" fill="#666666">x~0.53/step</text>
+</svg>
+    <div class="caption">One cell, copied across time: each copy reads one input and the previous hidden state, and writes the next hidden state — the same weights everywhere. Below, Part 3's measured gradient per step: blame for the final loss arrives at t=10 at full strength and at t=1 about 100× weaker.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file in <code>~/ai-lab</code>, three parts, and &mdash; rare treat &mdash; <strong>no randomness anywhere</strong>: every weight is hand-set, so your output should match the expected output digit for digit on CPU or MPS. <strong>Part 1</strong> runs the cell by hand over four toy candle moves (+1.0, +0.5, &minus;1.0, +1.0) and prints the summary after each step &mdash; watch step 3&rsquo;s &minus;1.0 flip the first component of <code>h</code> negative: the summary is being <em>rewritten</em>, not appended to. <strong>Part 2</strong> copies those exact weights into <code>nn.RNN</code> (note PyTorch&rsquo;s two biases: the cell&rsquo;s bias goes in <code>bias_ih_l0</code>, and <code>bias_hh_l0</code> is zeroed so nothing is double-counted) and checks the packaged version against your hand loop, then stretches the same cell from T=4 to T=12. <strong>Part 3</strong> is the fade, measured: a scalar cell (<code>w<sub>hh</sub></code>=0.8) reads ten identical inputs, the loss is just the final <code>h</code>, and autograd reports each step&rsquo;s gradient.</p>
+  <pre><code>&quot;&quot;&quot;Day 28 - RNNs &amp; Sequences: Recurrence and the Fading Memory.
+
+Every model so far took a fixed-size input and had no memory:
+shuffle the rows (Day 19) and an MLP cannot even tell. Sequences
+-- words in a sentence, candles in a session, ticks in a stream --
+break both assumptions. The length varies, and the ORDER is the
+information: step t only makes sense given what came before it.
+
+A recurrent neural network (RNN) answers with one cell, reused:
+
+  h_t = tanh(W_xh @ x_t + W_hh @ h_prev + b),   h_0 = 0
+
+h is the hidden state -- a fixed-size running summary, rewritten
+at every step from the new input and its own previous value. The
+SAME W_xh and W_hh are used at every step: weight sharing over
+time, exactly as Day 26&#x27;s kernel shared weights over space. So
+the parameter count ignores the sequence length, and any length
+works. Unroll the loop in time and the RNN is a very deep
+network -- one layer per step, all sharing weights -- whose
+final hidden state (or the state at every step) feeds an
+ordinary head, e.g. Day 24&#x27;s Linear layer.
+
+  Part 1  The cell by hand: fixed weights, a 4-step sequence of
+          toy candle moves (+1.0, +0.5, -1.0, +1.0), print h
+          after every step and watch step 3&#x27;s -1.0 rewrite the
+          summary the first two steps built.
+  Part 2  nn.RNN is the same cell, packaged: copy the Part 1
+          weights in, check the outputs match to 0.000000, and
+          show the parameter count (10) does not change when the
+          sequence grows from T=4 to T=12.
+  Part 3  Why they fade: a scalar gradient probe (w_hh = 0.8,
+          ten identical inputs of 0.2). The loss reads only the
+          FINAL hidden state; autograd reports how much each
+          step&#x27;s input could have changed it. The first step&#x27;s
+          gradient arrives about 100x smaller than the last
+          step&#x27;s -- backprop through time multiplies by a factor
+          below 1 at every hop (about 0.53 here), and products
+          of numbers below 1 vanish exponentially. That is why
+          plain RNNs learn short-range patterns and go deaf to
+          distant ones.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU or MPS, no
+CUDA, no paid APIs, no downloads. No randomness anywhere in
+this file -- every weight is hand-set, so your output should
+match the expected output below digit for digit.
+
+Expected output:
+
+  device: mps
+  Part 1 - one cell, unrolled by hand
+    h0 = [+0.0000, +0.0000]
+    t=1  x=+1.0  h=[+0.6640, -0.3799]
+    t=2  x=+0.5  h=[+0.6006, -0.1676]
+    t=3  x=-1.0  h=[-0.4750, +0.5737]
+    t=4  x=+1.0  h=[+0.5510, -0.2594]
+  Part 2 - nn.RNN: the same cell, packaged
+    input shape (1, 4, 1)  (batch, time, features)
+    output shape (1, 4, 2)  (hidden state at every step)
+    h_n shape (1, 1, 2)  (the final hidden state)
+    hand loop vs nn.RNN max diff: 0.000000
+    params: 10  (T=4)
+    T=12 output shape (1, 12, 2)  params still 10
+  Part 3 - why they fade: the gradient through time
+    final h after 10 steps: 0.5803
+    grad wrt x_t, t=1..10: 0.0066, 0.0086, 0.0123, 0.0190, 0.0319, 0.0561, 0.1020, 0.1888, 0.3529, 0.6633
+    last step grad 0.6633 vs first step grad 0.0066 -- ratio 99.7x
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+print(&quot;device:&quot;, device)
+
+# ---------- Part 1: one cell, unrolled by hand ----------
+print(&quot;Part 1 - one cell, unrolled by hand&quot;)
+W_xh = torch.tensor([[0.8], [-0.5]], device=device)          # (2, 1)
+W_hh = torch.tensor([[0.5, 0.1], [0.2, 0.4]], device=device)  # (2, 2)
+b_h = torch.tensor([0.0, 0.1], device=device)
+xs = [1.0, 0.5, -1.0, 1.0]  # toy candle moves
+h = torch.zeros(2, device=device)                             # h_0 = 0
+print(f&quot;  h0 = [{h[0]:+.4f}, {h[1]:+.4f}]&quot;)
+hand_hs = []
+for t, xv in enumerate(xs, 1):
+    x_t = torch.tensor([xv], device=device)
+    h = torch.tanh(W_xh @ x_t + W_hh @ h + b_h)               # the cell
+    hand_hs.append(h.clone())
+    print(f&quot;  t={t}  x={xv:+.1f}  h=[{h[0]:+.4f}, {h[1]:+.4f}]&quot;)
+
+# ---------- Part 2: nn.RNN -- the same cell, packaged ----------
+print(&quot;Part 2 - nn.RNN: the same cell, packaged&quot;)
+rnn = nn.RNN(input_size=1, hidden_size=2, batch_first=True).to(device)
+with torch.no_grad():
+    rnn.weight_ih_l0.copy_(W_xh)   # PyTorch&#x27;s name for W_xh
+    rnn.weight_hh_l0.copy_(W_hh)   # PyTorch&#x27;s name for W_hh
+    rnn.bias_ih_l0.copy_(b_h)      # the cell&#x27;s bias lives here...
+    rnn.bias_hh_l0.zero_()         # ...so the second bias stays 0
+x_seq = torch.tensor(xs, device=device).reshape(1, 4, 1)  # (B, T, F)
+with torch.no_grad():
+    out, h_n = rnn(x_seq)
+print(f&quot;  input shape {tuple(x_seq.shape)}  (batch, time, features)&quot;)
+print(f&quot;  output shape {tuple(out.shape)}  (hidden state at every step)&quot;)
+print(f&quot;  h_n shape {tuple(h_n.shape)}  (the final hidden state)&quot;)
+hand = torch.stack(hand_hs)                                   # (4, 2)
+diff = (hand - out[0]).abs().max().item()
+print(f&quot;  hand loop vs nn.RNN max diff: {diff:.6f}&quot;)
+n_params = sum(p.numel() for p in rnn.parameters())
+print(f&quot;  params: {n_params}  (T=4)&quot;)
+x_long = torch.zeros(1, 12, 1, device=device)
+with torch.no_grad():
+    out12, _ = rnn(x_long)
+print(f&quot;  T=12 output shape {tuple(out12.shape)}  params still {n_params}&quot;)
+
+# ---------- Part 3: why they fade -- the gradient through time ----------
+print(&quot;Part 3 - why they fade: the gradient through time&quot;)
+x = torch.full((10,), 0.2, requires_grad=True, device=device)
+h = torch.zeros((), device=device)
+for t in range(10):
+    h = torch.tanh(0.8 * h + 1.0 * x[t])   # scalar cell: w_hh=0.8, w_xh=1.0
+print(f&quot;  final h after 10 steps: {h.item():.4f}&quot;)
+h.backward()                               # blame flows back through time
+g = x.grad
+print(&quot;  grad wrt x_t, t=1..10: &quot; + &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in g.tolist()))
+print(f&quot;  last step grad {g[-1]:.4f} vs first step grad {g[0]:.4f}&quot;
+      f&quot; -- ratio {(g[-1] / g[0]).item():.1f}x&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - one cell, unrolled by hand
+  h0 = [+0.0000, +0.0000]
+  t=1  x=+1.0  h=[+0.6640, -0.3799]
+  t=2  x=+0.5  h=[+0.6006, -0.1676]
+  t=3  x=-1.0  h=[-0.4750, +0.5737]
+  t=4  x=+1.0  h=[+0.5510, -0.2594]
+Part 2 - nn.RNN: the same cell, packaged
+  input shape (1, 4, 1)  (batch, time, features)
+  output shape (1, 4, 2)  (hidden state at every step)
+  h_n shape (1, 1, 2)  (the final hidden state)
+  hand loop vs nn.RNN max diff: 0.000000
+  params: 10  (T=4)
+  T=12 output shape (1, 12, 2)  params still 10
+Part 3 - why they fade: the gradient through time
+  final h after 10 steps: 0.5803
+  grad wrt x_t, t=1..10: 0.0066, 0.0086, 0.0123, 0.0190, 0.0319, 0.0561, 0.1020, 0.1888, 0.3529, 0.6633
+  last step grad 0.6633 vs first step grad 0.0066 -- ratio 99.7x</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints the trace <code>h</code> = [+0.6640, &minus;0.3799] &rarr; [+0.6006, &minus;0.1676] &rarr; [&minus;0.4750, +0.5737] &rarr; [+0.5510, &minus;0.2594]; Part 2 reports <strong>max diff 0.000000</strong>, <strong>params: 10</strong> at both T=4 and T=12; and Part 3 prints the gradient list ending <strong>0.6633</strong> at t=10 against <strong>0.0066</strong> at t=1 &mdash; <strong>ratio 99.7&times;</strong>. The bigger test: you can say it cold &mdash; <em><code>h<sub>t</sub> = tanh(W<sub>xh</sub>x<sub>t</sub> + W<sub>hh</sub>h<sub>t&minus;1</sub> + b)</code>, same weights every step; the gradient is multiplied by a below-1 factor at every hop back through time, so distant steps barely learn.</em></p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the whole file once (seconds), but spend your attention on Part 1&rsquo;s trace and Part 3&rsquo;s gradient list. Check the fade yourself on your phone calculator: 0.53<sup>9</sup> &asymp; 0.01. If you can explain <em>why</em> the t=1 gradient had to land near 0.0066 before you run it, you have the lesson.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: as stacks get deeper, the numbers flowing through them drift while training runs &mdash; and a small in-layer fix keeps them tame.</p>
+  </div>
+
+  <div class="footer">Streak: 28 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

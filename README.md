@@ -51,3 +51,4 @@ pip install torch numpy
 | 25 | [Training Loop, Done Right: Device, Eval Mode & no_grad](day-025-training-loop-done-right/lesson.html) | [lesson.md](day-025-training-loop-done-right/lesson.md) | [code.py](day-025-training-loop-done-right/code.py) |
 | 26 | [CNNs 1: Convolution — The Sliding Pattern Scanner](day-026-cnns-1-convolution-intuition/lesson.html) | [lesson.md](day-026-cnns-1-convolution-intuition/lesson.md) | [code.py](day-026-cnns-1-convolution-intuition/code.py) |
 | 27 | [CNNs 2: Build a Small Image Classifier](day-027-cnns-2-build-a-small-image-classifier/lesson.html) | [lesson.md](day-027-cnns-2-build-a-small-image-classifier/lesson.md) | [code.py](day-027-cnns-2-build-a-small-image-classifier/code.py) |
+| 28 | [RNNs & Sequences: Recurrence and the Fading Memory](day-028-rnns-and-sequences/lesson.html) | [lesson.md](day-028-rnns-and-sequences/lesson.md) | [code.py](day-028-rnns-and-sequences/code.py) |
