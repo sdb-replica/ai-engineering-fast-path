@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hyperparameters That Actually Matter: LR, Batch Size, Depth vs Width — Day 30 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 30 of 100</span>
+  <h1>Hyperparameters That Actually Matter: LR, Batch Size, Depth vs Width</h1>
+  <p class="outcome">Tonight you'll be able to: look at any training run and know which dial to turn &mdash; set a learning rate that actually trains, pick a batch size by its noise-versus-steps tradeoff, and size a model by depth versus width &mdash; in that order, and only after diagnosing whether the problem is underfitting or overfitting.</p>
+
+  <h2>The one idea</h2>
+  <p>Everything inside the model &mdash; every weight, every bias &mdash; is a <strong>parameter</strong>: training learns it. The settings you choose <em>before</em> training starts, which no optimizer ever touches, are <strong>hyperparameters</strong>: they set the conditions the learning happens under. There are dozens, but three dominate almost every real outcome, and each is a different <em>kind</em> of choice. Tonight all three get measured on machinery you already own.</p>
+<p><strong>Dial 1 &mdash; learning rate (lr): the stride of every step.</strong> Gradient descent moves <code>&minus;lr &times; gradient</code> (Day 6, raced again on Day 18&rsquo;s ravine). Part 1 reruns Day 7&rsquo;s line (truth w = 2.5, b = &minus;1) at four strides. Too small (0.01) and 30 epochs still leave you at loss <strong>1.6600</strong>, w = 1.5958 &mdash; you are walking the right way and will simply never arrive tonight. The sweet spot (0.05&ndash;0.20) lands at <strong>0.0020 / 0.0000</strong>, exactly on the truth. Too big (0.65) does not wobble &mdash; it <strong>diverges</strong>: 11.4 &rarr; 48.7 &rarr; 227.3 in ten epochs. Why no universal good value? The largest stable stride is set by the loss surface&rsquo;s <em>curvature</em>, which changes with the model, the data and the optimizer (Day 18: Adam&rsquo;s lr behaves like a stride cap, not a multiplier). So the working skill is not memorizing 0.001 &mdash; it is running a <strong>sweep</strong>: try strides spaced by powers of ten (0.001, 0.01, 0.1, &hellip;), keep the biggest one that trains smoothly, refine around it. Three ten-minute runs beat one superstitious guess.</p>
+<p><strong>Dial 2 &mdash; batch size: the sample behind every gradient.</strong> Day 19 built the machinery; today is what it <em>means</em>. The gradient your optimizer follows is computed from one batch, so it is an <em>estimate</em> of the full-data gradient &mdash; and estimates have noise. Part 2 measures it at w = b = 0 on 32 points: the true gradient is &minus;6.7579, and the chunk gradients of one shuffled epoch deviate from it with RMS <strong>6.2172</strong> at batch 1, falling through 1.1477 at batch 4 to exactly <strong>0.0000</strong> at batch 32 &mdash; batch 32 <em>is</em> the full data, so the estimate is the truth. The other side of the trade: steps per epoch fall 32 &rarr; 1 over the same sweep. Small batch = many noisy updates (the noise is not pure villain &mdash; it bounces the optimizer out of shallow dips); large batch = few smooth updates, each one expensive, but perfectly parallel on the GPU (Day 13). The dials also couple: a bigger batch gives a smoother gradient, which usually tolerates a bigger stride &mdash; when you scale one, expect to re-check the other.</p>
+<p><strong>Dial 3 &mdash; depth vs width: the shape of capacity.</strong> Both make the model bigger; they bill you differently. Widening a hidden layer grows the matrix <em>between</em> hidden layers as h &times; h, so Part 3&rsquo;s counts go 169 &rarr; 465 &rarr; 1441 &rarr; <strong>4929</strong> as h doubles 8 &rarr; 64 &mdash; approaching &times;4 per doubling. Adding a layer at fixed width 16 adds the <em>same</em> 272 parameters each time (193 &rarr; 465 &rarr; 737 &rarr; 1009): linear. What the money buys differs too: width is more pattern-detectors working the same level in parallel; depth is <em>composition</em> &mdash; features of features &mdash; which is why depth, not width, cracked XOR on Day 21. Depth&rsquo;s price is not parameters, it is trainability: longer credit-assignment chains fade (Days 22/28), which is exactly what Day 29&rsquo;s norms exist to protect.</p>
+<p><strong>Diagnose before you dial.</strong> Read two numbers first &mdash; train loss and validation loss (Day 8). Train high <em>and</em> val high: the model cannot even fit what it has seen &mdash; <strong>underfitting</strong> &mdash; and only now is capacity the right dial (or more epochs / a bigger stride). Train low, val high: <strong>overfitting</strong> &mdash; more capacity is precisely the wrong medicine; that is regularization, data, or a smaller model (Day 17). Most wasted tuning hours are dial 3 turned on a dial-1 problem, or capacity added to an overfit model. Order of operations, every time: <em>stride until it trains, batch for your hardware, capacity only when the train loss itself is the complaint.</em></p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>These are the three knobs on a <strong>control loop</strong>, and you have tuned this loop before &mdash; it is TCP congestion control wearing a different hat. Learning rate is the controller&rsquo;s <strong>gain</strong>: too timid and the window crawls toward the fair rate and never gets there; too aggressive and it oscillates, overshoots, and blows the queue &mdash; Part 1&rsquo;s divergence is a control loop going unstable, not a statistics surprise. Batch size is the <strong>sample window</strong> behind each control decision: react to every single ACK and you chase noise; wait for a big window and your estimate is solid but your decisions are rare and stale. Depth vs width is your oldest systems tradeoff: <strong>scale a node up versus add hops to the chain</strong> &mdash; a bigger node costs quadratically in the cross-connect, while each added hop is a flat fee that compounds latency and failure modes instead.</p>
+<p>Trading version: you already refuse to judge an edge from <strong>one trade</strong> &mdash; that print is batch size 1, noise RMS 6.2172, mostly luck. Thirty-two trades in, the estimate tightens toward the strategy&rsquo;s true expectancy. And your stride is your <strong>position-step size</strong>: creep in 1% at a time and the move is over before you are sized; leap and one adverse print owns you. Same dials, same discipline: sample enough to see, step as big as stability allows.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 466" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="466" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Three dials, three different jobs</text>
+<text x="340" y="42" text-anchor="middle" font-size="10" fill="#666666">Turn them in order:  1) learning rate   2) batch size   3) capacity (depth vs width)</text>
+<rect x="12" y="54" width="656.0" height="118" rx="10" fill="#f7f9ff" stroke="#0a7aff" stroke-width="1"/>
+<text x="340" y="76" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">DIAL 1 - LEARNING RATE: the stride of every step</text>
+<rect x="24" y="88" width="200.0" height="70" rx="6" fill="#fff3d6" stroke="#bbbbbb" stroke-width="1"/>
+<text x="124" y="109" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">lr 0.01 - TOO SMALL</text>
+<text x="124" y="129" text-anchor="middle" font-size="9.0" fill="#333333">loss after 30 epochs: 1.6600</text>
+<text x="124" y="147" text-anchor="middle" font-size="9.0" fill="#666666">still crawling toward the line</text>
+<rect x="236" y="88" width="200.0" height="70" rx="6" fill="#e9f9ee" stroke="#bbbbbb" stroke-width="1"/>
+<text x="336" y="109" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">lr 0.05-0.20 - SWEET SPOT</text>
+<text x="336" y="129" text-anchor="middle" font-size="9.0" fill="#333333">loss after 30 epochs: 0.0020 / 0.0000</text>
+<text x="336" y="147" text-anchor="middle" font-size="9.0" fill="#666666">arrives - lr 0.20 lands w = 2.5000</text>
+<rect x="448" y="88" width="200.0" height="70" rx="6" fill="#fdecec" stroke="#bbbbbb" stroke-width="1"/>
+<text x="548" y="109" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">lr 0.65 - TOO BIG</text>
+<text x="548" y="129" text-anchor="middle" font-size="9.0" fill="#333333">loss at epoch 10: 227.3 (was 11.4)</text>
+<text x="548" y="147" text-anchor="middle" font-size="9.0" fill="#666666">overshoots, then diverges</text>
+<rect x="12" y="184" width="656.0" height="128" rx="10" fill="#fffaf0" stroke="#d97706" stroke-width="1"/>
+<text x="320" y="206" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#9a6b00">DIAL 2 - BATCH SIZE: noise falls, steps per epoch fall with it</text>
+<text x="30" y="228" text-anchor="start" font-size="9.0" fill="#333333">batch  1 - 32 steps</text>
+<rect x="168" y="218" width="230.0" height="10" rx="3" fill="#d97706" stroke="#d97706" stroke-width="1"/>
+<text x="412.0" y="228" text-anchor="start" font-size="9.0" fill="#333333">noise 6.2172</text>
+<text x="30" y="243" text-anchor="start" font-size="9.0" fill="#333333">batch  2 - 16 steps</text>
+<rect x="168" y="233" width="72.9" height="10" rx="3" fill="#d97706" stroke="#d97706" stroke-width="1"/>
+<text x="254.885865019623" y="243" text-anchor="start" font-size="9.0" fill="#333333">noise 1.9702</text>
+<text x="30" y="258" text-anchor="start" font-size="9.0" fill="#333333">batch  4 -  8 steps</text>
+<rect x="168" y="248" width="42.5" height="10" rx="3" fill="#d97706" stroke="#d97706" stroke-width="1"/>
+<text x="224.45818053142892" y="258" text-anchor="start" font-size="9.0" fill="#333333">noise 1.1477</text>
+<text x="30" y="273" text-anchor="start" font-size="9.0" fill="#333333">batch  8 -  4 steps</text>
+<rect x="168" y="263" width="32.6" height="10" rx="3" fill="#d97706" stroke="#d97706" stroke-width="1"/>
+<text x="214.55854725599949" y="273" text-anchor="start" font-size="9.0" fill="#333333">noise 0.8801</text>
+<text x="30" y="288" text-anchor="start" font-size="9.0" fill="#333333">batch 16 -  2 steps</text>
+<rect x="168" y="278" width="24.8" height="10" rx="3" fill="#d97706" stroke="#d97706" stroke-width="1"/>
+<text x="206.78607733384803" y="288" text-anchor="start" font-size="9.0" fill="#333333">noise 0.6700</text>
+<text x="30" y="303" text-anchor="start" font-size="9.0" fill="#333333">batch 32 -  1 steps</text>
+<text x="182.0" y="303" text-anchor="start" font-size="9.0" fill="#333333">noise 0.0000</text>
+<text x="560" y="232" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#9a6b00">a batch is a SAMPLE</text>
+<text x="560" y="252" text-anchor="middle" font-size="9.0" fill="#333333">small: noisy, many steps</text>
+<text x="560" y="270" text-anchor="middle" font-size="9.0" fill="#333333">large: smooth, few steps</text>
+<text x="560" y="288" text-anchor="middle" font-size="9.0" fill="#333333">batch 32 = all the data here,</text>
+<text x="560" y="302" text-anchor="middle" font-size="9.0" fill="#333333">so its noise is exactly 0</text>
+<rect x="12" y="324" width="656.0" height="130" rx="10" fill="#f7f7f8" stroke="#cccccc" stroke-width="1"/>
+<text x="340" y="346" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">DIAL 3 - CAPACITY: params counted by PyTorch (bar length ~ square root of params)</text>
+<text x="30" y="368" text-anchor="start" font-size="9.5" font-weight="bold" fill="#0a54c2">WIDTH - 10->h->h->1 (doubling h)</text>
+<text x="30" y="390" text-anchor="start" font-size="9.0" fill="#333333">h= 8</text>
+<rect x="82" y="380" width="19.3" height="10" rx="3" fill="#0a7aff" stroke="#0a7aff" stroke-width="1"/>
+<text x="107.25738364663735" y="390" text-anchor="start" font-size="9.0" fill="#333333">169 params</text>
+<text x="30" y="405" text-anchor="start" font-size="9.0" fill="#333333">h=16</text>
+<rect x="82" y="395" width="31.9" height="10" rx="3" fill="#0a7aff" stroke="#0a7aff" stroke-width="1"/>
+<text x="119.94334607536545" y="405" text-anchor="start" font-size="9.0" fill="#333333">465 params</text>
+<text x="30" y="420" text-anchor="start" font-size="9.0" fill="#333333">h=32</text>
+<rect x="82" y="410" width="56.2" height="10" rx="3" fill="#0a7aff" stroke="#0a7aff" stroke-width="1"/>
+<text x="144.23230949699104" y="420" text-anchor="start" font-size="9.0" fill="#333333">1441 params</text>
+<text x="30" y="435" text-anchor="start" font-size="9.0" fill="#333333">h=64</text>
+<rect x="82" y="425" width="104.0" height="10" rx="3" fill="#0a7aff" stroke="#0a7aff" stroke-width="1"/>
+<text x="192.0" y="435" text-anchor="start" font-size="9.0" fill="#333333">4929 params</text>
+<text x="366" y="368" text-anchor="start" font-size="9.5" font-weight="bold" fill="#177245">DEPTH - width 16, L hidden layers</text>
+<text x="366" y="390" text-anchor="start" font-size="9.0" fill="#333333">L=1</text>
+<rect x="418" y="380" width="20.6" height="10" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1"/>
+<text x="444.5793941303274" y="390" text-anchor="start" font-size="9.0" fill="#333333">193 params</text>
+<text x="366" y="405" text-anchor="start" font-size="9.0" fill="#333333">L=2</text>
+<rect x="418" y="395" width="31.9" height="10" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1"/>
+<text x="455.94334607536547" y="405" text-anchor="start" font-size="9.0" fill="#333333">465 params</text>
+<text x="366" y="420" text-anchor="start" font-size="9.0" fill="#333333">L=3</text>
+<rect x="418" y="410" width="40.2" height="10" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1"/>
+<text x="464.21496306363815" y="420" text-anchor="start" font-size="9.0" fill="#333333">737 params</text>
+<text x="366" y="435" text-anchor="start" font-size="9.0" fill="#333333">L=4</text>
+<rect x="418" y="425" width="47.1" height="10" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1"/>
+<text x="471.0543212673288" y="435" text-anchor="start" font-size="9.0" fill="#333333">1009 params</text>
+<text x="182" y="442" text-anchor="middle" font-size="9.0" fill="#666666">the h x h matrix makes width ~x4</text>
+<text x="518" y="442" text-anchor="middle" font-size="9.0" fill="#666666">each layer adds the same +272</text>
+</svg>
+    <div class="caption">The three dials with the lesson's real numbers. Learning rate: 0.01 still crawling at loss 1.6600 after 30 epochs, 0.05-0.20 landing at 0.0020/0.0000, 0.65 diverging to 227.3. Batch size: gradient-noise RMS falls 6.2172 to 0.0000 as steps per epoch fall 32 to 1. Capacity: widening h 8 to 64 costs 169 to 4,929 parameters (~x4 per doubling, from the h x h matrix); deepening at width 16 adds a flat 272 per layer.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file in <code>~/ai-lab</code>, three parts, <strong>no randomness</strong> &mdash; every run starts from the same hand-set init (w = b = 0), so your numbers should match the expected output (the diverging lr 0.65 losses are printed to 1 decimal on purpose &mdash; a diverging run amplifies last-bit float differences, so its trailing digits are not stable; its first digits very much are). <strong>Part 1</strong> sweeps the stride on Day 7&rsquo;s line, full batch, 30 epochs. <strong>Part 2</strong> takes one shuffled epoch of 32 points, computes each chunk&rsquo;s gradient at w = b = 0 by autograd, and reports the RMS deviation from the true full-data gradient next to the steps-per-epoch count. <strong>Part 3</strong> lets PyTorch count parameters itself for the width and depth sweeps.</p>
+  <pre><code>&quot;&quot;&quot;Day 30 - Hyperparameters That Actually Matter: LR, Batch Size,
+Depth vs Width.
+
+Parameters are learned by training: every weight and bias in
+the model. Hyperparameters are chosen by YOU, before training
+starts, and never touched by the optimizer: they set the
+conditions the learning happens under. Dozens exist, but three
+dominate almost every outcome -- and tonight each one gets
+measured, not asserted.
+
+  Learning rate (the stride): gradient descent moves
+    -lr * gradient every step (Days 6/18). Too small and the
+    epochs run out before you arrive; too big and each step
+    overshoots -- past a threshold the loss does not wobble,
+    it explodes. There is no universal good value: the loss
+    surface&#x27;s curvature sets the scale (Day 18&#x27;s ravine), which
+    is why the practical skill is a sweep over powers of ten,
+    not memorizing a number.
+  Batch size (the sample): the gradient is computed from the
+    batch, so it is an ESTIMATE of the full-data gradient
+    (Day 19). Small batches take many noisy steps per epoch;
+    large batches take few smooth ones. At batch = dataset
+    size the estimate is exact and the noise is zero.
+  Depth vs width (the shape of capacity): widening a hidden
+    layer grows its hidden-to-hidden matrix as h x h, so
+    doubling width roughly QUADRUPLES that layer&#x27;s parameters.
+    Deepening at fixed width adds one same-size layer at a
+    time -- parameters grow LINEARLY -- and buys composition
+    (Day 21: depth, not width, is what cracked XOR), at the
+    price of harder optimization (Days 22/28/29).
+
+The order matters as much as the dials: (1) find a learning
+rate that trains at all, (2) set batch size for your hardware
+and the noise you can tolerate, (3) touch capacity LAST, and
+only when the TRAIN loss is the problem. Train loss low but
+validation loss high is overfitting (Day 8) -- more capacity
+is exactly the wrong medicine there; that is Day 17&#x27;s dial.
+
+  Part 1  LR sweep on the Day 7 line (truth w=2.5, b=-1),
+          full batch, 30 epochs, fixed init w=b=0: lr 0.01 is
+          still crawling at loss 1.6600, lr 0.05 lands at
+          0.0020, lr 0.20 is exact -- and lr 0.65 diverges,
+          11.4 -&gt; 227.3 in 10 epochs.
+  Part 2  Gradient noise on 32 points at w=b=0: one epoch in
+          a fixed shuffled order, chunked at batch sizes
+          1/2/4/8/16/32. RMS deviation of the chunk gradients
+          from the true full gradient falls 6.2172 -&gt; 0.0000
+          while steps per epoch fall 32 -&gt; 1.
+  Part 3  Parameter counts, counted by PyTorch itself: width
+          8/16/32/64 on a 10-&gt;h-&gt;h-&gt;1 MLP gives
+          169/465/1441/4929; depth 1/2/3/4 at width 16 gives
+          193/465/737/1009 -- a flat +272 per extra layer.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU or MPS, no
+CUDA, no paid APIs, no downloads. No randomness -- every run
+starts from the same hand-set init, so your numbers should
+match the expected output. (The diverging lr 0.65 losses are
+printed to 1 decimal: a diverging run amplifies last-bit
+float differences, so its trailing digits are not stable --
+its first digits very much are.)
+
+Expected output:
+
+  device: mps
+  Part 1 - learning rate: same line, same init, 30 full-batch epochs
+    lr 0.01: loss 11.4167 -&gt; 5.9553 (ep 10) -&gt; 1.6600 (ep 30)   w 1.5958  b -0.4545
+    lr 0.05: loss 11.4167 -&gt; 0.3933 (ep 10) -&gt; 0.0020 (ep 30)   w 2.4895  b -0.9576
+    lr 0.20: loss 11.4167 -&gt; 0.0000 (ep 10) -&gt; 0.0000 (ep 30)   w 2.5000  b -1.0000
+    lr 0.65: loss 11.4 -&gt; 48.7 (ep 5) -&gt; 227.3 (ep 10)  DIVERGING - stride too big
+  Part 2 - batch size: gradient noise vs steps per epoch (32 points)
+    full-data gradient (the truth every batch estimates): dw = -6.7579
+    batch  1: 32 steps/epoch, gradient noise RMS 6.2172
+    batch  2: 16 steps/epoch, gradient noise RMS 1.9702
+    batch  4:  8 steps/epoch, gradient noise RMS 1.1477
+    batch  8:  4 steps/epoch, gradient noise RMS 0.8801
+    batch 16:  2 steps/epoch, gradient noise RMS 0.6700
+    batch 32:  1 steps/epoch, gradient noise RMS 0.0000
+  Part 3 - depth vs width: parameter counts (PyTorch-counted)
+    width sweep 10-&gt;h-&gt;h-&gt;1:  h=8: 169   h=16: 465   h=32: 1441   h=64: 4929
+    depth sweep width 16:     L=1: 193   L=2: 465   L=3: 737   L=4: 1009  (+272 per layer)
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+print(&quot;device:&quot;, device)
+
+# ---------- Part 1: the learning-rate sweep ----------
+print(&quot;Part 1 - learning rate: same line, same init, 30 full-batch epochs&quot;)
+X = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0],
+                 device=device)
+Y = 2.5 * X - 1.0                                 # truth: w = 2.5, b = -1
+
+def train_line(lr, epochs):
+    w = torch.tensor(0.0, device=device, requires_grad=True)
+    b = torch.tensor(0.0, device=device, requires_grad=True)
+    opt = torch.optim.SGD([w, b], lr=lr)
+    losses = []
+    for epoch in range(epochs + 1):
+        loss = ((w * X + b - Y) ** 2).mean()      # Day 7&#x27;s loop, full batch
+        losses.append(loss.item())
+        if epoch == epochs:
+            break
+        opt.zero_grad()
+        loss.backward()                           # step = -lr * gradient
+        opt.step()
+    return losses, w.item(), b.item()
+
+for lr in (0.01, 0.05, 0.20):
+    losses, w, b = train_line(lr, 30)
+    print(f&quot;  lr {lr:.2f}: loss {losses[0]:.4f} -&gt; {losses[10]:.4f} (ep 10)&quot;
+          f&quot; -&gt; {losses[30]:.4f} (ep 30)   w {w:.4f}  b {b:.4f}&quot;)
+losses, _, _ = train_line(0.65, 10)               # past the cliff
+print(f&quot;  lr 0.65: loss {losses[0]:.1f} -&gt; {losses[5]:.1f} (ep 5)&quot;
+      f&quot; -&gt; {losses[10]:.1f} (ep 10)  DIVERGING - stride too big&quot;)
+
+# ---------- Part 2: batch size = gradient noise vs steps ----------
+print(&quot;Part 2 - batch size: gradient noise vs steps per epoch (32 points)&quot;)
+X2 = torch.linspace(-2.0, 2.0, 32, device=device)
+Y2 = 2.5 * X2 - 1.0 + 0.5 * torch.sin(3.0 * X2)   # same line + a wiggle
+PERM = [0, 17, 5, 22, 11, 28, 3, 19, 8, 25, 14, 30, 1, 16, 7, 23,
+        12, 27, 2, 20, 9, 26, 15, 31, 4, 18, 10, 24, 13, 29, 6, 21]
+
+def grad_w(xs, ys):
+    w = torch.tensor(0.0, device=device, requires_grad=True)
+    b = torch.tensor(0.0, device=device, requires_grad=True)
+    loss = ((w * xs + b - ys) ** 2).mean()
+    loss.backward()
+    return w.grad.item()                          # dLoss/dw at w = b = 0
+
+full = grad_w(X2, Y2)
+print(f&quot;  full-data gradient (the truth every batch estimates): dw = {full:.4f}&quot;)
+order = torch.tensor(PERM, device=device)         # one shuffled epoch (Day 19)
+for bs in (1, 2, 4, 8, 16, 32):
+    chunks = [order[i:i + bs] for i in range(0, 32, bs)]
+    grads = torch.tensor([grad_w(X2[c], Y2[c]) for c in chunks])
+    rms = ((grads - full) ** 2).mean().sqrt().item()
+    print(f&quot;  batch {bs:2d}: {len(chunks):2d} steps/epoch, &quot;
+          f&quot;gradient noise RMS {rms:.4f}&quot;)
+
+# ---------- Part 3: depth vs width, counted in parameters ----------
+print(&quot;Part 3 - depth vs width: parameter counts (PyTorch-counted)&quot;)
+
+def count_params(hidden, in_features=10):
+    layers, prev = [], in_features
+    for h in hidden:
+        layers += [nn.Linear(prev, h), nn.ReLU()]
+        prev = h
+    layers += [nn.Linear(prev, 1)]
+    model = nn.Sequential(*layers)
+    return sum(p.numel() for p in model.parameters())
+
+widths = {h: count_params([h, h]) for h in (8, 16, 32, 64)}
+print(&quot;  width sweep 10-&gt;h-&gt;h-&gt;1:  &quot; +
+      &quot;   &quot;.join(f&quot;h={h}: {n}&quot; for h, n in widths.items()))
+depths = {L: count_params([16] * L) for L in (1, 2, 3, 4)}
+print(&quot;  depth sweep width 16:     &quot; +
+      &quot;   &quot;.join(f&quot;L={L}: {n}&quot; for L, n in depths.items()) +
+      &quot;  (+272 per layer)&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - learning rate: same line, same init, 30 full-batch epochs
+  lr 0.01: loss 11.4167 -&gt; 5.9553 (ep 10) -&gt; 1.6600 (ep 30)   w 1.5958  b -0.4545
+  lr 0.05: loss 11.4167 -&gt; 0.3933 (ep 10) -&gt; 0.0020 (ep 30)   w 2.4895  b -0.9576
+  lr 0.20: loss 11.4167 -&gt; 0.0000 (ep 10) -&gt; 0.0000 (ep 30)   w 2.5000  b -1.0000
+  lr 0.65: loss 11.4 -&gt; 48.7 (ep 5) -&gt; 227.3 (ep 10)  DIVERGING - stride too big
+Part 2 - batch size: gradient noise vs steps per epoch (32 points)
+  full-data gradient (the truth every batch estimates): dw = -6.7579
+  batch  1: 32 steps/epoch, gradient noise RMS 6.2172
+  batch  2: 16 steps/epoch, gradient noise RMS 1.9702
+  batch  4:  8 steps/epoch, gradient noise RMS 1.1477
+  batch  8:  4 steps/epoch, gradient noise RMS 0.8801
+  batch 16:  2 steps/epoch, gradient noise RMS 0.6700
+  batch 32:  1 steps/epoch, gradient noise RMS 0.0000
+Part 3 - depth vs width: parameter counts (PyTorch-counted)
+  width sweep 10-&gt;h-&gt;h-&gt;1:  h=8: 169   h=16: 465   h=32: 1441   h=64: 4929
+  depth sweep width 16:     L=1: 193   L=2: 465   L=3: 737   L=4: 1009  (+272 per layer)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 shows lr 0.01 stuck at loss <strong>1.6600</strong> (w 1.5958), lr 0.05 at <strong>0.0020</strong>, lr 0.20 landing exactly on <strong>w 2.5000, b &minus;1.0000</strong>, and lr 0.65 <strong>diverging to 227.3</strong> by epoch 10; Part 2&rsquo;s noise falls <strong>6.2172 &rarr; 0.0000</strong> while steps per epoch fall <strong>32 &rarr; 1</strong>; Part 3 counts width h=64 at <strong>4,929</strong> params against depth L=4 at <strong>1,009</strong>. The bigger test: you can say the order cold &mdash; <em>diagnose first (train loss vs val loss), then stride, then batch, then capacity &mdash; and capacity only when the train loss is the problem.</em></p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the whole file once (seconds), and spend your attention on Part 1&rsquo;s four lines &mdash; crawl, arrive, arrive, explode &mdash; plus Part 2&rsquo;s two falling columns. If, before running it, you can predict <em>which</em> of the four learning rates diverges and <em>why</em> batch 32&rsquo;s noise must be exactly zero, you have the lesson.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the run went sideways anyway &mdash; how to read what it is telling you before you touch a single dial.</p>
+  </div>
+
+  <div class="footer">Streak: 30 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
