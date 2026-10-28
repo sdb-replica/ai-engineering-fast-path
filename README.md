@@ -54,3 +54,4 @@ pip install torch numpy
 | 28 | [RNNs & Sequences: Recurrence and the Fading Memory](day-028-rnns-and-sequences/lesson.html) | [lesson.md](day-028-rnns-and-sequences/lesson.md) | [code.py](day-028-rnns-and-sequences/code.py) |
 | 29 | [Batch Norm & Layer Norm: Stabilizing Training](day-029-batch-norm-layer-norm/lesson.html) | [lesson.md](day-029-batch-norm-layer-norm/lesson.md) | [code.py](day-029-batch-norm-layer-norm/code.py) |
 | 30 | [Hyperparameters That Actually Matter: LR, Batch Size, Depth vs Width](day-030-hyperparameters-that-matter/lesson.html) | [lesson.md](day-030-hyperparameters-that-matter/lesson.md) | [code.py](day-030-hyperparameters-that-matter/code.py) |
+| 31 | [Debugging Training: Loss Curves as Observability](day-031-debugging-training-loss-curves/lesson.html) | [lesson.md](day-031-debugging-training-loss-curves/lesson.md) | [code.py](day-031-debugging-training-loss-curves/code.py) |
