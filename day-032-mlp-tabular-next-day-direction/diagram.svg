@@ -1,0 +1,60 @@
+<svg viewBox="0 0 680 412" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="412" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">From price history to a probability - and where the big net goes wrong</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">One row per day: 5 engineered features in, P(next day up) out</text>
+<rect x="12" y="56" width="150" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="87.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">620 daily returns</text>
+<text x="87.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">synthetic, seeded</text>
+<rect x="182" y="56" width="168" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="266.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">sliding window</text>
+<text x="266.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">5 features per day</text>
+<rect x="370" y="56" width="150" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="445.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">chronological split</text>
+<text x="445.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">train 360 / val 120 / test 120</text>
+<rect x="540" y="56" width="128" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="604.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">MLP 5 - 16 - 1</text>
+<text x="604.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">113 params</text>
+<line x1="164" y1="82" x2="175" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="180,82 174,78.5 174,85.5" fill="#888888"/>
+<line x1="352" y1="82" x2="363" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="368,82 362,78.5 362,85.5" fill="#888888"/>
+<line x1="522" y1="82" x2="533" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="538,82 532,78.5 532,85.5" fill="#888888"/>
+<text x="340" y="126" text-anchor="middle" font-size="9.5" fill="#666666">ret_1d  ·  mom_5d  ·  mom_20d  ·  vol_5d  ·  up_frac_14d      label: next day up? (features never peek at tomorrow)</text>
+<rect x="12" y="140" width="322" height="158" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="173" y="160" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SMALL NET - honest accuracy</text>
+<rect x="118" y="176" width="75.0" height="13" rx="3" fill="#999999"/>
+<text x="24" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e">majority (test)</text>
+<text x="199.0" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.500</text>
+<rect x="118" y="199" width="102.5" height="13" rx="3" fill="#d99a00"/>
+<text x="24" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e">mom_5d rule (test)</text>
+<text x="226.5" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.683</text>
+<rect x="118" y="222" width="112.0" height="13" rx="3" fill="#0a7aff"/>
+<text x="24" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP train</text>
+<text x="236.0" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.747</text>
+<rect x="118" y="245" width="105.0" height="13" rx="3" fill="#22a355"/>
+<text x="24" y="256" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP val</text>
+<text x="229.0" y="256" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.700</text>
+<rect x="118" y="268" width="96.3" height="13" rx="3" fill="#22a355"/>
+<text x="24" y="279" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP test (once)</text>
+<text x="220.3" y="279" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.642</text>
+<text x="173" y="286" text-anchor="middle" font-size="8.5" fill="#666666">beats majority by 14 pts on test - ties the one-line rule</text>
+<rect x="346" y="140" width="322" height="158" rx="10" fill="#ffffff" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="507" y="160" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">BIG NET - 4,609 params, same data</text>
+<rect x="452" y="176" width="150.0" height="13" rx="3" fill="#d43d2a"/>
+<text x="358" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e">train acc</text>
+<text x="608.0" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.000</text>
+<rect x="452" y="199" width="91.2" height="13" rx="3" fill="#999999"/>
+<text x="358" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e">val acc</text>
+<text x="549.2" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.608</text>
+<rect x="452" y="222" width="86.2" height="13" rx="3" fill="#999999"/>
+<text x="358" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e">test acc (once)</text>
+<text x="544.2" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.575</text>
+<text x="507" y="262" text-anchor="middle" font-size="9.5" fill="#d43d2a" font-weight="bold">val loss 0.76 2192 3.49 while train loss falls to 0.0025</text>
+<text x="507" y="282" text-anchor="middle" font-size="8.5" fill="#666666">12.8 params per train row: it stored the noise</text>
+<rect x="12" y="312" width="656" height="84" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="334" text-anchor="middle" font-size="10.5" fill="#9a6b00" font-weight="bold">THE FINANCE WARNING</text>
+<text x="340" y="354" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Synthetic signal is baked in on purpose - real next-day direction lives near 53-55%, not 70%.</text>
+<text x="340" y="372" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Accuracy is not P and L: no trading costs, no position sizing, no regime change in 600 days.</text>
+<text x="340" y="390" text-anchor="middle" font-size="9.5" fill="#1c1c1e">When val falls while train climbs (Day 31's fork), stop - capacity is not signal.</text>
+</svg>

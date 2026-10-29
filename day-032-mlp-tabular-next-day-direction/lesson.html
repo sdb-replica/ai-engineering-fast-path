@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build: MLP on Tabular Data — Predict Next-Day Direction — Day 32 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 32 of 100</span>
+  <h1>Build: MLP on Tabular Data — Predict Next-Day Direction</h1>
+  <p class="outcome">Tonight you'll be able to: engineer 5 features from raw price history, train an MLP to predict tomorrow&rsquo;s direction, judge it against two baselines it has to beat &mdash; and watch a much bigger net memorize the same data and do worse.</p>
+
+  <h2>The one idea</h2>
+  <p>Every dataset so far arrived pre-shaped: digits as 64 pixel numbers (Days 16/27), XOR as coordinates. <strong>Tabular data</strong> &mdash; rows of numbers in columns, the shape of almost all business and market data &mdash; arrives as <em>history</em>, and the model never sees the history. It sees <strong>features</strong>: numbers you engineer from the history. That translation, <strong>feature engineering</strong>, is most of tonight&rsquo;s job &mdash; the MLP at the end is deliberately small.</p>
+<p><strong>The five features</strong> (one row per day, all computed from returns up to and including today): <code>ret_1d</code> &mdash; yesterday&rsquo;s return; <code>mom_5d</code> / <code>mom_20d</code> &mdash; mean return over 5 / 20 days (momentum and trend); <code>vol_5d</code> &mdash; the 5-day standard deviation (volatility); <code>up_frac_14d</code> &mdash; the fraction of up days in 14 (breadth). The <strong>label</strong> is tomorrow&rsquo;s sign: 1 if the next return is positive, else 0 &mdash; a binary classification (Days 14/16), scored with <code>BCEWithLogitsLoss</code>. The iron rule: <strong>features may never peek at tomorrow.</strong> One leaked future value is look-ahead bias (Day 9), and every accuracy after it is a lie.</p>
+<p><strong>Split and scale, the Day 8/9 way.</strong> The 600 samples split <em>chronologically</em> &mdash; train 360, val 120, test 120, test touched once per model at the very end. Shuffling time would let the model train on the future and &ldquo;predict&rdquo; the past. Then <strong>z-score normalization</strong> with <em>train</em> statistics only: the raw scales are wildly different (<code>vol_5d</code> averages 0.00461, <code>up_frac_14d</code> 0.53353), and unscaled inputs are exactly Day 30&rsquo;s ravine &mdash; one feature&rsquo;s gradient drowns the rest.</p>
+<p><strong>Baselines before models. Always.</strong> Two numbers any model must beat: the <strong>majority baseline</strong> (always predict the commoner sign: 0.5222 / 0.5167 / 0.5000 across the splits) and a <strong>one-line rule</strong> &mdash; predict tomorrow&rsquo;s sign from <code>mom_5d</code> alone (0.6972 / 0.6417 / 0.6833). A neural net that cannot beat a coin-weighted guess <em>and</em> a one-line rule has learned nothing, whatever its training loss says.</p>
+<p><strong>The overfitting warning &mdash; tonight&rsquo;s real lesson.</strong> Finance has the lowest signal-to-noise ratio in machine learning, so capacity discipline is the whole game. Count <strong>parameters per training sample</strong>: the small net carries 113 params for 360 rows (0.3 per row) and generalizes &mdash; val accuracy 0.7000, test 0.6417, comfortably past majority and roughly <em>tied</em> with the one-line rule (in low-signal domains, that tie is the honest norm). The big net carries 4,609 params &mdash; <strong>12.8 per row</strong> &mdash; and memorizes: train accuracy 1.0000, train loss 0.0025, while val loss <em>climbs</em> 0.7614 &rarr; 3.4858 (Day 31&rsquo;s fork, in loss) and test <em>falls</em> to 0.5750. Two honesty notes: tonight&rsquo;s signal is baked into synthetic data on purpose &mdash; real next-day direction lives near 53&ndash;55%, not 70% &mdash; and accuracy is not P&amp;L: no trading costs, sizing, or regime change are modeled here. Phase G does this for real.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Feature engineering is a <strong>materialized view</strong>. You would never alert on raw log lines; you pre-aggregate them into metrics &mdash; error rate per service, p99 per endpoint &mdash; and alert on <em>those</em>. Features are the same move: raw returns are the log lines, <code>mom_20d</code> and <code>vol_5d</code> are the rollups, and the MLP is just the alert rule that learned its own thresholds. Garbage rollup, garbage alert &mdash; the model downstream cannot recover information your features threw away, or un-leak a future value they smuggled in.</p>
+<p>Trading version: <strong>indicators are hand-engineered features.</strong> RSI, moving averages, realized vol &mdash; you have read them for years. An MLP on five indicators is a <em>learnable combiner</em> of indicators, nothing more mystical. And parameters-per-sample is a rule you already trade by: a strategy with 40 tuned knobs fit to 30 historical trades is curve-fit (Day 8) no matter how beautiful the backtest equity curve looks. 4,609 knobs on 360 rows is that strategy, wearing a neural net.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 412" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="412" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">From price history to a probability - and where the big net goes wrong</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">One row per day: 5 engineered features in, P(next day up) out</text>
+<rect x="12" y="56" width="150" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="87.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">620 daily returns</text>
+<text x="87.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">synthetic, seeded</text>
+<rect x="182" y="56" width="168" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="266.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">sliding window</text>
+<text x="266.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">5 features per day</text>
+<rect x="370" y="56" width="150" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="445.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">chronological split</text>
+<text x="445.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">train 360 / val 120 / test 120</text>
+<rect x="540" y="56" width="128" height="52" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="604.0" y="78" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">MLP 5 - 16 - 1</text>
+<text x="604.0" y="95" text-anchor="middle" font-size="8.5" fill="#666666">113 params</text>
+<line x1="164" y1="82" x2="175" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="180,82 174,78.5 174,85.5" fill="#888888"/>
+<line x1="352" y1="82" x2="363" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="368,82 362,78.5 362,85.5" fill="#888888"/>
+<line x1="522" y1="82" x2="533" y2="82" stroke="#888888" stroke-width="1.5"/>
+<polygon points="538,82 532,78.5 532,85.5" fill="#888888"/>
+<text x="340" y="126" text-anchor="middle" font-size="9.5" fill="#666666">ret_1d  ·  mom_5d  ·  mom_20d  ·  vol_5d  ·  up_frac_14d      label: next day up? (features never peek at tomorrow)</text>
+<rect x="12" y="140" width="322" height="158" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="173" y="160" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SMALL NET - honest accuracy</text>
+<rect x="118" y="176" width="75.0" height="13" rx="3" fill="#999999"/>
+<text x="24" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e">majority (test)</text>
+<text x="199.0" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.500</text>
+<rect x="118" y="199" width="102.5" height="13" rx="3" fill="#d99a00"/>
+<text x="24" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e">mom_5d rule (test)</text>
+<text x="226.5" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.683</text>
+<rect x="118" y="222" width="112.0" height="13" rx="3" fill="#0a7aff"/>
+<text x="24" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP train</text>
+<text x="236.0" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.747</text>
+<rect x="118" y="245" width="105.0" height="13" rx="3" fill="#22a355"/>
+<text x="24" y="256" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP val</text>
+<text x="229.0" y="256" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.700</text>
+<rect x="118" y="268" width="96.3" height="13" rx="3" fill="#22a355"/>
+<text x="24" y="279" text-anchor="start" font-size="9.5" fill="#1c1c1e">MLP test (once)</text>
+<text x="220.3" y="279" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.642</text>
+<text x="173" y="286" text-anchor="middle" font-size="8.5" fill="#666666">beats majority by 14 pts on test - ties the one-line rule</text>
+<rect x="346" y="140" width="322" height="158" rx="10" fill="#ffffff" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="507" y="160" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">BIG NET - 4,609 params, same data</text>
+<rect x="452" y="176" width="150.0" height="13" rx="3" fill="#d43d2a"/>
+<text x="358" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e">train acc</text>
+<text x="608.0" y="187" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.000</text>
+<rect x="452" y="199" width="91.2" height="13" rx="3" fill="#999999"/>
+<text x="358" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e">val acc</text>
+<text x="549.2" y="210" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.608</text>
+<rect x="452" y="222" width="86.2" height="13" rx="3" fill="#999999"/>
+<text x="358" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e">test acc (once)</text>
+<text x="544.2" y="233" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.575</text>
+<text x="507" y="262" text-anchor="middle" font-size="9.5" fill="#d43d2a" font-weight="bold">val loss 0.76 2192 3.49 while train loss falls to 0.0025</text>
+<text x="507" y="282" text-anchor="middle" font-size="8.5" fill="#666666">12.8 params per train row: it stored the noise</text>
+<rect x="12" y="312" width="656" height="84" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="334" text-anchor="middle" font-size="10.5" fill="#9a6b00" font-weight="bold">THE FINANCE WARNING</text>
+<text x="340" y="354" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Synthetic signal is baked in on purpose - real next-day direction lives near 53-55%, not 70%.</text>
+<text x="340" y="372" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Accuracy is not P and L: no trading costs, no position sizing, no regime change in 600 days.</text>
+<text x="340" y="390" text-anchor="middle" font-size="9.5" fill="#1c1c1e">When val falls while train climbs (Day 31's fork), stop - capacity is not signal.</text>
+</svg>
+    <div class="caption">The pipeline: 620 synthetic daily returns &rarr; a sliding window of 5 features per day &rarr; a chronological 360/120/120 split &rarr; a 113-param MLP. Left: the small net&rsquo;s honest scores &mdash; test 0.642 beats the majority baseline (0.500) and roughly ties the one-line mom_5d rule (0.683). Right: the 4,609-param net on the same data &mdash; train accuracy 1.000 while val loss climbs 0.76 &rarr; 3.49 and test drops to 0.575. Memorization, measured.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts. Part 1 builds the returns from fixed formulas (no randomness &mdash; its output is <strong>exact</strong>), engineers the 5 features with a sliding window, splits chronologically, prints both baselines, and normalizes with train stats only. Part 2 trains the small MLP (Adam, <code>DataLoader</code> batch 32, the Day 25 <code>evaluate()</code> discipline) and touches test <em>once</em>. Part 3 trains the big net on the same rows and watches it memorize. Parts 2&ndash;3 set <code>torch.manual_seed(42)</code>, but init and shuffle streams differ across devices and torch versions, so their numbers below are <strong>reference numbers from a verified run</strong> &mdash; your last digits may differ; the pattern (small generalizes, big memorizes) is guaranteed.</p>
+  <pre><code>&quot;&quot;&quot;Day 32 - Build: MLP on Tabular Data - Predict Next-Day Direction.
+
+Every model so far ate data that was already shaped for it:
+digits arrived as 64 pixel numbers (Days 16/27), XOR arrived
+as coordinates. Real tabular data arrives as HISTORY, and
+the model never sees the history - it sees FEATURES, numbers
+you engineer from the history. Feature engineering is that
+translation step, and tonight it is most of the job.
+
+  The dataset (Part 1). 620 synthetic daily returns, built
+  from a smooth momentum wave plus seeded hash noise - a
+  real signal baked in ON PURPOSE, so there is something
+  to learn. A sliding window turns each day into 5 features
+  a trader already computes by hand:
+
+    ret_1d       yesterday&#x27;s return
+    mom_5d       mean return, last 5 days   (momentum)
+    mom_20d      mean return, last 20 days  (trend)
+    vol_5d       std of returns, last 5 days (volatility)
+    up_frac_14d  fraction of up days, last 14 (breadth)
+
+  The label is tomorrow&#x27;s sign: 1 if the next return is
+  &gt; 0, else 0. Features use only data up to today - one
+  peek at tomorrow is look-ahead bias (Day 9) and makes
+  every number that follows a lie. The split is
+  chronological, never shuffled (Days 8/19): train 360,
+  val 120, test 120, test touched once per model at the
+  very end. Features are z-scored with TRAIN stats only
+  (Day 9&#x27;s rule): the raw scales are wildly different
+  (vol_5d ~ 0.0046, up_frac_14d ~ 0.53), and unscaled
+  inputs are Day 30&#x27;s ravine all over again.
+
+  Baselines before models. Always. The majority class
+  (always predict the commoner sign) scores 0.5222 /
+  0.5167 / 0.5000 on train/val/test, and a one-line rule -
+  predict tomorrow = sign of mom_5d - scores 0.6972 /
+  0.6417 / 0.6833. A model that cannot beat BOTH numbers
+  has learned nothing, however good its loss looks.
+
+  Part 2 trains a small MLP (5 -&gt; 16 -&gt; 1, 113 params,
+  BCEWithLogits - Days 14/16, Adam - Day 18, DataLoader -
+  Day 19, evaluate() discipline - Day 25). It generalizes:
+  train acc 0.7472, val 0.7000, test 0.6417 - comfortably
+  past the majority baseline, roughly TIED with the
+  one-line rule. In low-signal finance that tie is the
+  honest norm, not a failure.
+
+  Part 3 is the overfitting warning, measured. Same data,
+  a bigger MLP (5 -&gt; 64 -&gt; 64 -&gt; 1): 4,609 params for 360
+  train rows - 12.8 params per sample. It memorizes:
+  train loss 0.0025, train acc 1.0000, while val loss
+  CLIMBS 0.7614 -&gt; 3.4858 (Day 31&#x27;s fork, in loss) and
+  test falls to 0.5750, below the small net. Capacity is
+  not signal. When parameters outnumber the patterns,
+  the net stores the noise - and finance is mostly noise:
+  tonight&#x27;s signal was baked in and still caps near 0.70;
+  real next-day direction lives near 0.53-0.55, and even
+  a true accuracy edge is not P&amp;L (no costs, sizing or
+  regime change modeled here). Phase G does this for real.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU or MPS,
+no CUDA, no paid APIs, no downloads. Part 1 is exact -
+the data is built from fixed formulas, no randomness.
+Parts 2-3 set torch.manual_seed(42) before each model,
+but init and shuffle streams differ across devices and
+torch versions, so those numbers are REFERENCE numbers
+from a verified run: your digits may differ in the last
+places, the pattern is guaranteed - small net val ~0.70
+and test beating majority; big net train -&gt; 1.0000 with
+val loss climbing and test below the small net&#x27;s.
+
+Expected output:
+
+  device: mps
+  Part 1 - features from price history: one row per day
+    returns: 620 days -&gt; 600 samples, X shape (600, 5), y shape (600,)
+    features: ret_1d mom_5d mom_20d vol_5d up_frac_14d
+    first row: [0.00356, 0.00410, 0.00535, 0.00174, 0.92857]  label 1 (up)
+    splits (chronological, no shuffle): train 360  val 120  test 120
+    train: up 0.5222  majority baseline 0.5222  mom_5d rule 0.6972
+    val:   up 0.5167  majority baseline 0.5167  mom_5d rule 0.6417
+    test:  up 0.5000  majority baseline 0.5000  mom_5d rule 0.6833
+    normalize with train stats only: mean [0.00014, 0.00016, 0.00038, 0.00461, 0.53353]
+                                     std  [0.00631, 0.00461, 0.00340, 0.00141, 0.26490]
+    first row normalized: [0.542, 0.856, 1.460, -2.034, 1.491]
+  Part 2 - small MLP 5 -&gt; 16 -&gt; 1: 113 params for 360 train rows
+    ep   0: train loss 0.7014  train acc 0.5611  val loss 0.7127  val acc 0.5917
+    ep  15: train loss 0.5320  train acc 0.7250  val loss 0.5821  val acc 0.7167
+    ep  30: train loss 0.5240  train acc 0.7278  val loss 0.5922  val acc 0.7000
+    ep  60: train loss 0.5132  train acc 0.7472  val loss 0.5911  val acc 0.7000
+    test (touched once): acc 0.6417  (majority 0.5000, mom_5d rule 0.6833)
+  Part 3 - big MLP 5 -&gt; 64 -&gt; 64 -&gt; 1: 4609 params for the same 360 rows
+    ep   0: train loss 0.8364  train acc 0.4389  val loss 0.7614  val acc 0.5167
+    ep  75: train loss 0.1941  train acc 0.9139  val loss 1.7103  val acc 0.5667
+    ep 150: train loss 0.1222  train acc 0.9444  val loss 2.6606  val acc 0.6250
+    ep 300: train loss 0.0025  train acc 1.0000  val loss 3.4858  val acc 0.6083
+    test (touched once): acc 0.5750  (small MLP: 0.6417)
+    verdict: 4609 params = 12.8 per train row - the big net memorized; the small net generalized
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+print(&quot;device:&quot;, device)
+
+# ---------- Part 1: features from price history ----------
+print(&quot;Part 1 - features from price history: one row per day&quot;)
+ret_list = []
+for i in range(620):
+    n1 = math.sin(i * 12.9898) * 43758.5453
+    n1 = n1 - math.floor(n1) - 0.5               # seeded hash noise
+    n2 = math.sin(i * 78.233 + 5.0) * 12543.123
+    n2 = n2 - math.floor(n2) - 0.5
+    wave = 0.005 * math.sin(i / 6.0) + 0.003 * math.sin(i / 17.0 + 1.3)
+    ret_list.append(wave + (n1 + n2) * 0.012)    # momentum wave + noise
+rets = torch.tensor(ret_list, dtype=torch.float32)
+
+rows, labels = [], []
+for t in range(19, 619):                         # 600 labeled days
+    w5, w20, w14 = rets[t - 4:t + 1], rets[t - 19:t + 1], rets[t - 13:t + 1]
+    rows.append(torch.stack([
+        rets[t],                                 # ret_1d
+        w5.mean(),                               # mom_5d
+        w20.mean(),                              # mom_20d
+        w5.std(),                                # vol_5d
+        (w14 &gt; 0).float().mean(),                # up_frac_14d
+    ]))
+    labels.append(1.0 if rets[t + 1] &gt; 0 else 0.0)   # tomorrow&#x27;s sign
+X = torch.stack(rows)
+y = torch.tensor(labels)
+print(f&quot;  returns: 620 days -&gt; 600 samples, X shape {tuple(X.shape)},&quot;
+      f&quot; y shape {tuple(y.shape)}&quot;)
+print(&quot;  features: ret_1d mom_5d mom_20d vol_5d up_frac_14d&quot;)
+first = &quot;, &quot;.join(f&quot;{v:.5f}&quot; for v in X[0].tolist())
+print(f&quot;  first row: [{first}]  label {int(y[0])} (up)&quot;)
+
+Xtr, ytr = X[:360], y[:360]                      # chronological split:
+Xva, yva = X[360:480], y[360:480]                # no shuffling time
+Xte, yte = X[480:], y[480:]
+print(&quot;  splits (chronological, no shuffle): train 360  val 120  test 120&quot;)
+mom_pred = (X[:, 1] &gt; 0).float()                 # one-line rule: mom_5d sign
+base = {}
+for name, Xs, ys in ((&quot;train&quot;, Xtr, ytr), (&quot;val&quot;, Xva, yva),
+                     (&quot;test&quot;, Xte, yte)):
+    up = ys.mean().item()
+    maj = max(up, 1.0 - up)
+    sl = {&quot;train&quot;: slice(0, 360), &quot;val&quot;: slice(360, 480),
+          &quot;test&quot;: slice(480, 600)}[name]
+    rule = (mom_pred[sl] == ys).float().mean().item()
+    base[name] = (maj, rule)
+    print(f&quot;  {name + &#x27;:&#x27;:&lt;7}up {up:.4f}  majority baseline {maj:.4f}&quot;
+          f&quot;  mom_5d rule {rule:.4f}&quot;)
+
+mu, sd = Xtr.mean(dim=0), Xtr.std(dim=0)         # train stats ONLY
+print(&quot;  normalize with train stats only: mean [&quot;
+      + &quot;, &quot;.join(f&quot;{v:.5f}&quot; for v in mu.tolist()) + &quot;]&quot;)
+print(&quot;                                   std  [&quot;
+      + &quot;, &quot;.join(f&quot;{v:.5f}&quot; for v in sd.tolist()) + &quot;]&quot;)
+Xtr_n, Xva_n, Xte_n = (Xtr - mu) / sd, (Xva - mu) / sd, (Xte - mu) / sd
+print(&quot;  first row normalized: [&quot;
+      + &quot;, &quot;.join(f&quot;{v:.3f}&quot; for v in Xtr_n[0].tolist()) + &quot;]&quot;)
+Xtr_n, Xva_n, Xte_n = Xtr_n.to(device), Xva_n.to(device), Xte_n.to(device)
+ytr_d, yva_d, yte_d = ytr.to(device), yva.to(device), yte.to(device)
+
+# ---------- the model + the Day 25 evaluation discipline ----------
+crit = nn.BCEWithLogitsLoss()
+
+
+class TabMLP(nn.Module):
+    &quot;&quot;&quot;Rows in, one logit out: P(up) = sigmoid(logit).&quot;&quot;&quot;
+
+    def __init__(self, hidden):
+        super().__init__()
+        layers, d = [], 5
+        for h in hidden:
+            layers += [nn.Linear(d, h), nn.ReLU()]
+            d = h
+        layers += [nn.Linear(d, 1)]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x).squeeze(1)
+
+
+def evaluate(model, Xs, ys):
+    model.eval()                                 # Day 25: eval + no_grad
+    with torch.no_grad():
+        logits = model(Xs)
+        acc = ((logits &gt; 0).float() == ys).float().mean()
+        return crit(logits, ys).item(), acc.item()
+
+
+def train_model(hidden, epochs, checks):
+    torch.manual_seed(42)
+    model = TabMLP(hidden).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=0.01)
+    loader = DataLoader(TensorDataset(Xtr_n, ytr_d), batch_size=32,
+                        shuffle=True)
+    for epoch in range(epochs + 1):
+        if epoch in checks:
+            tl, ta = evaluate(model, Xtr_n, ytr_d)
+            vl, va = evaluate(model, Xva_n, yva_d)
+            print(f&quot;  ep {epoch:3d}: train loss {tl:.4f}  train acc {ta:.4f}&quot;
+                  f&quot;  val loss {vl:.4f}  val acc {va:.4f}&quot;)
+        if epoch == epochs:
+            break
+        model.train()
+        for xb, yb in loader:
+            opt.zero_grad()
+            crit(model(xb), yb).backward()
+            opt.step()
+    return model, sum(p.numel() for p in model.parameters())
+
+
+def count_params(hidden):
+    dims = [5] + hidden + [1]
+    return sum((a + 1) * b for a, b in zip(dims[:-1], dims[1:]))
+
+
+# ---------- Part 2: the small net generalizes ----------
+print(f&quot;Part 2 - small MLP 5 -&gt; 16 -&gt; 1: {count_params([16])} params&quot;
+      &quot; for 360 train rows&quot;)
+small, _ = train_model([16], 60, (0, 15, 30, 60))
+_, small_test = evaluate(small, Xte_n, yte_d)
+print(f&quot;  test (touched once): acc {small_test:.4f}&quot;
+      f&quot;  (majority {base[&#x27;test&#x27;][0]:.4f}, mom_5d rule {base[&#x27;test&#x27;][1]:.4f})&quot;)
+
+# ---------- Part 3: the big net memorizes ----------
+print(f&quot;Part 3 - big MLP 5 -&gt; 64 -&gt; 64 -&gt; 1: {count_params([64, 64])} params&quot;
+      &quot; for the same 360 rows&quot;)
+big, _ = train_model([64, 64], 300, (0, 75, 150, 300))
+_, big_test = evaluate(big, Xte_n, yte_d)
+print(f&quot;  test (touched once): acc {big_test:.4f}&quot;
+      f&quot;  (small MLP: {small_test:.4f})&quot;)
+print(f&quot;  verdict: {count_params([64, 64])} params =&quot;
+      f&quot; {count_params([64, 64]) / 360:.1f} per train row - the big net&quot;
+      &quot; memorized; the small net generalized&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - features from price history: one row per day
+  returns: 620 days -&gt; 600 samples, X shape (600, 5), y shape (600,)
+  features: ret_1d mom_5d mom_20d vol_5d up_frac_14d
+  first row: [0.00356, 0.00410, 0.00535, 0.00174, 0.92857]  label 1 (up)
+  splits (chronological, no shuffle): train 360  val 120  test 120
+  train: up 0.5222  majority baseline 0.5222  mom_5d rule 0.6972
+  val:   up 0.5167  majority baseline 0.5167  mom_5d rule 0.6417
+  test:  up 0.5000  majority baseline 0.5000  mom_5d rule 0.6833
+  normalize with train stats only: mean [0.00014, 0.00016, 0.00038, 0.00461, 0.53353]
+                                   std  [0.00631, 0.00461, 0.00340, 0.00141, 0.26490]
+  first row normalized: [0.542, 0.856, 1.460, -2.034, 1.491]
+Part 2 - small MLP 5 -&gt; 16 -&gt; 1: 113 params for 360 train rows
+  ep   0: train loss 0.7014  train acc 0.5611  val loss 0.7127  val acc 0.5917
+  ep  15: train loss 0.5320  train acc 0.7250  val loss 0.5821  val acc 0.7167
+  ep  30: train loss 0.5240  train acc 0.7278  val loss 0.5922  val acc 0.7000
+  ep  60: train loss 0.5132  train acc 0.7472  val loss 0.5911  val acc 0.7000
+  test (touched once): acc 0.6417  (majority 0.5000, mom_5d rule 0.6833)
+Part 3 - big MLP 5 -&gt; 64 -&gt; 64 -&gt; 1: 4609 params for the same 360 rows
+  ep   0: train loss 0.8364  train acc 0.4389  val loss 0.7614  val acc 0.5167
+  ep  75: train loss 0.1941  train acc 0.9139  val loss 1.7103  val acc 0.5667
+  ep 150: train loss 0.1222  train acc 0.9444  val loss 2.6606  val acc 0.6250
+  ep 300: train loss 0.0025  train acc 1.0000  val loss 3.4858  val acc 0.6083
+  test (touched once): acc 0.5750  (small MLP: 0.6417)
+  verdict: 4609 params = 12.8 per train row - the big net memorized; the small net generalized</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints 600 samples with the baselines (majority 0.5222 / 0.5167 / 0.5000, mom_5d rule 0.6972 / 0.6417 / 0.6833); Part 2&rsquo;s small net lands val accuracy near 0.70 with test (touched once) near 0.64, past the majority baseline; Part 3&rsquo;s big net drives train accuracy to ~1.0000 while its val loss climbs past 3 and its test accuracy lands <em>below</em> the small net&rsquo;s. The bigger test: you can finish this sentence without notes &mdash; &ldquo;the big net lost because it had ___ parameters per training row, so it stored ___ instead of learning ___.&rdquo;</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the file once (the big net takes a minute or two), then study just two things: Part 1&rsquo;s baseline table and Part 3&rsquo;s four checkpoint rows. If you can explain why the split must be chronological, why test is touched once, and why a <em>rising</em> val loss matters even when val accuracy wobbles sideways, you have the lesson.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: two identical nets on the same data &mdash; one trains, one never moves at all. The difference is decided before the first epoch begins.</p>
+  </div>
+
+  <div class="footer">Streak: 32 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
