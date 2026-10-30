@@ -56,3 +56,4 @@ pip install torch numpy
 | 30 | [Hyperparameters That Actually Matter: LR, Batch Size, Depth vs Width](day-030-hyperparameters-that-matter/lesson.html) | [lesson.md](day-030-hyperparameters-that-matter/lesson.md) | [code.py](day-030-hyperparameters-that-matter/code.py) |
 | 31 | [Debugging Training: Loss Curves as Observability](day-031-debugging-training-loss-curves/lesson.html) | [lesson.md](day-031-debugging-training-loss-curves/lesson.md) | [code.py](day-031-debugging-training-loss-curves/code.py) |
 | 32 | [Build: MLP on Tabular Data — Predict Next-Day Direction](day-032-mlp-tabular-next-day-direction/lesson.html) | [lesson.md](day-032-mlp-tabular-next-day-direction/lesson.md) | [code.py](day-032-mlp-tabular-next-day-direction/code.py) |
+| 33 | [Weight Init & Why It Matters](day-033-weight-init-and-why-it-matters/lesson.html) | [lesson.md](day-033-weight-init-and-why-it-matters/lesson.md) | [code.py](day-033-weight-init-and-why-it-matters/code.py) |

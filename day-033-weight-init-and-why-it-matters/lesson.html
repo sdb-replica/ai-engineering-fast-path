@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weight Init & Why It Matters — Day 33 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 33 of 100</span>
+  <h1>Weight Init & Why It Matters</h1>
+  <p class="outcome">Tonight you'll be able to: spot the two ways a network can be dead before epoch 0 &mdash; identical neurons that can never specialize, and a signal that vanishes or explodes layer by layer &mdash; and initialize weights the way PyTorch&rsquo;s own recipes do: random, scaled by fan-in, and matched to the activation.</p>
+
+  <h2>The one idea</h2>
+  <p>Every weight you have ever trained started as a number somebody chose <em>before</em> epoch 0 &mdash; you set some by hand (Days 21&ndash;24), PyTorch picked the rest behind your back. That choice is <strong>weight initialization</strong>, and it has exactly two jobs: make the neurons <strong>different</strong> from each other, and keep the <strong>signal the same size</strong> as it crosses each layer. Fail either job and the net is dead before training starts &mdash; no optimizer (Day 18) and no learning rate (Day 30) can save it.</p>
+<p><strong>Job 1 &mdash; break symmetry.</strong> Day 23&rsquo;s rules say a weight&rsquo;s gradient is the blame signal times the input it scaled. Give two hidden neurons identical weights and they compute identical outputs, receive identical blame, and take identical steps &mdash; forever. A 4-neuron layer with one copied row is really a 1-neuron layer with extra arithmetic. All-<strong>zero</strong> init is the extreme case: with ReLU, hidden activations are 0, first-layer gradients are exactly 0, and only the output bias can move at all (Part 1 measures both). Random weights are not superstition &mdash; the randomness <em>is</em> the specialization mechanism.</p>
+<p><strong>Job 2 &mdash; hold the scale.</strong> A pre-activation is a sum of <code>fan_in</code> products, <code>z = w<sub>1</sub>x<sub>1</sub> + &hellip; + w<sub>n</sub>x<sub>n</sub></code>, and the variances of independent terms <em>add</em>: <code>Var(z) = fan_in &times; Var(W) &times; Var(x)</code>. That one line is tonight&rsquo;s whole math budget, and it bites fast: at fan-in 128, weights with std 1.0 give each layer&rsquo;s signal a std of about &radic;128 &asymp; 11.3; std 0.01 shrinks it to 0.11 &mdash; per layer, compounding (Days 22/28 showed what repeated shrinking does to gradients, which travel backward through the same weights).</p>
+<p><strong>The two named recipes.</strong> Set <code>Var(W) = 1/fan_in</code> and the scale holds: that is <strong>Xavier (Glorot) init</strong>, std <code>&radic;(1/fan_in)</code>, the right pair for tanh/sigmoid, whose alive zone sits around zero (Day 22). ReLU zeroes about half its inputs, halving the signal&rsquo;s power, so ReLU layers need double: <code>Var(W) = 2/fan_in</code>, std <code>&radic;(2/fan_in)</code> &mdash; <strong>He (Kaiming) init</strong>. Too-large weights kill tanh the other way: they don&rsquo;t explode, they <em>saturate</em> it (Part 2: 85.96% of pre-activations past |z| = 2, gradient factor 0.0697).</p>
+<p><strong>In practice:</strong> biases start at zero &mdash; the asymmetry lives in the weights. PyTorch&rsquo;s <code>nn.Linear</code> default is already a fan-in-scaled init, which is why your earlier nets trained without ever asking this question; you reach for explicit init when you write custom layers, stack many layers, or override a default. And the start is <em>checkable</em> (Day 31&rsquo;s instinct): print each layer&rsquo;s weight std against its target, and probe one batch&rsquo;s activation size layer by layer, before you train.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Booting replicas with an <strong>identical random seed</strong>. Every replica then makes the same &ldquo;random&rdquo; choices &mdash; same jitter, same retry times, same shard picks &mdash; and a fleet that was supposed to spread load moves as one synchronized herd. Real fleets seed per replica precisely so identical code produces <em>different</em> behavior. Identical neurons are replicas with the same seed: same input, same decision, same update, forever &mdash; capacity on paper, one worker in fact.</p>
+<p>Trading version, and it is exact: <strong>init is position sizing.</strong> Put 128 names in a book, each sized as if it were your only trade, and the portfolio&rsquo;s variance is the <em>sum</em> of 128 variances &mdash; total risk &asymp; &radic;128 &asymp; 11.3&times; a single name. To hold portfolio risk constant, per-name size shrinks like <code>1/&radic;(book size)</code>. A neuron summing 128 inputs obeys the same arithmetic: per-weight std shrinks like <code>1/&radic;(fan_in)</code>. He&rsquo;s extra &radic;2 is just sizing up because half the book (the ReLU-zeroed half) is flat at any moment.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 438" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="438" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Weight init: different, small, and scaled by fan_in</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Two ways a start can be dead before epoch 0 - and the one scale that is not</text>
+<rect x="12" y="56" width="656" height="140" rx="10" fill="#ffffff" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - SYMMETRY: IDENTICAL NEURONS GET IDENTICAL GRADIENTS</text>
+<circle cx="52" cy="108" r="13" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="52" y="111.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">x1</text>
+<circle cx="52" cy="152" r="13" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="52" y="155.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">x2</text>
+<circle cx="212" cy="92" r="13" fill="#ffe9e6" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="212" y="95.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">h</text>
+<line x1="65" y1="108" x2="199" y2="92" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="65" y1="152" x2="199" y2="92" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="225" y1="92" x2="330" y2="130" stroke="#bbbbbb" stroke-width="1"/>
+<circle cx="212" cy="120" r="13" fill="#ffe9e6" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="212" y="123.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">h</text>
+<line x1="65" y1="108" x2="199" y2="120" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="65" y1="152" x2="199" y2="120" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="225" y1="120" x2="330" y2="130" stroke="#bbbbbb" stroke-width="1"/>
+<circle cx="212" cy="148" r="13" fill="#ffe9e6" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="212" y="151.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">h</text>
+<line x1="65" y1="108" x2="199" y2="148" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="65" y1="152" x2="199" y2="148" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="225" y1="148" x2="330" y2="130" stroke="#bbbbbb" stroke-width="1"/>
+<circle cx="212" cy="176" r="13" fill="#ffe9e6" stroke="#d43d2a" stroke-width="1.2"/>
+<text x="212" y="179.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">h</text>
+<line x1="65" y1="108" x2="199" y2="176" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="65" y1="152" x2="199" y2="176" stroke="#bbbbbb" stroke-width="1"/>
+<line x1="225" y1="176" x2="330" y2="130" stroke="#bbbbbb" stroke-width="1"/>
+<text x="137" y="88" text-anchor="middle" font-size="9.5" fill="#d43d2a">every hidden row starts [0.5, -0.3]</text>
+<circle cx="343" cy="130" r="13" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="343" y="133.5" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">y</text>
+<text x="508" y="104" text-anchor="middle" font-size="9.5" fill="#1c1c1e">same input, same weights</text>
+<text x="508" y="122" text-anchor="middle" font-size="9.5" fill="#1c1c1e">-> same output, same grad row</text>
+<text x="508" y="140" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">[0.2040, 0.1440] x 4 rows</text>
+<text x="508" y="162" text-anchor="middle" font-size="9.5" fill="#d43d2a">100 epochs later: rows still identical,</text>
+<text x="508" y="178" text-anchor="middle" font-size="9.5" fill="#d43d2a">loss stuck at 0.1667 (Day 21: 0.000005)</text>
+<rect x="12" y="210" width="656" height="158" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="230" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - SCALE: ACTIVATION RMS AFTER 10 RELU LAYERS (WIDTH 128, LOG SCALE)</text>
+<text x="24" y="259" text-anchor="start" font-size="9.5" fill="#1c1c1e">std 0.01 - too small</text>
+<rect x="238" y="248" width="3.0" height="13" rx="3" fill="#d43d2a"/>
+<text x="247" y="259" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.20e-11 - vanished</text>
+<text x="24" y="287" text-anchor="start" font-size="9.5" fill="#1c1c1e">Xavier on ReLU - wrong pair</text>
+<rect x="238" y="276" width="118.7" height="13" rx="3" fill="#d99a00"/>
+<text x="362.7" y="287" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.0350 - bleeding x0.71/layer</text>
+<text x="24" y="315" text-anchor="start" font-size="9.5" fill="#1c1c1e">He, 2/fan_in - matched</text>
+<rect x="238" y="304" width="137.4" height="13" rx="3" fill="#22a355"/>
+<text x="381.4" y="315" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.1185 - signal alive</text>
+<text x="24" y="343" text-anchor="start" font-size="9.5" fill="#1c1c1e">std 1.00 - too large</text>
+<rect x="238" y="332" width="249.7" height="13" rx="3" fill="#d43d2a"/>
+<text x="493.7" y="343" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.20e+09 - exploded</text>
+<line x1="374.8" y1="242" x2="374.8" y2="352" stroke="#22a355" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="374.8" y="362" text-anchor="middle" font-size="8.5" fill="#177245">target RMS = 1</text>
+<rect x="12" y="382" width="656" height="44" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="400" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Var(z) = fan_in x Var(W) x Var(x)   ->   hold the scale: Var(W) = 1/fan_in (Xavier)</text>
+<text x="340" y="418" text-anchor="middle" font-size="9.5" fill="#1c1c1e">ReLU zeroes half the signal, so ReLU layers double it: Var(W) = 2/fan_in (He) - biases stay zero</text>
+</svg>
+    <div class="caption">Top: four hidden neurons sharing one weight row get one shared gradient row ([0.2040, 0.1440] &times; 4) &mdash; after 100 epochs the rows are still identical and XOR loss is stuck at 0.1667, vs Day 21&rsquo;s 0.000005 with different init. Bottom: activation RMS after 10 ReLU layers (width 128, log scale) &mdash; std 0.01 vanishes to 1.20e-11, Xavier-on-ReLU bleeds to 0.0350, std 1.00 explodes to 1.20e+09, and He (2/fan_in) lands at 1.1185, next to the target line.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts. Part 1 is <strong>exact</strong> &mdash; every weight set by hand: a zero-init net&rsquo;s first backward pass, then Day 21&rsquo;s XOR recipe (SGD lr=0.5, 100 epochs) run on a net whose hidden rows all start identical. Part 2 pushes one seeded signal through 10 ReLU layers of width 128 under four inits and prints the signal&rsquo;s <strong>RMS</strong> (root mean square &mdash; its typical size) at layers 1, 5 and 10, plus the tanh saturation detour. Part 3 is the recipe you will actually reuse: <code>kaiming_normal_</code> on ReLU layers, <code>xavier_normal_</code> on the output, biases zeroed, each layer&rsquo;s actual std checked against target. Parts 2&ndash;3 set <code>torch.manual_seed</code>, but randn streams differ across devices and torch versions, so their numbers below are <strong>reference numbers from a verified run</strong> &mdash; your last digits may differ; the pattern (tiny vanishes, large explodes, He holds ~1, actual stds land near target) is guaranteed.</p>
+  <pre><code>&quot;&quot;&quot;Day 33 - Weight Init &amp; Why It Matters.
+
+Every net you have trained started from weights somebody
+picked before epoch 0 - Days 21-32 you either set them by
+hand or let PyTorch pick. Tonight is what that choice does,
+in three measured failures and one recipe.
+
+  Part 1 - symmetry. If two hidden neurons start with the
+  SAME weights, they see the same input, produce the same
+  output, and - by Day 23&#x27;s rules - receive the same
+  gradient, forever. They can never split up the work:
+  the layer is one neuron wearing copies. All-zero is
+  worse with ReLU: hidden activations are 0 and the first
+  weight gradient is delta x input = 0 x 0, so W1 and W2
+  get grad 0.0000 and only the output bias can move (it
+  can learn the mean of y, nothing else). The all-same
+  XOR net (every hidden row [0.5, -0.3], every output
+  weight 0.6) trains 100 epochs and its hidden rows are
+  STILL identical to the last digit: loss stalls at
+  0.1667, 3/4 corners. Day 21&#x27;s different-by-hand init
+  on the same data reached 0.000005 and 4/4.
+
+  Part 2 - scale. A neuron&#x27;s pre-activation is a sum of
+  fan_in products, and variances of independent terms
+  ADD: Var(z) = fan_in x Var(W) x Var(x). Hold Var(z) at
+  Var(x) and you get Var(W) = 1/fan_in - the Xavier
+  scale. ReLU then zeroes about half its inputs, halving
+  the signal&#x27;s second moment, so ReLU layers need double:
+  Var(W) = 2/fan_in - the He scale. Measured through 10
+  ReLU layers of width 128: std 0.01 shrinks the signal
+  x0.08 per layer (1.20e-11 by layer 10), std 1.00 grows
+  it x8 per layer (1.20e+09), Xavier-for-ReLU still
+  bleeds x0.71 per layer (0.0350), He holds ~1. The same
+  oversizing kills tanh differently: at std 1.00, 85.96%
+  of layer-1 pre-activations sit past |z| = 2, saturated,
+  with mean gradient factor 0.0697 vs Xavier&#x27;s 0.6067
+  (Day 22&#x27;s saturation tax, collected at layer 1).
+
+  Part 3 - the recipe, in code: random (breaks symmetry),
+  scaled by fan_in (holds the scale), matched to the
+  activation (He for ReLU layers, Xavier for the tanh /
+  linear-style output), biases at zero - the asymmetry
+  lives in the weights. PyTorch&#x27;s nn.Linear default is
+  already a scaled init, which is why your earlier nets
+  trained without you ever asking; you reach for explicit
+  init when you build custom layers, go deep, or override.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data), no CUDA, no paid APIs, no downloads.
+Part 1 is exact - every weight is set by hand. Parts 2-3
+set torch.manual_seed, but randn streams differ across
+devices and torch versions, so their numbers are
+REFERENCE numbers from a verified run: your digits may
+differ in the last places, the pattern is guaranteed -
+tiny vanishes, large explodes, He holds ~1, and every
+actual std lands within a few % of its target.
+
+Expected output:
+
+  Part 1 - symmetry: identical neurons can never split up the work
+    all-zero init: loss 0.5000  grad W1 max 0.0000  grad W2 max 0.0000  grad b2 -1.0000
+      only the output bias can move - it can learn the mean of y, nothing else
+    all-same init, step 0: grad W1 row = [0.2040, 0.1440], repeated for all 4 rows
+    all-same init, 100 epochs: loss 0.3176 -&gt; 0.1667
+      preds 0.3333, 0.3333, 1.0000, 0.3333  (correct: 3/4)
+      hidden row 0 after training: [0.4016, -0.3720]  max diff between rows 0.000000
+      contrast Day 21 (different init, same data): loss 0.000005, correct 4/4
+  Part 2 - signal size through 10 ReLU layers, width 128 (activation RMS)
+    std 0.01 (too small):     in 1.0028  layer 1 0.0798  layer 5 3.29e-06  layer 10 1.20e-11
+    std 1.00 (too large):     in 1.0028  layer 1 7.9769  layer 5 3.29e+04  layer 10 1.20e+09
+    Xavier std 0.0884 (1/128): in 1.0028  layer 1 0.7051  layer 5 0.1773  layer 10 0.0350
+    He std 0.1250 (2/128):    in 1.0028  layer 1 0.9971  layer 5 1.0027  layer 10 1.1185
+    tanh detour, layer 1: std 1.00 -&gt; 85.96% saturated (|z| &gt; 2), mean grad factor 0.0697
+                          Xavier   -&gt; 4.54% saturated (|z| &gt; 2), mean grad factor 0.6067
+    verdict: only the fan_in-scaled init matched to the activation holds the signal near 1
+  Part 3 - the recipe: random, fan_in-scaled, matched to the activation
+    hidden 1 (fan_in 128): He normal     target std 0.1250  actual std 0.1254
+    hidden 2 (fan_in 128): He normal     target std 0.1250  actual std 0.1257
+    output   (fan_in 128): Xavier normal target std 0.1204  actual std 0.1181
+    biases: all zero - the asymmetry lives in the weights, not the biases
+    check: every actual std within a few % of target - that is a healthy start
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn as nn
+
+# ---------- Part 1: symmetry - identical neurons, identical fate ----------
+print(&quot;Part 1 - symmetry: identical neurons can never split up the work&quot;)
+X = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+y = torch.tensor([[0.0], [1.0], [1.0], [0.0]])          # XOR (Day 21)
+
+
+def build(w1, b1, w2, b2):
+    fc1, fc2 = nn.Linear(2, 4), nn.Linear(4, 1)
+    with torch.no_grad():
+        fc1.weight.copy_(w1)
+        fc1.bias.copy_(b1)
+        fc2.weight.copy_(w2)
+        fc2.bias.copy_(b2)
+    return fc1, fc2
+
+
+def forward(fc1, fc2, x):
+    return fc2(torch.relu(fc1(x)))
+
+
+# all-zero: with ReLU nothing upstream of the output bias can ever move
+fc1, fc2 = build(torch.zeros(4, 2), torch.zeros(4),
+                 torch.zeros(1, 4), torch.zeros(1))
+loss = ((forward(fc1, fc2, X) - y) ** 2).mean()
+loss.backward()
+print(f&quot;  all-zero init: loss {loss.item():.4f}&quot;
+      f&quot;  grad W1 max {fc1.weight.grad.abs().max().item():.4f}&quot;
+      f&quot;  grad W2 max {fc2.weight.grad.abs().max().item():.4f}&quot;
+      f&quot;  grad b2 {fc2.bias.grad.item():.4f}&quot;)
+print(&quot;    only the output bias can move - it can learn the mean of&quot;
+      &quot; y, nothing else&quot;)
+
+# all-same: every hidden row identical -&gt; every gradient row identical
+same_w1 = torch.tensor([[0.5, -0.3]] * 4)
+same_w2 = torch.tensor([[0.6, 0.6, 0.6, 0.6]])
+fc1, fc2 = build(same_w1, torch.zeros(4), same_w2, torch.zeros(1))
+loss0 = ((forward(fc1, fc2, X) - y) ** 2).mean()
+loss0.backward()
+g = fc1.weight.grad[0]
+print(f&quot;  all-same init, step 0: grad W1 row = [{g[0]:.4f}, {g[1]:.4f}],&quot;
+      &quot; repeated for all 4 rows&quot;)
+
+fc1, fc2 = build(same_w1, torch.zeros(4), same_w2, torch.zeros(1))
+opt = torch.optim.SGD(list(fc1.parameters()) + list(fc2.parameters()),
+                      lr=0.5)
+for _ in range(100):                                     # Day 21&#x27;s recipe
+    opt.zero_grad()
+    loss = ((forward(fc1, fc2, X) - y) ** 2).mean()
+    loss.backward()
+    opt.step()
+with torch.no_grad():
+    preds = forward(fc1, fc2, X)
+    final = ((preds - y) ** 2).mean().item()
+    correct = int(((preds &gt; 0.5) == (y &gt; 0.5)).sum().item())
+    row_diff = (fc1.weight - fc1.weight[0]).abs().max().item()
+    row0 = fc1.weight[0]
+fmt = &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in preds.flatten().tolist())
+print(f&quot;  all-same init, 100 epochs: loss {loss0.item():.4f} -&gt; {final:.4f}&quot;)
+print(f&quot;    preds {fmt}  (correct: {correct}/4)&quot;)
+print(f&quot;    hidden row 0 after training: [{row0[0]:.4f}, {row0[1]:.4f}]&quot;
+      f&quot;  max diff between rows {row_diff:.6f}&quot;)
+print(&quot;    contrast Day 21 (different init, same data): loss 0.000005,&quot;
+      &quot; correct 4/4&quot;)
+
+# ---------- Part 2: scale - the signal after 10 layers ----------
+print(&quot;Part 2 - signal size through 10 ReLU layers, width 128&quot;
+      &quot; (activation RMS)&quot;)
+torch.manual_seed(42)
+X0 = torch.randn(512, 128)                               # signal in, RMS ~1
+
+
+def rms(a):
+    return a.pow(2).mean().sqrt().item()
+
+
+def fmt_rms(v):
+    return f&quot;{v:.4f}&quot; if 0.01 &lt;= v &lt;= 100 else f&quot;{v:.2e}&quot;
+
+
+def propagate(std):
+    torch.manual_seed(7)                # same matrices, rescaled per run
+    a, sizes = X0, [rms(X0)]
+    for _ in range(10):
+        a = torch.relu(a @ (torch.randn(128, 128) * std))
+        sizes.append(rms(a))
+    return sizes
+
+
+for name, std in ((&quot;std 0.01 (too small)&quot;, 0.01),
+                  (&quot;std 1.00 (too large)&quot;, 1.00),
+                  (&quot;Xavier std 0.0884 (1/128)&quot;, math.sqrt(1 / 128)),
+                  (&quot;He std 0.1250 (2/128)&quot;, math.sqrt(2 / 128))):
+    s = propagate(std)
+    print(f&quot;  {name + &#x27;:&#x27;:&lt;27} in {fmt_rms(s[0])}  layer 1 {fmt_rms(s[1])}&quot;
+          f&quot;  layer 5 {fmt_rms(s[5])}  layer 10 {fmt_rms(s[10])}&quot;)
+
+for name, std in ((&quot;std 1.00&quot;, 1.00), (&quot;Xavier  &quot;, math.sqrt(1 / 128))):
+    torch.manual_seed(7)
+    z = X0 @ (torch.randn(128, 128) * std)               # tanh pre-acts
+    sat = (z.abs() &gt; 2).float().mean().item() * 100
+    grad_factor = (1 - torch.tanh(z) ** 2).mean().item()
+    print(f&quot;  tanh detour, layer 1: {name} -&gt; {sat:.2f}% saturated&quot;
+          f&quot; (|z| &gt; 2), mean grad factor {grad_factor:.4f}&quot;)
+print(&quot;  verdict: only the fan_in-scaled init matched to the activation&quot;
+      &quot; holds the signal near 1&quot;)
+
+# ---------- Part 3: the recipe, in PyTorch ----------
+print(&quot;Part 3 - the recipe: random, fan_in-scaled, matched to the&quot;
+      &quot; activation&quot;)
+torch.manual_seed(42)
+net = nn.Sequential(nn.Linear(128, 128), nn.ReLU(),
+                    nn.Linear(128, 128), nn.ReLU(),
+                    nn.Linear(128, 10))
+linears = [m for m in net if isinstance(m, nn.Linear)]
+
+
+def init_weights(module):
+    if isinstance(module, nn.Linear):
+        if module is linears[-1]:        # output: no ReLU after it
+            nn.init.xavier_normal_(module.weight)
+        else:                            # hidden: ReLU follows
+            nn.init.kaiming_normal_(module.weight, nonlinearity=&quot;relu&quot;)
+        nn.init.zeros_(module.bias)
+
+
+net.apply(init_weights)
+targets = (math.sqrt(2 / 128), math.sqrt(2 / 128), math.sqrt(2 / (128 + 10)))
+for name, layer, target in zip((&quot;hidden 1&quot;, &quot;hidden 2&quot;, &quot;output&quot;),
+                               linears, targets):
+    scheme = &quot;Xavier normal&quot; if name == &quot;output&quot; else &quot;He normal&quot;
+    print(f&quot;  {name:&lt;8} (fan_in {layer.in_features}): {scheme:&lt;13}&quot;
+          f&quot; target std {target:.4f}  actual std&quot;
+          f&quot; {layer.weight.std().item():.4f}&quot;)
+print(&quot;  biases: all zero - the asymmetry lives in the weights, not&quot;
+      &quot; the biases&quot;)
+print(&quot;  check: every actual std within a few % of target - that is a&quot;
+      &quot; healthy start&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>  Part 1 - symmetry: identical neurons can never split up the work
+    all-zero init: loss 0.5000  grad W1 max 0.0000  grad W2 max 0.0000  grad b2 -1.0000
+      only the output bias can move - it can learn the mean of y, nothing else
+    all-same init, step 0: grad W1 row = [0.2040, 0.1440], repeated for all 4 rows
+    all-same init, 100 epochs: loss 0.3176 -&gt; 0.1667
+      preds 0.3333, 0.3333, 1.0000, 0.3333  (correct: 3/4)
+      hidden row 0 after training: [0.4016, -0.3720]  max diff between rows 0.000000
+      contrast Day 21 (different init, same data): loss 0.000005, correct 4/4
+  Part 2 - signal size through 10 ReLU layers, width 128 (activation RMS)
+    std 0.01 (too small):     in 1.0028  layer 1 0.0798  layer 5 3.29e-06  layer 10 1.20e-11
+    std 1.00 (too large):     in 1.0028  layer 1 7.9769  layer 5 3.29e+04  layer 10 1.20e+09
+    Xavier std 0.0884 (1/128): in 1.0028  layer 1 0.7051  layer 5 0.1773  layer 10 0.0350
+    He std 0.1250 (2/128):    in 1.0028  layer 1 0.9971  layer 5 1.0027  layer 10 1.1185
+    tanh detour, layer 1: std 1.00 -&gt; 85.96% saturated (|z| &gt; 2), mean grad factor 0.0697
+                          Xavier   -&gt; 4.54% saturated (|z| &gt; 2), mean grad factor 0.6067
+    verdict: only the fan_in-scaled init matched to the activation holds the signal near 1
+  Part 3 - the recipe: random, fan_in-scaled, matched to the activation
+    hidden 1 (fan_in 128): He normal     target std 0.1250  actual std 0.1254
+    hidden 2 (fan_in 128): He normal     target std 0.1250  actual std 0.1257
+    output   (fan_in 128): Xavier normal target std 0.1204  actual std 0.1181
+    biases: all zero - the asymmetry lives in the weights, not the biases
+    check: every actual std within a few % of target - that is a healthy start</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows: Part 1&rsquo;s zero init with grad W1/W2 max exactly 0.0000 (only grad b2 = &minus;1.0000); the all-same net stuck at loss 0.1667 with hidden-row max diff 0.000000 after 100 epochs; Part 2&rsquo;s He row still near RMS 1 at layer 10 while std 0.01 is at ~1e-11 and std 1.00 at ~1e+09; and Part 3&rsquo;s three actual stds each within a few % of target. The keeper skill: given any fresh layer you can now say, without notes, which init it wants &mdash; &ldquo;ReLU follows, fan-in is 128, so He: std &radic;(2/128) = 0.125, biases zero.&rdquo;</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram, then run only Part 1 and the He row of Part 2. If you can explain why identical neurons can never specialize, and why per-weight std must shrink like 1/&radic;(fan_in), you have the lesson &mdash; Part 3 is a recipe card to copy when you need it.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase B closes with a one-page recap &mdash; Days 21&ndash;33 compressed into a single mental model of what a neural net is. No new machinery; the whole machine, on one page.</p>
+  </div>
+
+  <div class="footer">Streak: 33 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
