@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features for Market Data: Returns, Volatility, Microstructure Basics — Day 85 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 85 of 100</span>
+  <h1>Features for Market Data: Returns, Volatility, Microstructure Basics</h1>
+  <p class="outcome">Tonight you'll be able to: turn a raw price series into a feature table a model can trust &mdash; log returns at several horizons, realized vol, Wilder RSI, VWAP deviation, and a volume z-score &mdash; where every cell is computable at decision time, scaled for its regime, and proven leak-free by a truncation test you run yourself.</p>
+
+  <h2>The one idea</h2>
+  <p>You already know tonight's cast as a trader: RSI, VWAP, realized vol &mdash; annotations you read on a chart, with a human (you) silently supplying the context: <em>what regime are we in, what does this number usually look like lately, is this move big for this name?</em> A model gets none of that context for free. It gets columns of numbers. So an indicator becomes an ML <strong>feature</strong> only when it signs a contract with four clauses &mdash; and tonight each clause gets a receipt from the code.</p>
+<p><strong>Clause 1: returns, not prices.</strong> A price level is non-stationary (Day 83): its mean and standard deviation are whatever the ride happened to make them. In Part 1 the same synthetic ticker has price std 2.09 in its calm segment and 12.60 in its stress segment &mdash; neither number means anything. <strong>Log returns</strong> &mdash; <code>log(P<sub>t</sub>/P<sub>t-1</sub>)</code> &mdash; fix all three problems at once: they are scale-free (a 1% move is 0.01 at $10 or $1,000), they <em>add</em> over time (Part 1 checks: the 21-day log return equals the sum of the 21 daily ones, 0.207962 both ways &mdash; simple returns can't do that), and their statistics hold still inside a regime: return std prints 0.847%/day against 0.8% planted in the calm segment, 2.860% against 2.8% planted in stress. Feed a model returns and it can learn relationships that survive a split, a trend, a new price level. Feed it prices and it learns &ldquo;the close is usually near 130&rdquo; &mdash; true until it isn't.</p>
+<p><strong>Clause 2: point-in-time, or it is leakage.</strong> Day 69's law, applied to markets: the feature for day <em>t</em> may be computed from bars at <em>t</em> and earlier &mdash; full stop. The leaks that ruin quant models are rarely exotic; they are centered rolling windows, statistics normalized with the full sample's mean, anything quietly rebuilt with future bars. On a chart you'd call that a <em>repainting indicator</em>, and traders treat repainting as fraud &mdash; backtests built on it are Day 84's casualty list. Tonight's factory is trailing-only by construction, and Part 3 doesn't ask you to trust that: it amputates the data at day <em>t</em>, recomputes every feature from the stump, and compares. Max diff 0.000000, asserted.</p>
+<p><strong>Clause 3: normalize per regime.</strong> Raw feature values are not comparable across regimes, and models assume comparable inputs. Part 2's regime check is the whole argument in two lines: realized vol of 35.0% on day 150 &mdash; just after the vol break &mdash; scores z = +2.22 against its trailing 60 days (an event); realized vol of 35.2% on day 245 scores z = &minus;1.38 (slightly <em>quiet</em> for the regime it lives in). Same raw number, opposite meaning. The z-score is itself trailing-window, so it stays point-in-time legal: it answers &ldquo;unusual <em>for lately</em>?&rdquo;, which is the only version of unusual a model should ever hear.</p>
+<p><strong>Clause 4: microstructure is noise with a signature.</strong> Zoom into tick data and the tape itself starts lying politely. Trades print alternately at the bid and the ask, so consecutive tick returns are mechanically anti-correlated &mdash; bounce, not information. Part 4 builds a tape over a known &ldquo;true&rdquo; price and measures it: lag-1 autocorrelation of tick returns is &minus;0.63 while the true price underneath sits at +0.01, and the bounce alone inflates measured tick vol to 1.64&times; the real thing. Any mean-reversion &ldquo;signal&rdquo; discovered at tick frequency has to beat that null hypothesis first. It's one reason the capstone builds work on daily bars.</p>
+<p><strong>The five features</strong> (all trailing, all computed in Part 2): <strong>ret_5d</strong>, the 5-day log return in % &mdash; horizons are free once returns add, and the code prints 1d/5d/21d side by side; <strong>rvol_20</strong>, 20-day realized volatility (std of daily log returns, annualized &times;&radic;252); <strong>rsi_14</strong>, Wilder's RSI &mdash; the 0&ndash;100 momentum oscillator from smoothed average gains vs losses, smoothing recursion written out in the code; <strong>vwap_dev</strong>, close vs the trailing 20-day VWAP in % (with daily bars, close stands in for the typical price &mdash; stated, not hidden); <strong>vol_z</strong>, today's volume as a z-score against its trailing 20 days. One honest footnote from Part 1: the planted drift was +0.40%/day, but the drift segment's realized mean reads +0.261%/day &mdash; through 2.8% daily vol, even 40 days of a real drift is still mostly noise. That gap is Day 83's signal-to-noise problem, visible in a single table row.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think <strong>event sourcing</strong>, the pattern behind half the storage systems you've built. The raw bars are an append-only, timestamped event log. A feature table is a <strong>projection</strong> &mdash; a materialized view built by folding events in order. Asking for features &ldquo;as of day <em>t</em>&rdquo; is a time-travel query, and point-in-time correctness is the rule that the projection at <em>t</em> must be rebuildable from the log <em>prefix</em> alone. Part 3's truncation test is literally that rebuild: chop the log, re-run the projection, diff against production &mdash; zero is the only acceptable answer. The classic leaks map one-to-one: a full-sample z-score is a projection that secretly read tomorrow's events; a centered window is a read of uncommitted future writes. And returns vs prices is the oldest storage choice you know: log the <em>deltas</em>, not absolute snapshots &mdash; deltas compose, snapshots expire. You've operated this system for a decade. Tonight it just points at a price series.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1c1c1e">From raw bars to features: one series, one boundary</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">synthetic close (planted: calm regime, vol break at day 130, drift days 150-189) &#8594; five trailing-only features</text>
+<rect x="12" y="54" width="656" height="188" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">A - THE RAW SERIES, AND WHERE A FEATURE AT DAY t MAY LOOK</text>
+<rect x="58.0" y="82" width="292.1" height="114" fill="#eef4ff"/>
+<rect x="350.1" y="82" width="289.9" height="114" fill="#fdeeee"/>
+<rect x="395.1" y="82" width="89.9" height="114" fill="#e9f9ee" opacity="0.65"/>
+<rect x="449.0" y="82" width="191.0" height="114" fill="#d70015" opacity="0.07"/>
+<path d="M58.0,174.1 L60.2,175.6 L62.5,176.7 L64.7,177.9 L67.0,178.0 L69.2,177.4 L71.5,176.8 L73.7,176.4 L76.0,177.6 L78.2,178.0 L80.5,177.7 L82.7,178.0 L85.0,179.5 L87.2,176.9 L89.5,177.5 L91.7,179.2 L94.0,180.3 L96.2,181.7 L98.4,184.4 L100.7,184.1 L102.9,183.0 L105.2,184.7 L107.4,185.0 L109.7,184.7 L111.9,183.3 L114.2,183.9 L116.4,182.0 L118.7,182.8 L120.9,184.0 L123.2,184.9 L125.4,184.1 L127.7,183.8 L129.9,183.2 L132.2,184.1 L134.4,184.5 L136.6,185.2 L138.9,185.1 L141.1,185.1 L143.4,185.0 L145.6,186.8 L147.9,188.1 L150.1,187.3 L152.4,186.9 L154.6,184.1 L156.9,183.0 L159.1,183.4 L161.4,183.4 L163.6,183.2 L165.9,179.9 L168.1,179.4 L170.4,181.7 L172.6,180.7 L174.8,180.7 L177.1,180.2 L179.3,180.8 L181.6,183.4 L183.8,180.2 L186.1,179.2 L188.3,179.3 L190.6,179.0 L192.8,179.8 L195.1,178.8 L197.3,179.2 L199.6,177.9 L201.8,179.2 L204.1,177.2 L206.3,173.5 L208.6,175.3 L210.8,176.4 L213.1,174.7 L215.3,175.5 L217.5,179.0 L219.8,181.0 L222.0,180.6 L224.3,178.0 L226.5,177.9 L228.8,178.6 L231.0,178.5 L233.3,178.1 L235.5,178.9 L237.8,177.8 L240.0,178.5 L242.3,179.5 L244.5,182.3 L246.8,181.2 L249.0,184.3 L251.3,184.4 L253.5,184.8 L255.7,187.6 L258.0,187.9 L260.2,186.7 L262.5,186.4 L264.7,185.1 L267.0,185.1 L269.2,180.9 L271.5,178.7 L273.7,178.3 L276.0,176.9 L278.2,178.2 L280.5,180.0 L282.7,180.4 L285.0,180.8 L287.2,181.2 L289.5,181.1 L291.7,181.5 L293.9,181.8 L296.2,181.7 L298.4,181.7 L300.7,181.9 L302.9,181.2 L305.2,179.0 L307.4,177.0 L309.7,177.6 L311.9,177.4 L314.2,177.3 L316.4,177.4 L318.7,178.1 L320.9,177.9 L323.2,176.7 L325.4,176.6 L327.7,176.0 L329.9,176.4 L332.1,174.7 L334.4,172.8 L336.6,174.3 L338.9,175.5 L341.1,177.1 L343.4,175.2 L345.6,175.0 L347.9,175.0 L350.1,173.2 L352.4,176.2 L354.6,176.0 L356.9,178.0 L359.1,177.2 L361.4,175.1 L363.6,171.4 L365.9,170.6 L368.1,173.9 L370.3,182.9 L372.6,175.8 L374.8,177.3 L377.1,174.4 L379.3,168.8 L381.6,166.1 L383.8,166.7 L386.1,165.9 L388.3,158.8 L390.6,155.0 L392.8,155.1 L395.1,151.8 L397.3,152.4 L399.6,148.8 L401.8,140.3 L404.1,144.5 L406.3,148.1 L408.5,139.4 L410.8,139.1 L413.0,143.4 L415.3,136.2 L417.5,128.3 L419.8,118.6 L422.0,117.6 L424.3,112.8 L426.5,119.1 L428.8,126.7 L431.0,123.3 L433.3,124.4 L435.5,132.3 L437.8,137.7 L440.0,131.9 L442.3,130.5 L444.5,126.9 L446.7,124.5 L449.0,123.3 L451.2,115.8 L453.5,123.6 L455.7,136.7 L458.0,152.3 L460.2,154.7 L462.5,150.0 L464.7,146.7 L467.0,143.8 L469.2,137.6 L471.5,130.4 L473.7,133.6 L476.0,136.2 L478.2,140.4 L480.5,131.3 L482.7,134.4 L484.9,128.7 L487.2,123.2 L489.4,120.8 L491.7,118.5 L493.9,118.9 L496.2,116.7 L498.4,118.0 L500.7,121.3 L502.9,114.0 L505.2,112.5 L507.4,111.3 L509.7,118.8 L511.9,105.6 L514.2,114.2 L516.4,113.5 L518.7,118.1 L520.9,118.3 L523.2,122.5 L525.4,127.9 L527.6,125.9 L529.9,133.5 L532.1,126.8 L534.4,134.8 L536.6,124.9 L538.9,125.4 L541.1,130.2 L543.4,130.8 L545.6,130.4 L547.9,130.1 L550.1,136.1 L552.4,122.0 L554.6,111.5 L556.9,119.2 L559.1,129.8 L561.4,140.0 L563.6,140.8 L565.8,137.7 L568.1,140.7 L570.3,136.3 L572.6,130.1 L574.8,126.8 L577.1,123.2 L579.3,117.4 L581.6,118.2 L583.8,117.9 L586.1,113.2 L588.3,119.6 L590.6,123.3 L592.8,124.9 L595.1,126.3 L597.3,122.7 L599.6,111.0 L601.8,106.2 L604.0,97.4 L606.3,99.7 L608.5,108.7 L610.8,115.3 L613.0,119.2 L615.3,132.6 L617.5,116.4 L619.8,113.3 L622.0,117.1 L624.3,103.1 L626.5,98.1 L628.8,92.7 L631.0,101.9 L633.3,91.0 L635.5,89.9 L637.8,102.0 L640.0,99.5" fill="none" stroke="#0a54c2" stroke-width="1.4"/>
+<line x1="449.0" y1="78" x2="449.0" y2="198" stroke="#d70015" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="443.0" y="92" text-anchor="end" font-size="9" font-weight="bold" fill="#d70015">decision day t = 174</text>
+<text x="457.0" y="92" font-size="9" font-weight="bold" fill="#d70015">FUTURE - OFF-LIMITS</text>
+<text x="204.1" y="212" text-anchor="middle" font-size="8.5" fill="#555555">calm regime (0.8%/day vol)</text>
+<text x="541.1" y="212" text-anchor="middle" font-size="8.5" fill="#555555">stress regime (2.8%/day vol)</text>
+<text x="440.0" y="225" text-anchor="middle" font-size="8.5" fill="#177245">green band: planted drift segment, days 150-189</text>
+<text x="54" y="92.9" text-anchor="end" font-size="8.5" fill="#555555">150</text>
+<text x="54" y="191.1" text-anchor="end" font-size="8.5" fill="#555555">92</text>
+<line x1="100" y1="246" x2="100" y2="262" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="100,266 95,258 105,258" fill="#1c1c1e"/>
+<text x="116" y="261" font-size="9.5" font-weight="bold" fill="#1c1c1e">FEATURE FACTORY - trailing windows only: every input bar is at or before its row day</text>
+<rect x="12" y="268" width="656" height="192" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="288" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1c1c1e">B - THE FEATURE TABLE: ROWS ARE DAYS, COLUMNS ARE THE FIVE FEATURES</text>
+<rect x="28" y="298" width="60" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="58" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">day</text>
+<rect x="88" y="298" width="120" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="148" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">ret_5d %</text>
+<rect x="208" y="298" width="120" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="268" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">rvol_20 %</text>
+<rect x="328" y="298" width="100" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="378" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">rsi_14</text>
+<rect x="428" y="298" width="120" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="488" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">vwap_dev %</text>
+<rect x="548" y="298" width="104" height="26" fill="#eef4ff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="600" y="315" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#1c1c1e">vol_z</text>
+<rect x="28" y="324" width="60" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="58" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">64</text>
+<rect x="88" y="324" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="148" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">-0.10</text>
+<rect x="208" y="324" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="268" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">13.94</text>
+<rect x="328" y="324" width="100" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="378" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">56.3</text>
+<rect x="428" y="324" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="488" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">0.81</text>
+<rect x="548" y="324" width="104" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="600" y="341" text-anchor="middle" font-size="9.5" fill="#1c1c1e">0.64</text>
+<rect x="28" y="350" width="60" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="58" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">144</text>
+<rect x="88" y="350" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="148" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">10.03</text>
+<rect x="208" y="350" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="268" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">32.59</text>
+<rect x="328" y="350" width="100" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="378" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">63.3</text>
+<rect x="428" y="350" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="488" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">5.47</text>
+<rect x="548" y="350" width="104" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="600" y="367" text-anchor="middle" font-size="9.5" fill="#1c1c1e">-0.34</text>
+<rect x="28" y="376" width="60" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="58" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">174</text>
+<rect x="88" y="376" width="120" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="148" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">6.84</text>
+<rect x="208" y="376" width="120" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="268" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">40.18</text>
+<rect x="328" y="376" width="100" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="378" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">62.2</text>
+<rect x="428" y="376" width="120" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="488" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">3.08</text>
+<rect x="548" y="376" width="104" height="26" fill="#fff3cd" stroke="#cccccc" stroke-width="0.6"/>
+<text x="600" y="393" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">-1.19</text>
+<rect x="28" y="402" width="60" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="58" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">259</text>
+<rect x="88" y="402" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="148" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">-2.77</text>
+<rect x="208" y="402" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="268" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">58.28</text>
+<rect x="328" y="402" width="100" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="378" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">55.6</text>
+<rect x="428" y="402" width="120" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="488" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">3.93</text>
+<rect x="548" y="402" width="104" height="26" fill="#ffffff" stroke="#cccccc" stroke-width="0.6"/>
+<text x="600" y="419" text-anchor="middle" font-size="9.5" fill="#1c1c1e">-1.24</text>
+<text x="340" y="448" text-anchor="middle" font-size="9" fill="#177245">row t = 174 highlighted - its cells read bars &#8804; 174 only &#183; truncation test (code, Part 3): max diff = 0.000000</text>
+<rect x="12" y="470" width="656" height="24" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.0"/>
+<text x="340" y="486" text-anchor="middle" font-size="9" font-weight="bold" fill="#1c1c1e">THE CONTRACT: returns not prices &#183; point-in-time or it is leakage &#183; normalized per regime &#183; tick-scale patterns are suspect</text>
+</svg>
+    <div class="caption">Top: the synthetic close &mdash; calm regime, vol break at day 130, the planted drift segment shaded green &mdash; with the point-in-time boundary at decision day 174: a feature for that day may read anything left of the red line and nothing to its right. Bottom: the factory's output &mdash; rows are days, columns are the five features; the highlighted row is day 174, computed from bars &le; 174 only. Every value in the table is the code's real output.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, numpy only, no downloads &mdash; the series is <strong>synthetic by design</strong>, built by a stated formula with planted structure (two volatility regimes, one hidden drift segment), so every claim in the theory has a number you can check. <strong>Part 1</strong> builds it and prints the regime table: price statistics wandering, return statistics sitting on the planted values, plus the log-return additivity receipt. <strong>Part 2</strong> is the feature factory &mdash; five trailing-only features, the feature table, a multi-horizon look at day 259, and the regime-normalization demo (same raw vol, z of +2.22 vs &minus;1.38). <strong>Part 3</strong> is the keeper: the truncation test that certifies the whole factory point-in-time. <strong>Part 4</strong> fabricates a tick tape over a known true price and measures the bid/ask bounce inventing a &minus;0.63 autocorrelation out of thin air.</p>
+  <pre><code>&quot;&quot;&quot;Day 85 - Features for Market Data: Returns, Volatility,
+Microstructure Basics.
+
+Phase G turns to your other world. Days 83-84 set the
+terms: markets are non-stationary and backtests lie.
+Tonight the raw material gets the same honesty pass.
+You know RSI, VWAP and realized vol as a trader - chart
+annotations you eyeball. An ML feature is the same
+arithmetic under a contract:
+
+  1. Returns, not prices. A price remembers its level -
+     &quot;close = 187.42&quot; expires the day the stock splits
+     or trends away. A log return is scale-free, ADDS
+     over time, and its distribution holds still inside
+     a regime (Day 83&#x27;s stationarity, made usable).
+  2. Point-in-time or it is leakage. The feature at day
+     t may use bars at t and earlier ONLY - Day 69&#x27;s
+     law, applied to markets. A feature that peeks is
+     a repainting indicator: beautiful, fraudulent.
+  3. Normalize per regime. A raw 40% vol means panic in
+     a calm regime and Tuesday in a stress regime, so
+     features get z-scored against a TRAILING window -
+     comparable across time, still point-in-time legal.
+  4. Microstructure is noise with a signature. At tick
+     frequency, trades bounce between bid and ask, and
+     that bounce manufactures negative autocorrelation
+     that looks exactly like a mean-reversion signal.
+
+The series is SYNTHETIC, built by the formula below -
+no downloads, no API - with structure planted on
+purpose so every claim can be checked: two volatility
+regimes (0.8%/day, then 2.8%/day) and a +0.4%/day
+drift segment hidden inside the second one.
+
+  Part 1  The series + regime stats: price mean/std
+          wander all over; log-return stats sit at the
+          planted values. Plus the additivity receipt:
+          a 21-day log return IS the sum of 21 dailies.
+  Part 2  The feature factory: five features - 5-day
+          log return, 20-day realized vol, Wilder RSI
+          (14), VWAP deviation (20d), volume z-score
+          (20d) - every one trailing-only. Then the
+          regime-normalization demo: same raw vol,
+          different z, at stress onset vs deep inside.
+  Part 3  The leakage self-check: recompute every
+          feature from data truncated at day t and
+          compare with the full-series value at t.
+          Trailing-only construction makes the max
+          diff exactly 0.0 - asserted, not hoped.
+  Part 4  Bid/ask bounce on a synthetic tape: lag-1
+          autocorrelation of tick returns vs daily
+          returns, and how much vol the bounce invents.
+
+Runs on the ~/ai-lab venv: numpy only (free), no
+CUDA, no paid APIs, no downloads. Fixed seed, so
+every number is reproducible.
+
+Expected output:
+
+  Part 1 - synthetic series: 260 days, vol break at day 130, drift days 150-189
+    close: day 0 100.00   day 129 99.51   day 189 123.58   day 259 144.33
+    segment            price mean  price std ret mean %/d ret std %/d
+    calm (planted .8%)      96.30       2.09       -0.004       0.847
+    stress (planted 2.8%)     125.13      12.60        0.286       2.860
+    drift seg (+0.4%/d)     123.40       6.58        0.261       2.946
+    additivity: log-ret day 179-&gt;200 = 0.207962;  sum of the 21 daily log-rets = 0.207962
+    price stats drift with the ride; return stats sit at the planted regime values
+  Part 2 - the feature table (every cell uses bars &lt;= its day only)
+     day    close  ret_5d %  rvol_20 %  rsi_14  vwap_dev %   vol_z
+      64    97.00     -0.10      13.94    56.3        0.81    0.64
+     144   104.76     10.03      32.59    63.3        5.47   -0.34
+     174   130.22      6.84      40.18    62.2        3.08   -1.19
+     194   132.79      7.18      50.62    61.4        7.67   -1.50
+     234   133.37      5.55      45.90    57.5        4.62   -1.00
+     259   144.33     -2.77      58.28    55.6        3.93   -1.24
+    horizons at day 259 (log-rets add, so pick by horizon): 1d +1.04%   5d -2.77%   21d +11.02%
+    regime check day 150: raw rvol 35.0%  -&gt; trailing-60 z +2.22  (same raw vol: regime event at onset, normal deep inside)
+    regime check day 245: raw rvol 35.2%  -&gt; trailing-60 z -1.38  (same raw vol: regime event at onset, normal deep inside)
+  Part 3 - leakage self-check: recompute on data truncated at t
+    max |full-series - truncated| over 5 days x 6 features: 0.000000
+    PASS - the future cannot reach these features; they would survive live trading unchanged
+  Part 4 - bid/ask bounce: noise that wears a signal&#x27;s clothes
+    lag-1 autocorr:  tick returns -0.63   mid-price returns +0.01   daily returns +0.06
+    measured tick vol is 1.64x the true vol - the bounce invents the rest
+  verdict: features are a contract - returns not prices, point-in-time or it is leakage,
+           normalized per regime, and suspicious of any pattern that lives only at tick scale.
+&quot;&quot;&quot;
+import numpy as np
+
+SEED = 85
+N = 260                                # trading days
+
+# ---------- Part 1: a synthetic series, planted structure ----------
+rng = np.random.default_rng(SEED)
+z = rng.standard_normal(N)
+day = np.arange(N)
+sigma = np.where(day &lt; 130, 0.008, 0.028)      # two vol regimes
+mu = np.where(day &lt; 130, 0.0003, -0.0004)      # per-day drift
+mu[150:190] = 0.0040                           # planted drift segment
+logret = mu + sigma * z
+logret[0] = 0.0
+price = 100.0 * np.exp(np.cumsum(logret))
+base_vol = np.where(day &lt; 130, 1_000_000, 1_800_000)
+volume = (base_vol * (1.0 + 1.5 * np.abs(z))
+          * np.exp(0.15 * rng.standard_normal(N))).round().astype(int)
+
+print(&quot;Part 1 - synthetic series: 260 days, vol break at day 130, &quot;
+      &quot;drift days 150-189&quot;)
+print(f&quot;  close: day 0 {price[0]:.2f}   day 129 {price[129]:.2f}   &quot;
+      f&quot;day 189 {price[189]:.2f}   day 259 {price[259]:.2f}&quot;)
+print(f&quot;  {&#x27;segment&#x27;:&lt;18}{&#x27;price mean&#x27;:&gt;11}{&#x27;price std&#x27;:&gt;11}&quot;
+      f&quot;{&#x27;ret mean %/d&#x27;:&gt;13}{&#x27;ret std %/d&#x27;:&gt;12}&quot;)
+for name, lo, hi in ((&quot;calm (planted .8%)&quot;, 1, 130),
+                     (&quot;stress (planted 2.8%)&quot;, 130, 260),
+                     (&quot;drift seg (+0.4%/d)&quot;, 150, 190)):
+    p, r = price[lo:hi], logret[lo:hi]
+    print(f&quot;  {name:&lt;18}{p.mean():&gt;11.2f}{p.std():&gt;11.2f}&quot;
+          f&quot;{100 * r.mean():&gt;13.3f}{100 * r.std():&gt;12.3f}&quot;)
+r21 = np.log(price[200] / price[179])
+print(f&quot;  additivity: log-ret day 179-&gt;200 = {r21:.6f};  &quot;
+      f&quot;sum of the 21 daily log-rets = {logret[180:201].sum():.6f}&quot;)
+print(&quot;  price stats drift with the ride; return stats sit at the &quot;
+      &quot;planted regime values&quot;)
+
+# ---------- Part 2: the feature factory (trailing windows ONLY) ----------
+def rsi_wilder(close, period=14):
+    &quot;&quot;&quot;Wilder&#x27;s RSI: seeded on the first `period` changes,
+    then smoothed avg = (avg*(p-1) + today) / p. Causal -
+    the value at day t reads changes up to day t only.&quot;&quot;&quot;
+    n = len(close)
+    out = np.full(n, np.nan)
+    d = np.diff(close)                       # d[k] = change INTO day k+1
+    gains = np.where(d &gt; 0, d, 0.0)
+    losses = np.where(d &lt; 0, -d, 0.0)
+    ag, al = gains[:period].mean(), losses[:period].mean()
+    for t in range(period, n):
+        if t &gt; period:
+            ag = (ag * (period - 1) + gains[t - 1]) / period
+            al = (al * (period - 1) + losses[t - 1]) / period
+        out[t] = 100.0 if al == 0 else 100.0 - 100.0 / (1.0 + ag / al)
+    return out
+
+
+def compute_features(close, vol):
+    &quot;&quot;&quot;Every feature at day t is a function of bars &lt;= t.
+    That single property is what Part 3 proves.&quot;&quot;&quot;
+    n = len(close)
+    lr = np.zeros(n)
+    lr[1:] = np.log(close[1:] / close[:-1])
+    f = {k: np.full(n, np.nan) for k in
+         (&quot;ret_5d&quot;, &quot;rvol_20&quot;, &quot;rsi_14&quot;, &quot;vwap_dev&quot;, &quot;vol_z&quot;, &quot;rvol_z60&quot;)}
+    f[&quot;rsi_14&quot;] = rsi_wilder(close)
+    for t in range(n):
+        if t &gt;= 5:
+            f[&quot;ret_5d&quot;][t] = 100.0 * lr[t - 4:t + 1].sum()
+        if t &gt;= 20:
+            f[&quot;rvol_20&quot;][t] = 100.0 * lr[t - 19:t + 1].std() \
+                * np.sqrt(252)
+            vw = (close[t - 19:t + 1] * vol[t - 19:t + 1]).sum() \
+                / vol[t - 19:t + 1].sum()
+            f[&quot;vwap_dev&quot;][t] = 100.0 * (close[t] / vw - 1.0)
+            w = vol[t - 19:t + 1].astype(float)
+            f[&quot;vol_z&quot;][t] = (vol[t] - w.mean()) / w.std()
+    rv = f[&quot;rvol_20&quot;]
+    for t in range(79, n):                   # z vs trailing 60 values
+        w = rv[t - 59:t + 1]
+        f[&quot;rvol_z60&quot;][t] = (rv[t] - w.mean()) / w.std()
+    return f
+
+
+FEATS = compute_features(price, volume)
+print(&quot;Part 2 - the feature table (every cell uses bars &lt;= its day only)&quot;)
+print(f&quot;  {&#x27;day&#x27;:&gt;4}{&#x27;close&#x27;:&gt;9}{&#x27;ret_5d %&#x27;:&gt;10}{&#x27;rvol_20 %&#x27;:&gt;11}&quot;
+      f&quot;{&#x27;rsi_14&#x27;:&gt;8}{&#x27;vwap_dev %&#x27;:&gt;12}{&#x27;vol_z&#x27;:&gt;8}&quot;)
+for t in (64, 144, 174, 194, 234, 259):
+    print(f&quot;  {t:&gt;4}{price[t]:&gt;9.2f}{FEATS[&#x27;ret_5d&#x27;][t]:&gt;10.2f}&quot;
+          f&quot;{FEATS[&#x27;rvol_20&#x27;][t]:&gt;11.2f}{FEATS[&#x27;rsi_14&#x27;][t]:&gt;8.1f}&quot;
+          f&quot;{FEATS[&#x27;vwap_dev&#x27;][t]:&gt;12.2f}{FEATS[&#x27;vol_z&#x27;][t]:&gt;8.2f}&quot;)
+print(&quot;  horizons at day 259 (log-rets add, so pick by horizon): &quot;
+      f&quot;1d {100 * logret[259]:+.2f}%   5d {FEATS[&#x27;ret_5d&#x27;][259]:+.2f}%&quot;
+      f&quot;   21d {100 * np.log(price[259] / price[238]):+.2f}%&quot;)
+for t in (150, 245):
+    print(f&quot;  regime check day {t}: raw rvol {FEATS[&#x27;rvol_20&#x27;][t]:.1f}%  &quot;
+          f&quot;-&gt; trailing-60 z {FEATS[&#x27;rvol_z60&#x27;][t]:+.2f}  &quot;
+          &quot;(same raw vol: regime event at onset, normal deep inside)&quot;)
+
+# ---------- Part 3: the leakage self-check ----------
+print(&quot;Part 3 - leakage self-check: recompute on data truncated at t&quot;)
+worst = 0.0
+for t in (100, 144, 174, 200, 259):
+    sub = compute_features(price[:t + 1], volume[:t + 1])
+    for k in FEATS:
+        worst = max(worst, abs(FEATS[k][t] - sub[k][t]))
+print(f&quot;  max |full-series - truncated| over 5 days x 6 features: &quot;
+      f&quot;{worst:.6f}&quot;)
+assert worst == 0.0
+print(&quot;  PASS - the future cannot reach these features; &quot;
+      &quot;they would survive live trading unchanged&quot;)
+
+# ---------- Part 4: microstructure - the bid/ask bounce ----------
+rng2 = np.random.default_rng(7)
+ticks = 4000
+mid = 100.0 + np.cumsum(rng2.normal(0.0, 0.08, ticks))   # the &quot;true&quot; price
+side = np.where(np.arange(ticks) % 2 == 0, 1.0, -1.0)    # buy at ask, sell at bid
+tape = mid + side * 0.05                                 # half-spread 5 cents
+
+
+def autocorr1(r):
+    return np.corrcoef(r[:-1], r[1:])[0, 1]
+
+
+tick_ret = np.diff(np.log(tape))
+mid_ret = np.diff(np.log(mid))
+daily = logret[1:]
+print(&quot;Part 4 - bid/ask bounce: noise that wears a signal&#x27;s clothes&quot;)
+print(f&quot;  lag-1 autocorr:  tick returns {autocorr1(tick_ret):+.2f}   &quot;
+      f&quot;mid-price returns {autocorr1(mid_ret):+.2f}   &quot;
+      f&quot;daily returns {autocorr1(daily):+.2f}&quot;)
+print(f&quot;  measured tick vol is {tick_ret.std() / mid_ret.std():.2f}x the &quot;
+      &quot;true vol - the bounce invents the rest&quot;)
+print(&quot;verdict: features are a contract - returns not prices, &quot;
+      &quot;point-in-time or it is leakage,&quot;)
+print(&quot;         normalized per regime, and suspicious of any pattern &quot;
+      &quot;that lives only at tick scale.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - synthetic series: 260 days, vol break at day 130, drift days 150-189
+  close: day 0 100.00   day 129 99.51   day 189 123.58   day 259 144.33
+  segment            price mean  price std ret mean %/d ret std %/d
+  calm (planted .8%)      96.30       2.09       -0.004       0.847
+  stress (planted 2.8%)     125.13      12.60        0.286       2.860
+  drift seg (+0.4%/d)     123.40       6.58        0.261       2.946
+  additivity: log-ret day 179-&gt;200 = 0.207962;  sum of the 21 daily log-rets = 0.207962
+  price stats drift with the ride; return stats sit at the planted regime values
+Part 2 - the feature table (every cell uses bars &lt;= its day only)
+   day    close  ret_5d %  rvol_20 %  rsi_14  vwap_dev %   vol_z
+    64    97.00     -0.10      13.94    56.3        0.81    0.64
+   144   104.76     10.03      32.59    63.3        5.47   -0.34
+   174   130.22      6.84      40.18    62.2        3.08   -1.19
+   194   132.79      7.18      50.62    61.4        7.67   -1.50
+   234   133.37      5.55      45.90    57.5        4.62   -1.00
+   259   144.33     -2.77      58.28    55.6        3.93   -1.24
+  horizons at day 259 (log-rets add, so pick by horizon): 1d +1.04%   5d -2.77%   21d +11.02%
+  regime check day 150: raw rvol 35.0%  -&gt; trailing-60 z +2.22  (same raw vol: regime event at onset, normal deep inside)
+  regime check day 245: raw rvol 35.2%  -&gt; trailing-60 z -1.38  (same raw vol: regime event at onset, normal deep inside)
+Part 3 - leakage self-check: recompute on data truncated at t
+  max |full-series - truncated| over 5 days x 6 features: 0.000000
+  PASS - the future cannot reach these features; they would survive live trading unchanged
+Part 4 - bid/ask bounce: noise that wears a signal&#x27;s clothes
+  lag-1 autocorr:  tick returns -0.63   mid-price returns +0.01   daily returns +0.06
+  measured tick vol is 1.64x the true vol - the bounce invents the rest
+verdict: features are a contract - returns not prices, point-in-time or it is leakage,
+         normalized per regime, and suspicious of any pattern that lives only at tick scale.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints all four receipts: Part 1's regime table with return std at <code>0.847</code> (calm) and <code>2.860</code> (stress) against 0.8/2.8 planted, while price std wanders <code>2.09 &rarr; 12.60</code>; Part 2's six-row feature table plus the two regime-check lines (day 150: z <code>+2.22</code>; day 245: z <code>&minus;1.38</code>, at the same raw vol); Part 4's tick autocorrelation <code>&minus;0.63</code> against <code>+0.01</code> for the true price &mdash; and above all Part 3's <code>max |full-series &minus; truncated| : 0.000000</code> with the PASS. That assert is the lesson: your features are certified point-in-time, the way a projection rebuilt from a log prefix either matches or doesn't. No in-between.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, run the code, and study two outputs: Part 1's regime table (why returns, not prices) and Part 3's PASS line (why trailing-only). Then look at the diagram's red line until the rule is physical: features read left of it, never right. If you can explain what breaks when a feature uses a centered window &mdash; and why the truncation test would catch it &mdash; you have the day.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: features describe the world up to today &mdash; but what exactly should the model be trying to predict? Labels, and why &ldquo;up tomorrow: yes or no&rdquo; is the crudest answer on the menu.</p>
+  </div>
+
+  <div class="footer">Streak: 85 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
