@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The AI Engineer Map: What You Have, What's Next &mdash; Day 100 of 100</title>
+<!--
+  Day 100 - series finale. Single self-contained file. Inline <style> and
+  inline SVG only. NO external resources - renders offline.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 100 of 100</span>
+  <h1>The AI Engineer Map: What You Have, What's Next</h1>
+  <p class="outcome">Tonight you'll be able to: read the whole 100 days as one map &mdash; what
+  each phase put on the shelf, where your edge actually is, and the sequenced next moves toward
+  an AI engineering seat by ~Sept 2028.</p>
+
+  <h2>The one idea</h2>
+<p>Today teaches nothing new &mdash; deliberately. Day 100 is the <strong>inventory</strong>:
+what the 100 days put on the shelf, where the edge actually is, and what happens next, in order.
+Every phase below is a set of <em>verbs backed by runnable code</em> &mdash; the lessons are
+artifacts, not claims, and this page is the index card for all of them.</p>
+
+<p><strong>The shelf, phase by phase.</strong>
+<strong>A &middot; Foundations (1&ndash;20):</strong> tensors, autograd, training loops &mdash; learning as differentiable programming.
+<strong>B &middot; Neural networks (21&ndash;35):</strong> MLP/CNN/RNN models you can assemble and debug from the loss curve.
+<strong>C &middot; Transformers (36&ndash;50):</strong> attention computed by hand, and a tiny GPT that generates text.
+<strong>D &middot; The modern LLM stack (51&ndash;63):</strong> pretraining, SFT, LoRA, RAG, agents, evals &mdash; the whole post-training story.
+<strong>E &middot; Serving &amp; MLOps (64&ndash;72):</strong> a model behind an API with metrics, batching and quantization tradeoffs, cost per million tokens.
+<strong>F &middot; ML systems (73&ndash;82):</strong> the memory wall, parallelism, checkpointing and repair, the GPU &mdash; distributed training as a systems problem.
+<strong>G &middot; Finance ML capstone (83&ndash;100):</strong> features, labels, walk-forward honesty, sizing, and a paper-trading harness behind a risk gate.</p>
+
+<p><strong>Where the edge is.</strong> Day 82 drew this map for Phase F; the finale promotes it
+to the career thesis. The scarcest seats in AI are not at the modeling layer &mdash; they are where
+training data flows, checkpoints stay durable, caches stay hot, and fleets stay alive. That layer is
+Phases E and F, and it is the layer your record already speaks: Staff SWE on Conveyor, Tesla's
+exabyte-scale Rust object store for AI training, and author of its Data Reliability Service; before
+that, AWS S3 core and DynamoDB team lead, where you led the Tiered Storage launch; since August 2026,
+traffic shaping. You are not entering AI from outside. You are translating a decade of systems work
+into its vocabulary &mdash; and the map says exactly which rows are translation and which are
+genuinely new ground (CUDA depth, a real GPU training run).</p>
+
+<p><strong>What's next, in order.</strong>
+<strong>1. Portfolio:</strong> point TheMarketWatcher at the Day 88&ndash;92 pipeline &mdash; the
+capstone stops being an exercise and becomes a system; the 100 lessons themselves live in the AI Labs
+section of rustyip.com as the public shelf.
+<strong>2. Depth:</strong> one real GPU training run, and CUDA past the mental model, once GPU
+access is in place.
+<strong>3. Interview loop:</strong> RustyIP practice stays in the loop &mdash; this map is the
+&ldquo;why you, for AI?&rdquo; answer, rehearsed.
+<strong>4. The standing option:</strong> a part-time online MS (Georgia Tech OMSCS, UT Austin,
+Stanford SCPD were the named candidates) stays on the table as a lever &mdash; revisit it only if
+proof-of-work stalls, not before.</p>
+
+<p><strong>The pace is yours now.</strong> The daily cadence stopped on 2026-10-30, at your call,
+and the full set was published to AI Labs to be worked through at your own pace &mdash; any order,
+any depth, revisited whenever a project pulls you back to a station. The map doesn't expire. Neither
+does the rule at the bottom of every page.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+<p>It's the <strong>capacity plan you'd write for a system you operate</strong>:
+inventory what's deployed, name the headroom honestly, sequence the roadmap. You've written that
+document for storage systems for a decade &mdash; tonight it's pointed at the operator. And like any
+good capacity plan, it separates what's already running (the shelf) from what's merely provisioned
+on paper (nothing &mdash; if it isn't runnable, it isn't on this map).</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 604" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The 100-day map: seven phase stations on a road, E and F highlighted as home turf, ending in a three-way fork of next steps">
+<text x="340" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#1c1c1e">THE MAP - 100 DAYS, 7 STATIONS, ONE FORK</text>
+<text x="340" y="50" text-anchor="middle" font-size="11.5" fill="#666">Every station is a runnable artifact, not a claim. Work them in any order.</text>
+<rect x="16" y="264" width="648" height="108" rx="12" fill="#e9f9ee" stroke="#22a355" stroke-width="1"/>
+<text x="648" y="284" text-anchor="end" font-size="11" font-weight="700" fill="#177245">HOME TURF - AI INFRA</text>
+<rect x="86" y="74" width="8" height="330" rx="4" fill="#c9ced6"/>
+<circle cx="90" cy="84" r="16" fill="#0a7aff"/>
+<text x="90" y="89" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">A</text>
+<text x="120" y="82" font-size="13.5" font-weight="700" fill="#1c1c1e">A - Foundations (Days 1-20)</text>
+<text x="120" y="99" font-size="11" fill="#555">tensors, autograd, a classifier end to end</text>
+<circle cx="90" cy="136" r="16" fill="#0a7aff"/>
+<text x="90" y="141" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">B</text>
+<text x="120" y="134" font-size="13.5" font-weight="700" fill="#1c1c1e">B - Neural networks (Days 21-35)</text>
+<text x="120" y="151" font-size="11" fill="#555">MLP / CNN / RNN, training debugged from the curve</text>
+<circle cx="90" cy="188" r="16" fill="#0a7aff"/>
+<text x="90" y="193" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">C</text>
+<text x="120" y="186" font-size="13.5" font-weight="700" fill="#1c1c1e">C - Transformers (Days 36-50)</text>
+<text x="120" y="203" font-size="11" fill="#555">attention by hand, a tiny GPT that generates</text>
+<circle cx="90" cy="240" r="16" fill="#0a7aff"/>
+<text x="90" y="245" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">D</text>
+<text x="120" y="238" font-size="13.5" font-weight="700" fill="#1c1c1e">D - The modern LLM stack (Days 51-63)</text>
+<text x="120" y="255" font-size="11" fill="#555">LoRA, a RAG that can refuse, an evals harness</text>
+<circle cx="90" cy="292" r="16" fill="#22a355"/>
+<text x="90" y="297" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">E</text>
+<text x="120" y="290" font-size="13.5" font-weight="700" fill="#1c1c1e">E - Serving and MLOps (Days 64-72)</text>
+<text x="120" y="307" font-size="11" fill="#555">a model behind an API, priced per million tokens</text>
+<circle cx="90" cy="344" r="16" fill="#22a355"/>
+<text x="90" y="349" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">F</text>
+<text x="120" y="342" font-size="13.5" font-weight="700" fill="#1c1c1e">F - ML systems (Days 73-82)</text>
+<text x="120" y="359" font-size="11" fill="#555">memory budgets, all-reduce, checkpoint and repair</text>
+<circle cx="90" cy="396" r="16" fill="#7a5cff"/>
+<text x="90" y="401" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">G</text>
+<text x="120" y="394" font-size="13.5" font-weight="700" fill="#1c1c1e">G - Finance ML capstone (Days 83-100)</text>
+<text x="120" y="411" font-size="11" fill="#555">an honest trading pipeline behind a risk gate</text>
+<path d="M 90 413 L 122 448" stroke="#888" stroke-width="2" fill="none"/>
+<path d="M 90 413 L 340 448" stroke="#888" stroke-width="2" fill="none"/>
+<path d="M 90 413 L 558 448" stroke="#888" stroke-width="2" fill="none"/>
+<rect x="24" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="122" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">1 - PORTFOLIO</text>
+<text x="122" y="486" text-anchor="middle" font-size="10.5" fill="#555">TheMarketWatcher on the</text>
+<text x="122" y="500" text-anchor="middle" font-size="10.5" fill="#555">Day 88-92 pipeline; AI Labs</text>
+<text x="122" y="514" text-anchor="middle" font-size="10.5" fill="#555">on rustyip.com is the shelf</text>
+<rect x="242" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="340" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">2 - DEPTH</text>
+<text x="340" y="486" text-anchor="middle" font-size="10.5" fill="#555">One real GPU training run;</text>
+<text x="340" y="500" text-anchor="middle" font-size="10.5" fill="#555">CUDA past the mental model</text>
+<text x="340" y="514" text-anchor="middle" font-size="10.5" fill="#555">once GPU access lands</text>
+<rect x="460" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="558" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">3 - INTERVIEW LOOP</text>
+<text x="558" y="486" text-anchor="middle" font-size="10.5" fill="#555">RustyIP practice stays in</text>
+<text x="558" y="500" text-anchor="middle" font-size="10.5" fill="#555">the loop - this map is the</text>
+<text x="558" y="514" text-anchor="middle" font-size="10.5" fill="#555">'why you' answer</text>
+<rect x="24" y="534" width="632" height="40" rx="8" fill="none" stroke="#999" stroke-dasharray="5 4"/>
+<text x="340" y="551" text-anchor="middle" font-size="10.5" fill="#666">Standing option, dashed on purpose: a part-time online MS - Georgia Tech OMSCS, UT Austin, Stanford SCPD.</text>
+<text x="340" y="566" text-anchor="middle" font-size="10.5" fill="#666">Revisit only if proof-of-work stalls. It is a lever, not the plan.</text>
+<text x="340" y="594" text-anchor="middle" font-size="11" fill="#888">Goal: AI engineering roles by ~Sept 2028 - the rule that survives: never miss twice.</text>
+</svg>
+    <div class="caption">The road through the 100 days: seven stations, each one a runnable artifact. The E&ndash;F stretch is highlighted &mdash; serving and ML systems are home turf, where your storage-and-reliability decade is the scarcest input. Past the capstone, the road forks into the three next moves; the online MS stays dashed, a lever you pull only if proof-of-work stalls.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three views of the map, in pure stdlib &mdash; tonight the artifact <em>is</em>
+  the career plan. <strong>Part 1</strong> prints the inventory: 7 phases, Days 1&ndash;100, and
+  the can-do verbs each phase put on the shelf. <strong>Part 2</strong> prints the skills
+  checklist &mdash; capability, the days that built it, the artifact that proves it.
+  <strong>Part 3</strong> places the phases on a depth-vs-proof 2&times;2 and prints the stated
+  next move for each, then asserts the map's shape: 7 phases, Days 1&ndash;100 contiguous,
+  no gaps, no overlaps.</p>
+  <pre><code>&quot;&quot;&quot;Day 100 - The AI Engineer Map: What You Have,
+What&#x27;s Next.
+
+The finale teaches nothing new - deliberately. It
+draws the map the 100 days add up to, and makes the
+map executable:
+
+  Part 1  The inventory: 7 phases, Days 1-100, and
+          the can-do verbs each phase put on the
+          shelf. Every verb names a runnable artifact
+          from its phase - attention computed by hand,
+          a tiny GPT, LoRA adapters, a RAG that can
+          refuse, a model behind an API, all-reduce
+          across real processes, an honest trading
+          pipeline. The lessons exist as code you can
+          run; the map just indexes them.
+  Part 2  A skills checklist: capability, the days
+          that built it, the artifact that proves it.
+          Proof standard: if it isn&#x27;t runnable, it
+          isn&#x27;t on the list.
+  Part 3  Depth vs proof: a 2x2 placement of the
+          seven phases, and the stated next move for
+          each - the sequenced plan toward AI
+          engineering roles by ~Sept 2028. Depth is
+          how far the understanding goes; proof is
+          the artifact a stranger can run. Phases E
+          and F sit top-right - that is the
+          AI-infrastructure edge from Day 82&#x27;s map:
+          the storage-and-reliability layer of AI,
+          where a decade of systems work is the
+          scarcest input.
+
+Pure stdlib, deterministic - no RNG, no torch, no
+APIs, no downloads. Runs as-is in the ~/ai-lab venv
+on the MacBook.
+
+Expected output:
+
+  Part 1 - the inventory: 7 phases, Days 1-100
+    A  PyTorch &amp; ML foundations           Days   1-20  (20 days, 4 can-do verbs)
+         - build tensors and trace gradients with autograd
+         - train a regression from scratch, no framework
+         - fit a line to real market data
+         - ship a tiny classifier end to end
+    B  Neural networks                    Days  21-35  (15 days, 3 can-do verbs)
+         - assemble MLP, CNN and RNN models in nn.Module
+         - debug a training run from its loss curve
+         - regularize a net that is memorizing
+    C  Attention &amp; transformers           Days  36-50  (15 days, 3 can-do verbs)
+         - compute scaled dot-product attention by hand
+         - build and train a tiny GPT that generates text
+         - put numbers on KV cache and context cost
+    D  The modern LLM stack               Days  51-63  (13 days, 4 can-do verbs)
+         - fine-tune with LoRA instead of retraining
+         - build a RAG that can refuse to answer
+         - wire tool calls into an agent loop
+         - grade a model with a runnable evals harness
+    E  Inference serving &amp; MLOps          Days  64-72  ( 9 days, 4 can-do verbs)
+         - serve a model behind an API with metrics
+         - pick a batching and quantization operating point
+         - price inference per million tokens
+         - watch a live model for drift
+    F  ML systems / distributed training  Days  73-82  (10 days, 4 can-do verbs)
+         - budget a training run against the memory wall
+         - all-reduce gradients across real processes
+         - checkpoint a run and restore it
+         - translate ML systems into infra language
+    G  Finance ML capstone                Days  83-100 (18 days, 4 can-do verbs)
+         - build features and labels without leakage
+         - run a walk-forward test that can say &#x27;no edge&#x27;
+         - size positions with Kelly and vol targeting
+         - run a paper-trading harness behind a risk gate
+    total: 100 days, 26 can-do verbs - every verb backed by
+    runnable code in its phase
+  Part 2 - skills checklist: capability / built / artifact
+    attention, computed by hand          Day 38       scaled dot-product attention in torch
+    a language model, built + trained    Day 42       tiny GPT that generates text
+    parameter-efficient fine-tuning      Days 53, 94  LoRA adapters - merged, equivalence-checked
+    retrieval that can refuse            Days 58-59   tiny RAG over your own docs, with a gate
+    tool use + the agent loop            Days 60-61   tools as schemas; plan, act, observe
+    evals you can run in CI              Days 57, 96  harness with slices and a regression gate
+    a model behind an API                Day 71       stdlib server: /predict /health /metrics
+    gradients across processes           Days 74, 98  ring all-reduce over real OS processes
+    quantization, measured on outputs    Days 65, 97  int8/int4 error counted in flipped predictions
+    a backtest that can say no           Days 87-88   walk-forward pipeline, costs included
+    sizing as a formula                  Day 90       Kelly + vol targeting, simulated honestly
+    checkpoint, checksum, resume         Day 78       checkpoint + verify-on-load + resume
+    proof standard: if it isn&#x27;t runnable, it isn&#x27;t on this list
+  Part 3 - depth vs proof, and the next move
+                     PROOF working    PROOF high
+    DEPTH high       A, B             C, E, F
+    DEPTH working    -                D, G
+    depth = how far the understanding goes; proof = the
+    artifact a stranger can run. E and F sit top-right:
+    that is the AI-infrastructure edge (Day 82&#x27;s map).
+    A next: Reference shelf - revisit only a named gap.
+    B next: No separate move - load-bearing in every later build.
+    C next: Keep the tiny GPT runnable - the transformer demo.
+    D next: Aim the RAG and the evals harness at TheMarketWatcher.
+    E next: Keep the serving API as the inference portfolio piece.
+    F next: One real GPU training run; CUDA past the mental model.
+    G next: Wire TheMarketWatcher to the Day 88-92 pipeline.
+    checks: 7 phases, Days 1-100 contiguous, no gaps, no overlaps
+  the rule that survives the series: never miss twice.
+&quot;&quot;&quot;
+
+# The shelf: letter, phase, day range, can-do verbs,
+# depth, proof, and the stated next move.
+PHASES = [
+    (&quot;A&quot;, &quot;PyTorch &amp; ML foundations&quot;, 1, 20,
+     [&quot;build tensors and trace gradients with autograd&quot;,
+      &quot;train a regression from scratch, no framework&quot;,
+      &quot;fit a line to real market data&quot;,
+      &quot;ship a tiny classifier end to end&quot;],
+     &quot;high&quot;, &quot;working&quot;,
+     &quot;Reference shelf - revisit only a named gap.&quot;),
+    (&quot;B&quot;, &quot;Neural networks&quot;, 21, 35,
+     [&quot;assemble MLP, CNN and RNN models in nn.Module&quot;,
+      &quot;debug a training run from its loss curve&quot;,
+      &quot;regularize a net that is memorizing&quot;],
+     &quot;high&quot;, &quot;working&quot;,
+     &quot;No separate move - load-bearing in every later build.&quot;),
+    (&quot;C&quot;, &quot;Attention &amp; transformers&quot;, 36, 50,
+     [&quot;compute scaled dot-product attention by hand&quot;,
+      &quot;build and train a tiny GPT that generates text&quot;,
+      &quot;put numbers on KV cache and context cost&quot;],
+     &quot;high&quot;, &quot;high&quot;,
+     &quot;Keep the tiny GPT runnable - the transformer demo.&quot;),
+    (&quot;D&quot;, &quot;The modern LLM stack&quot;, 51, 63,
+     [&quot;fine-tune with LoRA instead of retraining&quot;,
+      &quot;build a RAG that can refuse to answer&quot;,
+      &quot;wire tool calls into an agent loop&quot;,
+      &quot;grade a model with a runnable evals harness&quot;],
+     &quot;working&quot;, &quot;high&quot;,
+     &quot;Aim the RAG and the evals harness at TheMarketWatcher.&quot;),
+    (&quot;E&quot;, &quot;Inference serving &amp; MLOps&quot;, 64, 72,
+     [&quot;serve a model behind an API with metrics&quot;,
+      &quot;pick a batching and quantization operating point&quot;,
+      &quot;price inference per million tokens&quot;,
+      &quot;watch a live model for drift&quot;],
+     &quot;high&quot;, &quot;high&quot;,
+     &quot;Keep the serving API as the inference portfolio piece.&quot;),
+    (&quot;F&quot;, &quot;ML systems / distributed training&quot;, 73, 82,
+     [&quot;budget a training run against the memory wall&quot;,
+      &quot;all-reduce gradients across real processes&quot;,
+      &quot;checkpoint a run and restore it&quot;,
+      &quot;translate ML systems into infra language&quot;],
+     &quot;high&quot;, &quot;high&quot;,
+     &quot;One real GPU training run; CUDA past the mental model.&quot;),
+    (&quot;G&quot;, &quot;Finance ML capstone&quot;, 83, 100,
+     [&quot;build features and labels without leakage&quot;,
+      &quot;run a walk-forward test that can say &#x27;no edge&#x27;&quot;,
+      &quot;size positions with Kelly and vol targeting&quot;,
+      &quot;run a paper-trading harness behind a risk gate&quot;],
+     &quot;working&quot;, &quot;high&quot;,
+     &quot;Wire TheMarketWatcher to the Day 88-92 pipeline.&quot;),
+]
+
+# The checklist: capability, the days that built it,
+# the artifact that proves it.
+CHECKLIST = [
+    (&quot;attention, computed by hand&quot;, &quot;Day 38&quot;,
+     &quot;scaled dot-product attention in torch&quot;),
+    (&quot;a language model, built + trained&quot;, &quot;Day 42&quot;,
+     &quot;tiny GPT that generates text&quot;),
+    (&quot;parameter-efficient fine-tuning&quot;, &quot;Days 53, 94&quot;,
+     &quot;LoRA adapters - merged, equivalence-checked&quot;),
+    (&quot;retrieval that can refuse&quot;, &quot;Days 58-59&quot;,
+     &quot;tiny RAG over your own docs, with a gate&quot;),
+    (&quot;tool use + the agent loop&quot;, &quot;Days 60-61&quot;,
+     &quot;tools as schemas; plan, act, observe&quot;),
+    (&quot;evals you can run in CI&quot;, &quot;Days 57, 96&quot;,
+     &quot;harness with slices and a regression gate&quot;),
+    (&quot;a model behind an API&quot;, &quot;Day 71&quot;,
+     &quot;stdlib server: /predict /health /metrics&quot;),
+    (&quot;gradients across processes&quot;, &quot;Days 74, 98&quot;,
+     &quot;ring all-reduce over real OS processes&quot;),
+    (&quot;quantization, measured on outputs&quot;, &quot;Days 65, 97&quot;,
+     &quot;int8/int4 error counted in flipped predictions&quot;),
+    (&quot;a backtest that can say no&quot;, &quot;Days 87-88&quot;,
+     &quot;walk-forward pipeline, costs included&quot;),
+    (&quot;sizing as a formula&quot;, &quot;Day 90&quot;,
+     &quot;Kelly + vol targeting, simulated honestly&quot;),
+    (&quot;checkpoint, checksum, resume&quot;, &quot;Day 78&quot;,
+     &quot;checkpoint + verify-on-load + resume&quot;),
+]
+
+# ---------- Part 1: the inventory ----------
+print(&quot;Part 1 - the inventory: 7 phases, Days 1-100&quot;)
+total_days = 0
+total_verbs = 0
+for letter, name, first, last, verbs, *_ in PHASES:
+    days = last - first + 1
+    total_days += days
+    total_verbs += len(verbs)
+    print(f&quot;  {letter}  {name:&lt;34} Days {first:&gt;3}-{last:&lt;3} &quot;
+          f&quot;({days:&gt;2} days, {len(verbs)} can-do verbs)&quot;)
+    for v in verbs:
+        print(f&quot;       - {v}&quot;)
+print(f&quot;  total: {total_days} days, {total_verbs} can-do verbs - &quot;
+      &quot;every verb backed by&quot;)
+print(&quot;  runnable code in its phase&quot;)
+
+# ---------- Part 2: the checklist ----------
+print(&quot;Part 2 - skills checklist: capability / built / artifact&quot;)
+for cap, built, artifact in CHECKLIST:
+    print(f&quot;  {cap:&lt;36} {built:&lt;12} {artifact}&quot;)
+print(&quot;  proof standard: if it isn&#x27;t runnable, it isn&#x27;t on this list&quot;)
+
+# ---------- Part 3: depth vs proof + next moves ----------
+print(&quot;Part 3 - depth vs proof, and the next move&quot;)
+
+
+def cell(depth, proof):
+    hits = [l for l, _, _, _, _, d, p, _ in PHASES
+            if d == depth and p == proof]
+    return &quot;, &quot;.join(hits) if hits else &quot;-&quot;
+
+
+print(f&quot;  {&#x27;&#x27;:&lt;16} {&#x27;PROOF working&#x27;:&lt;16} PROOF high&quot;)
+print(f&quot;  {&#x27;DEPTH high&#x27;:&lt;16} {cell(&#x27;high&#x27;, &#x27;working&#x27;):&lt;16} &quot;
+      f&quot;{cell(&#x27;high&#x27;, &#x27;high&#x27;)}&quot;)
+print(f&quot;  {&#x27;DEPTH working&#x27;:&lt;16} {cell(&#x27;working&#x27;, &#x27;working&#x27;):&lt;16} &quot;
+      f&quot;{cell(&#x27;working&#x27;, &#x27;high&#x27;)}&quot;)
+print(&quot;  depth = how far the understanding goes; proof = the&quot;)
+print(&quot;  artifact a stranger can run. E and F sit top-right:&quot;)
+print(&quot;  that is the AI-infrastructure edge (Day 82&#x27;s map).&quot;)
+for letter, name, first, last, verbs, depth, proof, move in PHASES:
+    print(f&quot;  {letter} next: {move}&quot;)
+ranges = [(f, l) for _, _, f, l, *_ in PHASES]
+assert ranges[0][0] == 1 and ranges[-1][1] == 100
+assert all(ranges[i][1] + 1 == ranges[i + 1][0]
+           for i in range(len(ranges) - 1))
+assert total_days == 100 and len(PHASES) == 7
+print(&quot;  checks: 7 phases, Days 1-100 contiguous, &quot;
+      &quot;no gaps, no overlaps&quot;)
+print(&quot;the rule that survives the series: never miss twice.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the inventory: 7 phases, Days 1-100
+  A  PyTorch &amp; ML foundations           Days   1-20  (20 days, 4 can-do verbs)
+       - build tensors and trace gradients with autograd
+       - train a regression from scratch, no framework
+       - fit a line to real market data
+       - ship a tiny classifier end to end
+  B  Neural networks                    Days  21-35  (15 days, 3 can-do verbs)
+       - assemble MLP, CNN and RNN models in nn.Module
+       - debug a training run from its loss curve
+       - regularize a net that is memorizing
+  C  Attention &amp; transformers           Days  36-50  (15 days, 3 can-do verbs)
+       - compute scaled dot-product attention by hand
+       - build and train a tiny GPT that generates text
+       - put numbers on KV cache and context cost
+  D  The modern LLM stack               Days  51-63  (13 days, 4 can-do verbs)
+       - fine-tune with LoRA instead of retraining
+       - build a RAG that can refuse to answer
+       - wire tool calls into an agent loop
+       - grade a model with a runnable evals harness
+  E  Inference serving &amp; MLOps          Days  64-72  ( 9 days, 4 can-do verbs)
+       - serve a model behind an API with metrics
+       - pick a batching and quantization operating point
+       - price inference per million tokens
+       - watch a live model for drift
+  F  ML systems / distributed training  Days  73-82  (10 days, 4 can-do verbs)
+       - budget a training run against the memory wall
+       - all-reduce gradients across real processes
+       - checkpoint a run and restore it
+       - translate ML systems into infra language
+  G  Finance ML capstone                Days  83-100 (18 days, 4 can-do verbs)
+       - build features and labels without leakage
+       - run a walk-forward test that can say &#x27;no edge&#x27;
+       - size positions with Kelly and vol targeting
+       - run a paper-trading harness behind a risk gate
+  total: 100 days, 26 can-do verbs - every verb backed by
+  runnable code in its phase
+Part 2 - skills checklist: capability / built / artifact
+  attention, computed by hand          Day 38       scaled dot-product attention in torch
+  a language model, built + trained    Day 42       tiny GPT that generates text
+  parameter-efficient fine-tuning      Days 53, 94  LoRA adapters - merged, equivalence-checked
+  retrieval that can refuse            Days 58-59   tiny RAG over your own docs, with a gate
+  tool use + the agent loop            Days 60-61   tools as schemas; plan, act, observe
+  evals you can run in CI              Days 57, 96  harness with slices and a regression gate
+  a model behind an API                Day 71       stdlib server: /predict /health /metrics
+  gradients across processes           Days 74, 98  ring all-reduce over real OS processes
+  quantization, measured on outputs    Days 65, 97  int8/int4 error counted in flipped predictions
+  a backtest that can say no           Days 87-88   walk-forward pipeline, costs included
+  sizing as a formula                  Day 90       Kelly + vol targeting, simulated honestly
+  checkpoint, checksum, resume         Day 78       checkpoint + verify-on-load + resume
+  proof standard: if it isn&#x27;t runnable, it isn&#x27;t on this list
+Part 3 - depth vs proof, and the next move
+                   PROOF working    PROOF high
+  DEPTH high       A, B             C, E, F
+  DEPTH working    -                D, G
+  depth = how far the understanding goes; proof = the
+  artifact a stranger can run. E and F sit top-right:
+  that is the AI-infrastructure edge (Day 82&#x27;s map).
+  A next: Reference shelf - revisit only a named gap.
+  B next: No separate move - load-bearing in every later build.
+  C next: Keep the tiny GPT runnable - the transformer demo.
+  D next: Aim the RAG and the evals harness at TheMarketWatcher.
+  E next: Keep the serving API as the inference portfolio piece.
+  F next: One real GPU training run; CUDA past the mental model.
+  G next: Wire TheMarketWatcher to the Day 88-92 pipeline.
+  checks: 7 phases, Days 1-100 contiguous, no gaps, no overlaps
+the rule that survives the series: never miss twice.
+</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+<p>Done when you can say, without notes: the seven phases, the artifact each one
+left you, why E and F are home turf, and the next three moves in order. And the shelf itself is
+closed out: all 100 lessons live in the AI Labs section of rustyip.com, with this page as their
+index card. One hundred days, one map &mdash; the map is the win.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+<p>Read &ldquo;See it&rdquo; until you can redraw the road from memory, then run
+the code and read only Part 3 &mdash; the 2&times;2 and the next moves. That's the map; everything
+else is the legend.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Day 101 is yours</div>
+<p>There's no Day 101 lesson. There's the fork in the diagram: point
+TheMarketWatcher at the capstone pipeline, get one real GPU run under your belt, keep RustyIP warm.
+Pick one &mdash; then never miss twice.</p>
+  </div>
+
+  <div class="footer">Day 100 of 100 &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

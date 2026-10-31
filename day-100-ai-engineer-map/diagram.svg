@@ -1,0 +1,57 @@
+<svg viewBox="0 0 680 604" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The 100-day map: seven phase stations on a road, E and F highlighted as home turf, ending in a three-way fork of next steps">
+<text x="340" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#1c1c1e">THE MAP - 100 DAYS, 7 STATIONS, ONE FORK</text>
+<text x="340" y="50" text-anchor="middle" font-size="11.5" fill="#666">Every station is a runnable artifact, not a claim. Work them in any order.</text>
+<rect x="16" y="264" width="648" height="108" rx="12" fill="#e9f9ee" stroke="#22a355" stroke-width="1"/>
+<text x="648" y="284" text-anchor="end" font-size="11" font-weight="700" fill="#177245">HOME TURF - AI INFRA</text>
+<rect x="86" y="74" width="8" height="330" rx="4" fill="#c9ced6"/>
+<circle cx="90" cy="84" r="16" fill="#0a7aff"/>
+<text x="90" y="89" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">A</text>
+<text x="120" y="82" font-size="13.5" font-weight="700" fill="#1c1c1e">A - Foundations (Days 1-20)</text>
+<text x="120" y="99" font-size="11" fill="#555">tensors, autograd, a classifier end to end</text>
+<circle cx="90" cy="136" r="16" fill="#0a7aff"/>
+<text x="90" y="141" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">B</text>
+<text x="120" y="134" font-size="13.5" font-weight="700" fill="#1c1c1e">B - Neural networks (Days 21-35)</text>
+<text x="120" y="151" font-size="11" fill="#555">MLP / CNN / RNN, training debugged from the curve</text>
+<circle cx="90" cy="188" r="16" fill="#0a7aff"/>
+<text x="90" y="193" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">C</text>
+<text x="120" y="186" font-size="13.5" font-weight="700" fill="#1c1c1e">C - Transformers (Days 36-50)</text>
+<text x="120" y="203" font-size="11" fill="#555">attention by hand, a tiny GPT that generates</text>
+<circle cx="90" cy="240" r="16" fill="#0a7aff"/>
+<text x="90" y="245" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">D</text>
+<text x="120" y="238" font-size="13.5" font-weight="700" fill="#1c1c1e">D - The modern LLM stack (Days 51-63)</text>
+<text x="120" y="255" font-size="11" fill="#555">LoRA, a RAG that can refuse, an evals harness</text>
+<circle cx="90" cy="292" r="16" fill="#22a355"/>
+<text x="90" y="297" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">E</text>
+<text x="120" y="290" font-size="13.5" font-weight="700" fill="#1c1c1e">E - Serving and MLOps (Days 64-72)</text>
+<text x="120" y="307" font-size="11" fill="#555">a model behind an API, priced per million tokens</text>
+<circle cx="90" cy="344" r="16" fill="#22a355"/>
+<text x="90" y="349" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">F</text>
+<text x="120" y="342" font-size="13.5" font-weight="700" fill="#1c1c1e">F - ML systems (Days 73-82)</text>
+<text x="120" y="359" font-size="11" fill="#555">memory budgets, all-reduce, checkpoint and repair</text>
+<circle cx="90" cy="396" r="16" fill="#7a5cff"/>
+<text x="90" y="401" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">G</text>
+<text x="120" y="394" font-size="13.5" font-weight="700" fill="#1c1c1e">G - Finance ML capstone (Days 83-100)</text>
+<text x="120" y="411" font-size="11" fill="#555">an honest trading pipeline behind a risk gate</text>
+<path d="M 90 413 L 122 448" stroke="#888" stroke-width="2" fill="none"/>
+<path d="M 90 413 L 340 448" stroke="#888" stroke-width="2" fill="none"/>
+<path d="M 90 413 L 558 448" stroke="#888" stroke-width="2" fill="none"/>
+<rect x="24" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="122" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">1 - PORTFOLIO</text>
+<text x="122" y="486" text-anchor="middle" font-size="10.5" fill="#555">TheMarketWatcher on the</text>
+<text x="122" y="500" text-anchor="middle" font-size="10.5" fill="#555">Day 88-92 pipeline; AI Labs</text>
+<text x="122" y="514" text-anchor="middle" font-size="10.5" fill="#555">on rustyip.com is the shelf</text>
+<rect x="242" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="340" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">2 - DEPTH</text>
+<text x="340" y="486" text-anchor="middle" font-size="10.5" fill="#555">One real GPU training run;</text>
+<text x="340" y="500" text-anchor="middle" font-size="10.5" fill="#555">CUDA past the mental model</text>
+<text x="340" y="514" text-anchor="middle" font-size="10.5" fill="#555">once GPU access lands</text>
+<rect x="460" y="448" width="196" height="76" rx="10" fill="#fff" stroke="#d5d5da"/>
+<text x="558" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#1c1c1e">3 - INTERVIEW LOOP</text>
+<text x="558" y="486" text-anchor="middle" font-size="10.5" fill="#555">RustyIP practice stays in</text>
+<text x="558" y="500" text-anchor="middle" font-size="10.5" fill="#555">the loop - this map is the</text>
+<text x="558" y="514" text-anchor="middle" font-size="10.5" fill="#555">'why you' answer</text>
+<rect x="24" y="534" width="632" height="40" rx="8" fill="none" stroke="#999" stroke-dasharray="5 4"/>
+<text x="340" y="551" text-anchor="middle" font-size="10.5" fill="#666">Standing option, dashed on purpose: a part-time online MS - Georgia Tech OMSCS, UT Austin, Stanford SCPD.</text>
+<text x="340" y="566" text-anchor="middle" font-size="10.5" fill="#666">Revisit only if proof-of-work stalls. It is a lever, not the plan.</text>
+<text x="340" y="594" text-anchor="middle" font-size="11" fill="#888">Goal: AI engineering roles by ~Sept 2028 - the rule that survives: never miss twice.</text>
+</svg>
