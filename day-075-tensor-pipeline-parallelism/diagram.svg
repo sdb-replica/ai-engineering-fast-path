@@ -1,0 +1,102 @@
+<svg viewBox="0 0 680 552" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="552" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<rect x="12" y="10" width="656" height="248" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="32" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - TENSOR PARALLELISM: ONE LAYER, TWO GPUs, ONE ALL-REDUCE SEAM</text>
+<text x="340" y="48" text-anchor="middle" font-size="9.5" fill="#666666">the row cut: each GPU owns half the input features, so each holds only a partial sum</text>
+<rect x="275" y="58" width="130" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">X (4x8)</text>
+<text x="340" y="88" text-anchor="middle" font-size="8.5" fill="#555555">same input, both GPUs</text>
+<line x1="312" y1="94" x2="196" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,116 202,115 197,108" fill="#0a7aff"/>
+<line x1="368" y1="94" x2="484" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="488,116 483,108 478,115" fill="#0a7aff"/>
+<rect x="45" y="118" width="262" height="62" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="176" y="138" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">GPU 0 - W rows 0-3 (4x6)</text>
+<text x="176" y="154" text-anchor="middle" font-size="9" fill="#1c1c1e">partial P0 = X[:, :4] @ W[:4, :]</text>
+<text x="176" y="169" text-anchor="middle" font-size="9" fill="#0a54c2">P0 row 0: [8, -11, 5, -4, 2, 8]</text>
+<line x1="176" y1="180" x2="176" y2="198" stroke="#d99a00" stroke-width="1.6"/>
+<polygon points="176,202 172,195 180,195" fill="#d99a00"/>
+<rect x="373" y="118" width="262" height="62" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="504" y="138" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">GPU 1 - W rows 4-7 (4x6)</text>
+<text x="504" y="154" text-anchor="middle" font-size="9" fill="#1c1c1e">partial P1 = X[:, 4:] @ W[4:, :]</text>
+<text x="504" y="169" text-anchor="middle" font-size="9" fill="#0a54c2">P1 row 0: [-5, 0, 10, 0, -5, -5]</text>
+<line x1="504" y1="180" x2="504" y2="198" stroke="#d99a00" stroke-width="1.6"/>
+<polygon points="504,202 500,195 508,195" fill="#d99a00"/>
+<rect x="120" y="202" width="440" height="28" rx="8" fill="#fdeeda" stroke="#d99a00" stroke-width="1.4"/>
+<text x="340" y="220" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ALL-REDUCE:  Y = P0 + P1  -&gt;  row 0: [3, -11, 15, -4, -3, 3]</text>
+<text x="340" y="248" text-anchor="middle" font-size="9" fill="#1c1c1e">column cut is the mirror: split W by output features and concat - the sum lands in the next layer instead (Megatron pairs both cuts)</text>
+<rect x="12" y="272" width="656" height="216" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="294" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">B - PIPELINE PARALLELISM: 4 STAGES, 4 MICRO-BATCHES, ONE STEP</text>
+<text x="340" y="310" text-anchor="middle" font-size="9.5" fill="#666666">grey cells are the bubble: the stage holds its layers but the line has not reached it yet - or has drained past it</text>
+<text x="155" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 1</text>
+<text x="232" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 2</text>
+<text x="309" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 3</text>
+<text x="386" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 4</text>
+<text x="463" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 5</text>
+<text x="540" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 6</text>
+<text x="617" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 7</text>
+<text x="110" y="356" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 1</text>
+<rect x="118" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="155" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="195" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="232" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="272" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="349" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="426" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="463" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="503" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="540" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="580" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="390" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 2</text>
+<rect x="118" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="232" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="272" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="349" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="426" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="503" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="540" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="580" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="424" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 3</text>
+<rect x="118" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="232" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="272" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="349" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="426" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="503" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="540" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="580" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="458" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 4</text>
+<rect x="118" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="232" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="272" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="309" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="349" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="426" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="503" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="540" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="580" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="617" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<text x="340" y="478" text-anchor="middle" font-size="9.5" fill="#1c1c1e">step = M + P - 1 = 7 slots  -  bubble = (P-1) / (M+P-1) = 3/7 = 43% at M=4  -  M=8: 27%  -  M=32: 9%</text>
+<rect x="12" y="500" width="656" height="42" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="518" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">DP shards the DATA (Day 74)  -  TP shards WEIGHTS inside a layer  -  PP shards LAYERS across stages</text>
+<text x="340" y="534" text-anchor="middle" font-size="9.5" fill="#1c1c1e">frontier runs compose all three (3D parallelism): TP inside the node, PP across nodes, DP across replicas</text>
+</svg>

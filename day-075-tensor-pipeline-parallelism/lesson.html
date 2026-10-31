@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tensor &amp; Pipeline Parallelism: Splitting the Model Itself — Day 75 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 75 of 100</span>
+  <h1>Tensor &amp; Pipeline Parallelism: Splitting the Model Itself</h1>
+  <p class="outcome">Tonight you'll be able to: explain the two ways to split a model that no longer fits on one GPU &mdash; <strong>tensor parallelism</strong> cuts one layer&rsquo;s weight matrix across GPUs and pays an all-reduce <em>inside</em> the layer, <strong>pipeline parallelism</strong> cuts the layers into stages and pays a fill/drain <em>bubble</em> &mdash; and price both before you ever launch a run.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 74 replicated: every GPU held the whole model and took a shard of the data. That works only while one copy fits &mdash; and Day 73 priced a copy at roughly 16 bytes per parameter once gradients and Adam state are counted, so a 70B model wants about 1.1 TB before activations. When the model itself is the thing that doesn&rsquo;t fit, there are exactly two places left to cut: <strong>inside a layer</strong>, or <strong>between layers</strong>. Those are tonight&rsquo;s two moves, and every big training run you will ever read about is some composition of them with Day 74.</p>
+<p><strong>Tensor parallelism (TP) cuts inside a layer.</strong> A layer is mostly one matmul, <code>Y = X &middot; W</code>, and a matmul has two seams. Cut <code>W</code> by <em>columns</em> and each GPU owns some output features outright: it computes its slice of <code>Y</code> completely, and the slices are concatenated &mdash; no sums owed. Cut <code>W</code> by <em>rows</em> and each GPU owns some input features: it multiplies its slice of <code>X</code> by its slice of <code>W</code> and gets a <em>partial sum</em> &mdash; a number that is not the answer until every GPU&rsquo;s partial is added in. That addition is an <strong>all-reduce</strong> (Day 74&rsquo;s collective), and it sits <em>inside</em> the layer: the layer&rsquo;s output does not exist until the seam completes, in the forward pass and again in the backward pass. The framework you will meet by name, Megatron-LM, pairs the two cuts across a transformer&rsquo;s two matmuls (up-projection column-cut, down-projection row-cut) so exactly one all-reduce lands per layer. The win: each GPU stores only its slice of the weights, gradients, and optimizer state &mdash; 1/T of the layer at TP degree T. The cost: an activation-sized message on the critical path of <em>every</em> layer, so TP stays at small degree (2, 4, 8) inside one node, where the interconnect (NVLink) is an order of magnitude faster than anything between nodes. Contrast Day 74: DP&rsquo;s all-reduce happens once per step, on gradients, off the forward path. TP&rsquo;s happens per layer, mid-forward &mdash; same collective, completely different blast radius.</p>
+<p><strong>Pipeline parallelism (PP) cuts between layers.</strong> Stage 1 holds layers 1&ndash;8 on GPU 1, stage 2 holds layers 9&ndash;16 on GPU 2, and so on. The only traffic is the activation tensor crossing each stage boundary &mdash; one point-to-point message per boundary per micro-batch, tiny next to TP&rsquo;s per-layer all-reduce &mdash; so PP is the cut that can span nodes. Each GPU stores 1/P of the layers. The price is the <strong>bubble</strong>: feed one micro-batch through and only one stage is working at any moment, the rest idle. The fix is to chop the batch into <code>M</code> micro-batches and keep them all flowing (this schedule is called GPipe). A step then takes <code>M + P &minus; 1</code> stage-slots &mdash; <code>M</code> of real work plus <code>P &minus; 1</code> of fill and drain &mdash; so the bubble fraction is <code>(P&minus;1) / (M+P&minus;1)</code>. At P = 4: M = 1 wastes 75% of every GPU, M = 4 wastes 43%, M = 32 wastes 9%. Micro-batches buy the bubble down, but not for free: every in-flight micro-batch&rsquo;s activations must be kept until its backward pass arrives, so memory grows with M &mdash; and each micro-batch is a smaller matmul, which underuses the GPU a little. (Real schedulers also interleave backward passes earlier &mdash; you will meet the name 1F1B &mdash; but the bubble arithmetic above is the floor every schedule negotiates with.)</p>
+<p><strong>Composing.</strong> The three cuts are orthogonal because they shard three different things: DP shards the <em>data</em>, TP shards the <em>weights inside a layer</em>, PP shards the <em>layers</em>. A frontier run multiplies them &mdash; say TP = 8 inside each node, PP = 8 across nodes, DP = 64 replicas of that whole apparatus &mdash; which is why the combination is called <strong>3D parallelism</strong>. The decision order follows the physics: spend TP first on the fast fabric until the layer slices are thin enough, span nodes with PP, then replicate with DP as far as your data and your all-reduce budget allow.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Tensor parallelism is a column-sharded table where every query ends in a join.</strong> Split one wide row across nodes and storage is solved &mdash; but every read now pays a coordination round-trip mid-query, on the latency path, forever. You do that only on the fastest fabric you own, at small shard counts, and you never let it cross a slow link. The all-reduce seam inside the layer is exactly that round-trip: unavoidable once the row doesn&rsquo;t fit on one node, priced per layer instead of per step.</p><p><strong>Pipeline parallelism is an assembly line.</strong> Four stations build a car. The first finished car takes four beats to appear &mdash; but after that, a car rolls off every beat. The bubble is the line filling at shift start and draining at shift end: real, bounded, and amortized by running more cars per shift. Micro-batches are the cars; <code>(P&minus;1)/(M+P&minus;1)</code> is just &ldquo;fill + drain beats, divided by total beats,&rdquo; the same arithmetic you&rsquo;d do for any staged stream processor.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 552" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="552" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<rect x="12" y="10" width="656" height="248" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="32" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - TENSOR PARALLELISM: ONE LAYER, TWO GPUs, ONE ALL-REDUCE SEAM</text>
+<text x="340" y="48" text-anchor="middle" font-size="9.5" fill="#666666">the row cut: each GPU owns half the input features, so each holds only a partial sum</text>
+<rect x="275" y="58" width="130" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">X (4x8)</text>
+<text x="340" y="88" text-anchor="middle" font-size="8.5" fill="#555555">same input, both GPUs</text>
+<line x1="312" y1="94" x2="196" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,116 202,115 197,108" fill="#0a7aff"/>
+<line x1="368" y1="94" x2="484" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="488,116 483,108 478,115" fill="#0a7aff"/>
+<rect x="45" y="118" width="262" height="62" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="176" y="138" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">GPU 0 - W rows 0-3 (4x6)</text>
+<text x="176" y="154" text-anchor="middle" font-size="9" fill="#1c1c1e">partial P0 = X[:, :4] @ W[:4, :]</text>
+<text x="176" y="169" text-anchor="middle" font-size="9" fill="#0a54c2">P0 row 0: [8, -11, 5, -4, 2, 8]</text>
+<line x1="176" y1="180" x2="176" y2="198" stroke="#d99a00" stroke-width="1.6"/>
+<polygon points="176,202 172,195 180,195" fill="#d99a00"/>
+<rect x="373" y="118" width="262" height="62" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="504" y="138" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">GPU 1 - W rows 4-7 (4x6)</text>
+<text x="504" y="154" text-anchor="middle" font-size="9" fill="#1c1c1e">partial P1 = X[:, 4:] @ W[4:, :]</text>
+<text x="504" y="169" text-anchor="middle" font-size="9" fill="#0a54c2">P1 row 0: [-5, 0, 10, 0, -5, -5]</text>
+<line x1="504" y1="180" x2="504" y2="198" stroke="#d99a00" stroke-width="1.6"/>
+<polygon points="504,202 500,195 508,195" fill="#d99a00"/>
+<rect x="120" y="202" width="440" height="28" rx="8" fill="#fdeeda" stroke="#d99a00" stroke-width="1.4"/>
+<text x="340" y="220" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ALL-REDUCE:  Y = P0 + P1  -&gt;  row 0: [3, -11, 15, -4, -3, 3]</text>
+<text x="340" y="248" text-anchor="middle" font-size="9" fill="#1c1c1e">column cut is the mirror: split W by output features and concat - the sum lands in the next layer instead (Megatron pairs both cuts)</text>
+<rect x="12" y="272" width="656" height="216" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="294" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">B - PIPELINE PARALLELISM: 4 STAGES, 4 MICRO-BATCHES, ONE STEP</text>
+<text x="340" y="310" text-anchor="middle" font-size="9.5" fill="#666666">grey cells are the bubble: the stage holds its layers but the line has not reached it yet - or has drained past it</text>
+<text x="155" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 1</text>
+<text x="232" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 2</text>
+<text x="309" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 3</text>
+<text x="386" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 4</text>
+<text x="463" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 5</text>
+<text x="540" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 6</text>
+<text x="617" y="330" text-anchor="middle" font-size="9" fill="#666666">slot 7</text>
+<text x="110" y="356" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 1</text>
+<rect x="118" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="155" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="195" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="232" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="272" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="349" y="338" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="356" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="426" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="463" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="503" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="540" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="580" y="338" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="356" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="390" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 2</text>
+<rect x="118" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="232" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="272" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="349" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="426" y="372" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="503" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="540" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="580" y="372" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="390" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="424" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 3</text>
+<rect x="118" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="232" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="272" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="309" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="349" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="426" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="503" y="406" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="540" y="424" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<rect x="580" y="406" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="617" y="424" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<text x="110" y="458" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">Stage 4</text>
+<rect x="118" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="155" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="195" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="232" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="272" y="440" width="74" height="28" rx="5" fill="#f0f0f0" stroke="#c9c9c9" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="309" y="458" text-anchor="middle" font-size="8.5" fill="#999999">bubble</text>
+<rect x="349" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="386" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m1</text>
+<rect x="426" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="463" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m2</text>
+<rect x="503" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="540" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m3</text>
+<rect x="580" y="440" width="74" height="28" rx="5" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="617" y="458" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">m4</text>
+<text x="340" y="478" text-anchor="middle" font-size="9.5" fill="#1c1c1e">step = M + P - 1 = 7 slots  -  bubble = (P-1) / (M+P-1) = 3/7 = 43% at M=4  -  M=8: 27%  -  M=32: 9%</text>
+<rect x="12" y="500" width="656" height="42" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="518" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">DP shards the DATA (Day 74)  -  TP shards WEIGHTS inside a layer  -  PP shards LAYERS across stages</text>
+<text x="340" y="534" text-anchor="middle" font-size="9.5" fill="#1c1c1e">frontier runs compose all three (3D parallelism): TP inside the node, PP across nodes, DP across replicas</text>
+</svg>
+    <div class="caption">Top: the row cut of one matmul. Each GPU multiplies the input features it owns and holds a partial sum &mdash; neither partial is the answer; the orange seam is the all-reduce that makes the layer&rsquo;s output exist. Bottom: a 4-stage pipeline on 4 micro-batches. Every stage does 4 slots of work and idles 3 &mdash; the grey corner triangles are the bubble, and micro-batches are how you shrink them.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, two halves, no GPU required &mdash; this is arithmetic about clusters, run on one laptop. <strong>Part 1</strong> is Panel A made real: the exact matmul from the diagram, computed whole, then column-cut, then row-cut with its all-reduce. The matrices are integer-valued by formula, so the float sums are exact in any order and both cuts must match the one-GPU answer to <code>0.0</code> &mdash; if they don&rsquo;t, the code is wrong, not the rounding. <strong>Part 2</strong> prints Panel B as a text Gantt and prices the bubble for M = 1, 4, 8, 32. numpy only, in your <code>~/ai-lab</code> venv; no downloads, no APIs.</p>
+  <pre><code>&quot;&quot;&quot;Day 75 - Tensor &amp; Pipeline Parallelism: Splitting the Model Itself.
+
+Day 74 split the data: every GPU held the whole model and
+trained on a shard of the rows. But Day 73&#x27;s wall said the
+model itself - weights + grads + Adam state - can exceed one
+GPU. When the model doesn&#x27;t fit, you split the MODEL. Two
+cuts, at two different granularities:
+
+  Tensor parallelism (TP) cuts INSIDE one layer. A layer is
+  mostly one matmul, Y = X @ W, and a matmul can be cut two
+  ways: by columns of W (each GPU owns some output features
+  outright) or by rows of W (each GPU holds some input
+  features and produces a PARTIAL sum - the partials must be
+  added together, an all-reduce, before the layer&#x27;s output
+  exists). Megatron-style TP pairs the two cuts across a
+  transformer&#x27;s two matmuls, so the all-reduce lands once per
+  layer - in the forward pass and again in the backward. That
+  seam is on the critical path of every layer, so TP lives
+  inside one node, on fast interconnect (NVLink), at small
+  degree (2/4/8).
+
+  Pipeline parallelism (PP) cuts ACROSS layers. Stage 1 holds
+  layers 1-8, stage 2 layers 9-16, and activations flow
+  stage to stage like cars on an assembly line. The messages
+  are tiny (one activation tensor per boundary), so PP can
+  span nodes - but the line takes time to fill: with P stages
+  and M micro-batches, a step takes M + P - 1 slots and the
+  idle &quot;bubble&quot; fraction is (P-1)/(M+P-1). Micro-batches are
+  how you buy the bubble down.
+
+  Part 1  One matmul, both TP cuts. X (4x8) @ W (8x6) with
+          integer values built by formula, so float sums are
+          exact in any order. Column cut: concat the shards.
+          Row cut: all-reduce the partials. Both match the
+          one-GPU answer with max diff 0.0 - TP changes where
+          the numbers live, never what they are. Each GPU
+          holds 24 of W&#x27;s 48 numbers.
+  Part 2  The pipeline bubble, priced. For P = 4 stages,
+          print the schedule as a Gantt (M = 4) and the bubble
+          table for M = 1, 4, 8, 32: 75.0% idle at M = 1,
+          8.6% at M = 32. GPipe&#x27;s trade in one line: more
+          micro-batches shrink the bubble but keep more
+          activations in flight.
+
+Runs on the ~/ai-lab venv: numpy only (free), CPU on purpose,
+no CUDA, no paid APIs, no downloads. No RNG - every matrix
+entry comes from a formula, so every digit is exact.
+
+Expected output:
+
+  Part 1 - tensor parallelism: one matmul, two GPUs, two cuts
+    X (4, 8) @ W (8, 6) -&gt; Y (4, 6), W holds 48 numbers
+    column cut: GPU0 W[:, :3] + GPU1 W[:, 3:], concat -&gt; max diff vs one GPU: 0.0
+    row cut:    GPU0 rows 0-3, GPU1 rows 4-7, partial sums all-reduced -&gt; max diff: 0.0
+    Y row 0, one GPU:  [3, -11, 15, -4, -3, 3]
+    Y row 0, partials: [8, -11, 5, -4, 2, 8] + [-5, 0, 10, 0, -5, -5]  (neither is the answer alone)
+    memory: each GPU stores 24 of W&#x27;s 48 numbers - TP halves the layer per GPU
+  Part 2 - pipeline parallelism: P stages, M micro-batches
+    schedule for M = 4 (each token = one slot, . = bubble):
+      stage 1: m1 m2 m3 m4  .  .  .
+      stage 2:  . m1 m2 m3 m4  .  .
+      stage 3:  .  . m1 m2 m3 m4  .
+      stage 4:  .  .  . m1 m2 m3 m4
+    M =  1: step =  4 slots, bubble = 3 slots (75.0%) per stage
+    M =  4: step =  7 slots, bubble = 3 slots (42.9%) per stage
+    M =  8: step = 11 slots, bubble = 3 slots (27.3%) per stage
+    M = 32: step = 35 slots, bubble = 3 slots (8.6%) per stage
+    verdict: micro-batches buy the bubble down - the cost is activations kept in flight
+    TP shards weights inside a layer, PP shards layers, DP (Day 74) shards data - clusters compose all three
+&quot;&quot;&quot;
+import numpy as np
+
+# ---------- Part 1: tensor parallelism - cut the matmul ----------
+print(&quot;Part 1 - tensor parallelism: one matmul, two GPUs, two cuts&quot;)
+# X: 4 rows (tokens) x 8 features.  W: 8 inputs -&gt; 6 outputs.
+# Integer values from formulas: products and sums are exact in
+# float64 no matter what order they are added in.
+X = np.array([[((i * 3 + j * 5) % 7) - 3 for j in range(8)]
+              for i in range(4)], dtype=np.float64)
+W = np.array([[((i * 2 + j * 3) % 5) - 2 for j in range(6)]
+              for i in range(8)], dtype=np.float64)
+Y = X @ W                                    # the one-GPU answer
+print(f&quot;  X {X.shape} @ W {W.shape} -&gt; Y {Y.shape}, &quot;
+      f&quot;W holds {W.size} numbers&quot;)
+
+# Cut 1 - by columns: GPU 0 owns output features 0-2, GPU 1 owns 3-5.
+Y_left = X @ W[:, :3]
+Y_right = X @ W[:, 3:]
+Y_cols = np.concatenate([Y_left, Y_right], axis=1)
+d_cols = np.abs(Y_cols - Y).max()
+print(f&quot;  column cut: GPU0 W[:, :3] + GPU1 W[:, 3:], concat -&gt; &quot;
+      f&quot;max diff vs one GPU: {d_cols:.1f}&quot;)
+
+# Cut 2 - by rows: GPU 0 owns input features 0-3, GPU 1 owns 4-7.
+# Each computes a PARTIAL sum; neither holds the answer alone.
+P0 = X[:, :4] @ W[:4, :]
+P1 = X[:, 4:] @ W[4:, :]
+Y_rows = P0 + P1                             # &lt;-- the all-reduce
+d_rows = np.abs(Y_rows - Y).max()
+print(f&quot;  row cut:    GPU0 rows 0-3, GPU1 rows 4-7, partial sums &quot;
+      f&quot;all-reduced -&gt; max diff: {d_rows:.1f}&quot;)
+print(f&quot;  Y row 0, one GPU:  {Y[0].astype(int).tolist()}&quot;)
+print(f&quot;  Y row 0, partials: {P0[0].astype(int).tolist()} + &quot;
+      f&quot;{P1[0].astype(int).tolist()}  (neither is the answer alone)&quot;)
+print(f&quot;  memory: each GPU stores {W.size // 2} of W&#x27;s {W.size} &quot;
+      f&quot;numbers - TP halves the layer per GPU&quot;)
+
+# ---------- Part 2: pipeline parallelism - price the bubble ----------
+print(&quot;Part 2 - pipeline parallelism: P stages, M micro-batches&quot;)
+P = 4
+
+def bubble(P, M):
+    &quot;&quot;&quot;Step slots, idle slots per stage, bubble fraction.&quot;&quot;&quot;
+    slots = M + P - 1                        # fill + steady + drain
+    return slots, P - 1, (P - 1) / slots
+
+print(&quot;  schedule for M = 4 (each token = one slot, . = bubble):&quot;)
+for s in range(P):
+    cells = []
+    for t in range(bubble(P, 4)[0]):
+        m = t - s                            # stage s sees mb m at t
+        cells.append(f&quot;m{m + 1}&quot; if 0 &lt;= m &lt; 4 else &quot; .&quot;)
+    print(f&quot;    stage {s + 1}: &quot; + &quot; &quot;.join(cells))
+for M in (1, 4, 8, 32):
+    slots, idle, frac = bubble(P, M)
+    print(f&quot;  M = {M:&gt;2}: step = {slots:&gt;2} slots, bubble = {idle} &quot;
+          f&quot;slots ({frac:.1%}) per stage&quot;)
+print(&quot;  verdict: micro-batches buy the bubble down - the cost is &quot;
+      &quot;activations kept in flight&quot;)
+print(&quot;  TP shards weights inside a layer, PP shards layers, &quot;
+      &quot;DP (Day 74) shards data - clusters compose all three&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - tensor parallelism: one matmul, two GPUs, two cuts
+  X (4, 8) @ W (8, 6) -&gt; Y (4, 6), W holds 48 numbers
+  column cut: GPU0 W[:, :3] + GPU1 W[:, 3:], concat -&gt; max diff vs one GPU: 0.0
+  row cut:    GPU0 rows 0-3, GPU1 rows 4-7, partial sums all-reduced -&gt; max diff: 0.0
+  Y row 0, one GPU:  [3, -11, 15, -4, -3, 3]
+  Y row 0, partials: [8, -11, 5, -4, 2, 8] + [-5, 0, 10, 0, -5, -5]  (neither is the answer alone)
+  memory: each GPU stores 24 of W&#x27;s 48 numbers - TP halves the layer per GPU
+Part 2 - pipeline parallelism: P stages, M micro-batches
+  schedule for M = 4 (each token = one slot, . = bubble):
+    stage 1: m1 m2 m3 m4  .  .  .
+    stage 2:  . m1 m2 m3 m4  .  .
+    stage 3:  .  . m1 m2 m3 m4  .
+    stage 4:  .  .  . m1 m2 m3 m4
+  M =  1: step =  4 slots, bubble = 3 slots (75.0%) per stage
+  M =  4: step =  7 slots, bubble = 3 slots (42.9%) per stage
+  M =  8: step = 11 slots, bubble = 3 slots (27.3%) per stage
+  M = 32: step = 35 slots, bubble = 3 slots (8.6%) per stage
+  verdict: micro-batches buy the bubble down - the cost is activations kept in flight
+  TP shards weights inside a layer, PP shards layers, DP (Day 74) shards data - clusters compose all three</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when Part 1 prints <code>max diff: 0.0</code> for <em>both</em> cuts and you can say out loud why the row cut owes an all-reduce and the column cut doesn&rsquo;t. The keeper test, no notes: someone says &ldquo;8 pipeline stages, 16 micro-batches&rdquo; and you answer &ldquo;bubble is 7/23, about 30% &mdash; shrink it with more micro-batches or fewer stages&rdquo;; someone says &ldquo;why is tensor parallel only 8-way and never across the datacenter?&rdquo; and you answer &ldquo;because its all-reduce sits inside every layer&rsquo;s forward pass &mdash; that seam only survives on NVLink.&rdquo;</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s Gantt until the diagonal makes sense &mdash; the bubble is just the two grey triangles at the corners &mdash; then run only Part 2 and check the 75% &rarr; 9% ladder. Part 1&rsquo;s two cuts are the victory lap: come back to them when you have the full 30 minutes.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: you&rsquo;ve now split training all three ways by hand &mdash; data, tensors, pipeline. Next, the frameworks that do the splitting for you, FSDP and DeepSpeed, and how to choose between them.</p>
+  </div>
+
+  <div class="footer">Streak: 75 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
