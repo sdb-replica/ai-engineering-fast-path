@@ -1,0 +1,53 @@
+<svg viewBox="0 0 680 472" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="472" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">LoRA: freeze W, learn a thin patch  dW = B x A</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">full fine-tuning rewrites every weight - the patch trains r(d + k) numbers instead</text>
+<rect x="12" y="56" width="656" height="196" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE SHAPE:  W STAYS FROZEN, THE UPDATE DETOURS THROUGH r</text>
+<rect x="28" y="100" width="64" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="60" y="120" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">x</text>
+<text x="60" y="138" text-anchor="middle" font-size="8.5" fill="#555555">input</text>
+<line x1="94" y1="124" x2="110" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="110,124 103,120 103,128" fill="#0a7aff"/>
+<rect x="112" y="96" width="200" height="56" rx="8" fill="#f0f0f0" stroke="#888888" stroke-width="1.2"/>
+<text x="212" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">W - base weights</text>
+<text x="212" y="136" text-anchor="middle" font-size="8.5" fill="#555555">4096 x 4096 - FROZEN</text>
+<line x1="312" y1="124" x2="505" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<circle cx="520" cy="124" r="13" fill="#ffffff" stroke="#0a7aff" stroke-width="1.4"/>
+<text x="520" y="129" text-anchor="middle" font-size="13" fill="#0a54c2" font-weight="bold">+</text>
+<line x1="535" y1="124" x2="546" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="546,124 539,120 539,128" fill="#0a7aff"/>
+<rect x="548" y="100" width="72" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="584" y="120" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">y</text>
+<text x="584" y="138" text-anchor="middle" font-size="8.5" fill="#555555">adapted out</text>
+<line x1="60" y1="148" x2="60" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<line x1="62" y1="198" x2="110" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="110,198 103,194 103,202" fill="#22a355"/>
+<rect x="112" y="176" width="140" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="182" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">A - r x k</text>
+<text x="182" y="210" text-anchor="middle" font-size="8.5" fill="#555555">squeezes k -> r</text>
+<line x1="254" y1="198" x2="268" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="268,198 261,194 261,202" fill="#22a355"/>
+<rect x="270" y="176" width="140" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">B - d x r</text>
+<text x="340" y="210" text-anchor="middle" font-size="8.5" fill="#555555">lifts r -> d, starts at 0</text>
+<line x1="410" y1="198" x2="520" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<line x1="520" y1="196" x2="520" y2="139" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="520,139 516,146 524,146" fill="#22a355"/>
+<text x="340" y="242" text-anchor="middle" font-size="9.0" fill="#1c1c1e">at init B = 0, so dW = B x A = 0 - the adapted model IS the base model, exactly</text>
+<rect x="12" y="266" width="656" height="190" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="286" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE BILL:  TRAINABLE NUMBERS FOR ONE 4096 x 4096 LAYER</text>
+<text x="182" y="317.5" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">full fine-tune</text>
+<rect x="190" y="305" width="370" height="18" rx="3" fill="#999999" stroke="#999999" stroke-width="1.0"/>
+<text x="572" y="317.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">16,777,216</text>
+<text x="182" y="349.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 64</text>
+<rect x="190" y="337" width="65" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="349.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">524,288 - 3.12%</text>
+<text x="182" y="381.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 16</text>
+<rect x="190" y="369" width="33" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="381.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">131,072 - 0.78%</text>
+<text x="182" y="413.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 8</text>
+<rect x="190" y="401" width="23" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="413.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">65,536 - 0.39%</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.0" fill="#177245">bar length = sqrt(params) - and every LoRA row is one small file: one base, many patches</text>
+</svg>

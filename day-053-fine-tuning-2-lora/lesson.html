@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fine-Tuning 2: LoRA / QLoRA — Day 53 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 53 of 100</span>
+  <h1>Fine-Tuning 2: LoRA / QLoRA</h1>
+  <p class="outcome">Tonight you'll be able to: explain why fine-tuning a huge model does not require training all of it &mdash; freeze W, train a low-rank patch &Delta;W = B&middot;A with r(d + k) numbers instead of d &times; k, prove the patch starts as exactly zero, and merge it back into a single matrix for serving.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday's SFT recipe (Day 52) has a brutal line item. <strong>Full fine-tuning</strong> puts a gradient and optimizer state on <em>every</em> weight: in fp32 with Adam that is the weights, the grads, and Adam's two moment buffers &mdash; roughly four copies of the model in memory while training &mdash; plus one full model copy on disk <em>per task</em>. A 7B model is ~28 GB of fp32 weights; fine-tune it three ways for three tasks and you are storing and shuttling ~84 GB of near-identical numbers.</p>
+<p>The observation behind <strong>LoRA</strong> (low-rank adaptation, Hu et al. 2021): the <em>update</em> a pretrained layer needs for a new task is <strong>low-rank</strong> &mdash; it lives in a much smaller space than the full d &times; k matrix. Rank, visually: how many independent directions the update actually uses. If &Delta;W only needs r independent directions, don't learn &Delta;W directly &mdash; <strong>factor it</strong>: &Delta;W = B&middot;A, where A squeezes the k inputs down to r numbers and B lifts r back up to d outputs. r is a dial you choose; 8, 16, 64 are typical.</p>
+<p>So freeze W solid and train only A and B. Trainable count per layer = <strong>r(d + k)</strong>. At 4096 &times; 4096 with r = 16 that is 131,072 numbers instead of 16,777,216 &mdash; 0.78% &mdash; and the grads and Adam state shrink by the same factor. The deliverable per task is no longer a model: it is an <strong>adapter file</strong> (0.50 MiB for that layer at r = 16) sitting next to ONE shared frozen base. Ten tasks = one base + ten small files.</p>
+<p>The init is the elegant part. A starts random (small random values, so the patch <em>can</em> learn); <strong>B starts at exactly zero</strong> &mdash; so &Delta;W = B&middot;A = 0 on step zero, and the adapted model behaves <em>exactly</em> as the base model. Training starts from the base model's behavior, not from noise; B is the first thing that moves, and A follows. Real LoRA also scales the patch by alpha/r so that swapping r doesn't silently rescale the update &mdash; the code sets alpha = 1.</p>
+<p>Serving is one line of algebra: <strong>merge</strong>. W&prime; = W + B&middot;A is just another d &times; k matrix &mdash; fold the patch in once and inference runs the original architecture at the original cost, zero extra latency. Or don't merge: keep one base hot in memory and swap adapters per task or per request.</p>
+<p><strong>QLoRA</strong> (Dettmers et al. 2023) is the same patch on a base frozen harder: W is stored in <strong>4-bit</strong> precision (a special format called NF4) instead of 16-bit, so the base takes roughly a quarter of the memory; values are dequantized on the fly during the forward pass, and the LoRA adapters on top still train in 16-bit. That is how a 65B model was fine-tuned on a single 48 GB GPU. The honest costs: dequantizing burns some compute on every step, and a coarsely stored base caps how much the adapters can fix. Quantization itself gets the full treatment on Day 65 &mdash; today, the patch is the concept.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Full fine-tuning is <strong>rebuilding the whole binary from source for every customer config</strong> &mdash; and shipping a separate full binary per customer. LoRA is <strong>patching a frozen binary</strong>: the shipped artifact never changes, and each task is a small patch file against it. A zero patch leaves the binary bit-for-bit identical (that's B = 0 at init). The patch is stored, reviewed, and shipped on its own &mdash; megabytes, not gigabytes. And at release time you choose: link the patch in permanently (merge, W&prime; = W + B&middot;A) or keep applying it at load time (swap adapters). One more systems dividend: a rebuild can break anything in the binary; a patch can only move the r(d + k) numbers it touches.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 472" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="472" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">LoRA: freeze W, learn a thin patch  dW = B x A</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">full fine-tuning rewrites every weight - the patch trains r(d + k) numbers instead</text>
+<rect x="12" y="56" width="656" height="196" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE SHAPE:  W STAYS FROZEN, THE UPDATE DETOURS THROUGH r</text>
+<rect x="28" y="100" width="64" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="60" y="120" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">x</text>
+<text x="60" y="138" text-anchor="middle" font-size="8.5" fill="#555555">input</text>
+<line x1="94" y1="124" x2="110" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="110,124 103,120 103,128" fill="#0a7aff"/>
+<rect x="112" y="96" width="200" height="56" rx="8" fill="#f0f0f0" stroke="#888888" stroke-width="1.2"/>
+<text x="212" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">W - base weights</text>
+<text x="212" y="136" text-anchor="middle" font-size="8.5" fill="#555555">4096 x 4096 - FROZEN</text>
+<line x1="312" y1="124" x2="505" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<circle cx="520" cy="124" r="13" fill="#ffffff" stroke="#0a7aff" stroke-width="1.4"/>
+<text x="520" y="129" text-anchor="middle" font-size="13" fill="#0a54c2" font-weight="bold">+</text>
+<line x1="535" y1="124" x2="546" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="546,124 539,120 539,128" fill="#0a7aff"/>
+<rect x="548" y="100" width="72" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="584" y="120" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">y</text>
+<text x="584" y="138" text-anchor="middle" font-size="8.5" fill="#555555">adapted out</text>
+<line x1="60" y1="148" x2="60" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<line x1="62" y1="198" x2="110" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="110,198 103,194 103,202" fill="#22a355"/>
+<rect x="112" y="176" width="140" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="182" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">A - r x k</text>
+<text x="182" y="210" text-anchor="middle" font-size="8.5" fill="#555555">squeezes k -> r</text>
+<line x1="254" y1="198" x2="268" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="268,198 261,194 261,202" fill="#22a355"/>
+<rect x="270" y="176" width="140" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">B - d x r</text>
+<text x="340" y="210" text-anchor="middle" font-size="8.5" fill="#555555">lifts r -> d, starts at 0</text>
+<line x1="410" y1="198" x2="520" y2="198" stroke="#22a355" stroke-width="1.6"/>
+<line x1="520" y1="196" x2="520" y2="139" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="520,139 516,146 524,146" fill="#22a355"/>
+<text x="340" y="242" text-anchor="middle" font-size="9.0" fill="#1c1c1e">at init B = 0, so dW = B x A = 0 - the adapted model IS the base model, exactly</text>
+<rect x="12" y="266" width="656" height="190" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="286" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE BILL:  TRAINABLE NUMBERS FOR ONE 4096 x 4096 LAYER</text>
+<text x="182" y="317.5" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">full fine-tune</text>
+<rect x="190" y="305" width="370" height="18" rx="3" fill="#999999" stroke="#999999" stroke-width="1.0"/>
+<text x="572" y="317.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">16,777,216</text>
+<text x="182" y="349.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 64</text>
+<rect x="190" y="337" width="65" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="349.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">524,288 - 3.12%</text>
+<text x="182" y="381.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 16</text>
+<rect x="190" y="369" width="33" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="381.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">131,072 - 0.78%</text>
+<text x="182" y="413.5" text-anchor="end" font-size="9.5" fill="#1c1c1e">LoRA r = 8</text>
+<rect x="190" y="401" width="23" height="18" rx="3" fill="#22a355" stroke="#22a355" stroke-width="1.0"/>
+<text x="572" y="413.5" text-anchor="start" font-size="9.5" fill="#1c1c1e">65,536 - 0.39%</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.0" fill="#177245">bar length = sqrt(params) - and every LoRA row is one small file: one base, many patches</text>
+</svg>
+    <div class="caption">Top: the frozen path (x &rarr; W &rarr; +) with the adapter detour underneath it &mdash; A squeezes k inputs down to r, B lifts them back to d, and the two paths add. B starts at zero, so on day one the detour contributes exactly nothing. Bottom: the bill for one 4096 &times; 4096 layer &mdash; full fine-tuning trains all 16,777,216 weights; a LoRA patch trains r(d + k), and each rank is a separate small adapter file against the same frozen base.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, four parts, every weight hand-set &mdash; no RNG, every digit exact and twin-verified. <strong>Part 1</strong> builds <code>LoRALinear</code> around a frozen <code>Linear(3, 2)</code> and proves the init: B = 0, so adapted outputs match the plain Linear with max diff 0.000000. <strong>Part 2</strong> trains ONLY A and B for 30 SGD steps on a toy target &mdash; the loss falls while W stays bit-for-bit identical. <strong>Part 3</strong> merges W&prime; = W + B&middot;A into a fresh Linear and checks it reproduces the adapted layer exactly. <strong>Part 4</strong> does the accounting for one real 4096 &times; 4096 layer at r = 8/16/64.</p>
+  <pre><code>&quot;&quot;&quot;Day 53 - Fine-Tuning 2: LoRA / QLoRA.
+
+Yesterday (Day 52) SFT taught the basic recipe - and its price:
+full fine-tuning rewrites EVERY weight, so for every task you
+pay for a full copy of the model plus the training state to
+move it (grads + Adam&#x27;s two states per weight). Tonight: don&#x27;t
+rebuild the binary. Ship a patch.
+
+    LoRA: freeze W. Learn the update as a product of two thin
+    matrices, dW = B x A, where the middle dimension r is tiny
+    next to d and k. Trainable params per layer fall from
+    d x k to r(d + k). A starts random-ish, B starts at ZERO -
+    so at init dW = 0 and the adapted model is the base model,
+    exactly. When training is done, merge: W&#x27; = W + B x A is
+    one ordinary matrix again, and serving pays nothing extra.
+
+  Part 1  Build LoRALinear by hand around a frozen Linear.
+          Hand-set W and A, B zero-init: the adapted layer&#x27;s
+          outputs match the plain Linear with max diff 0.
+  Part 2  Train ONLY A and B on a toy target (SGD, 30 steps).
+          The loss falls, dW = B x A fills in - and W itself
+          is bit-for-bit untouched, because the optimizer was
+          never handed it.
+  Part 3  Merge: W&#x27; = W + B x A in a fresh Linear reproduces
+          the adapted layer exactly. One matrix, zero extra
+          latency, and the adapter file you kept is 5 numbers.
+  Part 4  The bill at real scale: one 4096 x 4096 layer.
+          Full FT trains 16,777,216 params; LoRA r=16 trains
+          131,072 - 0.78% - and the adapter is a 0.50 MiB file.
+
+QLoRA (theory section) is this same patch on a base frozen
+harder: W stored in 4 bits instead of 16, dequantized on the
+fly, adapters still trained in 16-bit. Quantization gets its
+own day (Day 65); tonight the patch is the concept.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on purpose
+(tiny hand-set matrices, so every digit is exact - no RNG
+anywhere), no CUDA, no paid APIs, no downloads. Every claimed
+number below was verified with a float32/float64 numpy twin
+of the exact training math.
+
+Expected output:
+
+  Part 1 - at init, the adapted layer IS the base layer
+    base Linear(3, 2): 8 params - and LoRA freezes every one
+    LoRA r=1 patch: A (1, 3) + B (2, 1) = 5 trainable params
+    plain Linear preds:   3.5000, 2.5000, -3.0000, 3.5000
+    adapted preds, init:  3.5000, 2.5000, -3.0000, 3.5000
+    max diff at init: 0.000000  (B = 0 -&gt; dW = B x A = 0 -&gt; base model, exactly)
+  Part 2 - train ONLY the patch (SGD lr=0.05, 30 steps, MSE to y)
+    step  0: loss 4.4375
+    step 10: loss 0.7976
+    step 20: loss 0.5837
+    step 30: loss 0.5399
+    W after training == W before: True  (frozen means frozen)
+    dW = B x A after training:
+      row 0: 0.5477, -0.2824, 0.6127
+      row 1: 0.5445, -0.2807, 0.6092
+    the full 2x3 update, written by 5 numbers - rank 1 by construction
+  Part 3 - merge: fold the patch into W and serve one matrix
+    merged weight W&#x27; = W + dW:
+      row 0: 1.5477, 0.2176, -0.3873
+      row 1: 0.5445, 1.7193, 1.6092
+    merged layer vs adapted layer: max diff 0.000000
+    one matrix again - inference pays zero extra latency
+  Part 4 - the bill at real scale: ONE 4096 x 4096 layer
+    full fine-tune: 16,777,216 trainable params
+      fp32 weights 64 MiB - weights + grads + Adam m/v = 256 MiB per layer
+    LoRA r= 8: 65,536 trainable = 0.39% of full - adapter file 0.25 MiB
+    LoRA r=16: 131,072 trainable = 0.78% of full - adapter file 0.50 MiB
+    LoRA r=64: 524,288 trainable = 3.12% of full - adapter file 2.00 MiB
+    verdict: freeze the binary, train the patch, merge before shipping
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+
+class LoRALinear(nn.Module):
+    &quot;&quot;&quot;A frozen nn.Linear plus a trainable low-rank patch.
+
+    forward(x) = base(x) + scaling * (x @ A.T @ B.T)
+               = (W + scaling * B x A) x + b
+
+    W never trains: every base parameter is frozen, and the
+    optimizer is only ever handed A and B. A is (r, d_in) -
+    it squeezes the input down to r numbers. B is (d_out, r) -
+    it lifts them back. B starts at zero, so the patch
+    contributes exactly nothing until training moves it.
+    scaling = alpha / r keeps the patch&#x27;s size steady when
+    you change r (alpha=1 here, so scaling is 1 / r).
+    &quot;&quot;&quot;
+
+    def __init__(self, base, r, alpha=1.0):
+        super().__init__()
+        self.base = base
+        for p in self.base.parameters():
+            p.requires_grad_(False)            # freeze W and b
+        d_out, d_in = base.weight.shape
+        self.r = r
+        self.scaling = alpha / r
+        self.A = nn.Parameter(torch.zeros(r, d_in))
+        self.B = nn.Parameter(torch.zeros(d_out, r))   # zero-init
+
+    def forward(self, x):
+        patch = (x @ self.A.T) @ self.B.T      # squeeze, then lift
+        return self.base(x) + self.scaling * patch
+
+    def merged_weight(self):
+        &quot;&quot;&quot;W&#x27; = W + scaling * B x A - the patch, folded in.&quot;&quot;&quot;
+        with torch.no_grad():
+            return self.base.weight + self.scaling * (self.B @ self.A)
+
+
+# ---------- Part 1: at init, adapted == base, exactly ----------
+print(&quot;Part 1 - at init, the adapted layer IS the base layer&quot;)
+W0 = torch.tensor([[1.0, 0.5, -1.0], [0.0, 2.0, 1.0]])
+b0 = torch.tensor([0.5, -0.5])
+base = nn.Linear(3, 2)
+with torch.no_grad():
+    base.weight.copy_(W0)
+    base.bias.copy_(b0)
+lora = LoRALinear(base, r=1, alpha=1.0)
+with torch.no_grad():
+    # In real LoRA, A is drawn random; here it is hand-set so
+    # every digit is checkable. B stays zero - that is the init.
+    lora.A.copy_(torch.tensor([[0.5, -1.0, 0.25]]))
+n_frozen = sum(p.numel() for p in lora.parameters()
+               if not p.requires_grad)
+n_train = sum(p.numel() for p in lora.parameters() if p.requires_grad)
+print(f&quot;  base Linear(3, 2): {n_frozen} params - and LoRA freezes &quot;
+      &quot;every one&quot;)
+print(f&quot;  LoRA r=1 patch: A (1, 3) + B (2, 1) = {n_train} trainable &quot;
+      &quot;params&quot;)
+X = torch.tensor([[1.0, 2.0, -1.0], [0.5, 0.0, 4.0]])
+y = torch.tensor([[4.0, 1.0], [0.0, 6.0]])
+with torch.no_grad():
+    plain = nn.functional.linear(X, W0, b0)
+    adapted = lora(X)
+    diff0 = (plain - adapted).abs().max().item()
+print(f&quot;  plain Linear preds:   {fmt(plain)}&quot;)
+print(f&quot;  adapted preds, init:  {fmt(adapted)}&quot;)
+print(f&quot;  max diff at init: {diff0:.6f}  (B = 0 -&gt; dW = B x A = 0 &quot;
+      &quot;-&gt; base model, exactly)&quot;)
+
+# ---------- Part 2: train ONLY the patch ----------
+print(&quot;Part 2 - train ONLY the patch (SGD lr=0.05, 30 steps, &quot;
+      &quot;MSE to y)&quot;)
+opt = torch.optim.SGD([lora.A, lora.B], lr=0.05)   # W not handed over
+for step in range(31):
+    loss = ((lora(X) - y) ** 2).mean()
+    if step % 10 == 0:
+        print(f&quot;  step {step:&gt;2}: loss {loss.item():.4f}&quot;)
+    if step &lt; 30:
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+with torch.no_grad():
+    dW = lora.B @ lora.A                       # scaling is 1.0 (r=1)
+    w_same = bool(torch.equal(lora.base.weight, W0))
+print(f&quot;  W after training == W before: {w_same}  (frozen means &quot;
+      &quot;frozen)&quot;)
+print(&quot;  dW = B x A after training:&quot;)
+for i in range(dW.shape[0]):
+    print(f&quot;    row {i}: {fmt(dW[i])}&quot;)
+print(&quot;  the full 2x3 update, written by 5 numbers - rank 1 by &quot;
+      &quot;construction&quot;)
+
+# ---------- Part 3: merge for serving ----------
+print(&quot;Part 3 - merge: fold the patch into W and serve one matrix&quot;)
+merged = nn.Linear(3, 2)
+with torch.no_grad():
+    merged.weight.copy_(lora.merged_weight())
+    merged.bias.copy_(lora.base.bias)
+    mdiff = (merged(X) - lora(X)).abs().max().item()
+    Wp = lora.merged_weight()
+print(&quot;  merged weight W&#x27; = W + dW:&quot;)
+for i in range(Wp.shape[0]):
+    print(f&quot;    row {i}: {fmt(Wp[i])}&quot;)
+print(f&quot;  merged layer vs adapted layer: max diff {mdiff:.6f}&quot;)
+print(&quot;  one matrix again - inference pays zero extra latency&quot;)
+
+# ---------- Part 4: the bill at real scale ----------
+print(&quot;Part 4 - the bill at real scale: ONE 4096 x 4096 layer&quot;)
+d = k = 4096
+full = d * k
+print(f&quot;  full fine-tune: {full:,} trainable params&quot;)
+print(f&quot;    fp32 weights {full * 4 / 2**20:.0f} MiB - weights + &quot;
+      f&quot;grads + Adam m/v = {full * 16 / 2**20:.0f} MiB per layer&quot;)
+for r in (8, 16, 64):
+    n = r * (d + k)
+    print(f&quot;  LoRA r={r:&gt;2}: {n:,} trainable = {100 * n / full:.2f}% &quot;
+          f&quot;of full - adapter file {n * 4 / 2**20:.2f} MiB&quot;)
+print(&quot;  verdict: freeze the binary, train the patch, merge &quot;
+      &quot;before shipping&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>  Part 1 - at init, the adapted layer IS the base layer
+    base Linear(3, 2): 8 params - and LoRA freezes every one
+    LoRA r=1 patch: A (1, 3) + B (2, 1) = 5 trainable params
+    plain Linear preds:   3.5000, 2.5000, -3.0000, 3.5000
+    adapted preds, init:  3.5000, 2.5000, -3.0000, 3.5000
+    max diff at init: 0.000000  (B = 0 -&gt; dW = B x A = 0 -&gt; base model, exactly)
+  Part 2 - train ONLY the patch (SGD lr=0.05, 30 steps, MSE to y)
+    step  0: loss 4.4375
+    step 10: loss 0.7976
+    step 20: loss 0.5837
+    step 30: loss 0.5399
+    W after training == W before: True  (frozen means frozen)
+    dW = B x A after training:
+      row 0: 0.5477, -0.2824, 0.6127
+      row 1: 0.5445, -0.2807, 0.6092
+    the full 2x3 update, written by 5 numbers - rank 1 by construction
+  Part 3 - merge: fold the patch into W and serve one matrix
+    merged weight W&#x27; = W + dW:
+      row 0: 1.5477, 0.2176, -0.3873
+      row 1: 0.5445, 1.7193, 1.6092
+    merged layer vs adapted layer: max diff 0.000000
+    one matrix again - inference pays zero extra latency
+  Part 4 - the bill at real scale: ONE 4096 x 4096 layer
+    full fine-tune: 16,777,216 trainable params
+      fp32 weights 64 MiB - weights + grads + Adam m/v = 256 MiB per layer
+    LoRA r= 8: 65,536 trainable = 0.39% of full - adapter file 0.25 MiB
+    LoRA r=16: 131,072 trainable = 0.78% of full - adapter file 0.50 MiB
+    LoRA r=64: 524,288 trainable = 3.12% of full - adapter file 2.00 MiB
+    verdict: freeze the binary, train the patch, merge before shipping</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all four: Part 1's max diff <code>0.000000</code> with 5 trainable vs 8 frozen params; Part 2's loss arc <code>4.4375 &rarr; 0.5399</code> with <code>W after training == W before: True</code> underneath; Part 3's merged max diff <code>0.000000</code>; and Part 4's row <code>LoRA r=16: 131,072 trainable = 0.78% of full</code>. The keeper test, no notes allowed: given any layer d &times; k and a rank r, you can state the trainable count r(d + k), explain why the model is untouched at init, and explain why merging costs nothing at inference.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram, then run only Part 1 and Part 4. If you can say the two sentences &mdash; &ldquo;B starts at zero, so the patch starts as exactly nothing&rdquo; and &ldquo;the patch trains r(d + k) numbers, not d &times; k&rdquo; &mdash; you have LoRA. Parts 2&ndash;3 are the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: SFT and LoRA teach a model to imitate good answers &mdash; but who decides which answers are good when there is no single right one?</p>
+  </div>
+
+  <div class="footer">Day 53 of 100 &middot; Streak: 53 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
