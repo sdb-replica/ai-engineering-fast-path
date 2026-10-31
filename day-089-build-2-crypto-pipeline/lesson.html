@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build 2: Crypto Data &mdash; Same Pipeline, Different Beast — Day 89 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 89 of 100</span>
+  <h1>Build 2: Crypto Data &mdash; Same Pipeline, Different Beast</h1>
+  <p class="outcome">Tonight you'll be able to: take Day 88&rsquo;s pipeline exactly as built &mdash; Day 85 features, Day 86 triple-barrier labels, Day 87 walk-forward, the hand-rolled logistic baseline &mdash; run it on hourly crypto, and name precisely what changes: the clock, the tails, the barrier widths, and the cost line. Almost none of it is the model.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday&rsquo;s build ran on daily equity bars. Crypto is not &ldquo;equities, but faster.&rdquo; Four structural differences drive everything tonight, and each one lands in a different stage of the pipeline.</p>
+<p><strong>1. The clock never stops &mdash; but it does thin out.</strong> Equities hand you a daily bar with an overnight gap baked in; crypto trades 24/7, so tonight&rsquo;s series is 8,760 hourly bars with no open, no close, and no gap risk &mdash; the &ldquo;day&rdquo; is just a line humans drew. What replaces the gap is a liquidity cycle: weekends run thin, market makers pull back, and the same order flow moves price further. In tonight&rsquo;s series (planted at 1.25&times;) weekend hourly volatility measures <strong>1.36&times;</strong> the weekday rate &mdash; the effect survives the vol clustering around it. Your Day 85 features have to be re-horizoned (4h / 24h / 72h instead of days), and &ldquo;daily&rdquo; stats are an aggregation choice, not a fact of the market.</p>
+<p><strong>2. The tails are not decoration; they are the distribution.</strong> Day 10 gave you the normal distribution as the default dialect. Crypto returns don&rsquo;t speak it. Tonight&rsquo;s measured table: equity-like daily returns print kurtosis <strong>3.03</strong> with <strong>0.00%</strong> of bars beyond &plusmn;3&sigma; &mdash; the normal promise (0.27%) roughly kept. The crypto series prints kurtosis <strong>13.20</strong> hourly and <strong>5.54</strong> even after aggregating to daily bars, with <strong>1.79%</strong> of hours beyond &plusmn;3&sigma; &mdash; about <strong>7&times;</strong> the promised rate &mdash; a worst hour of <strong>&minus;9.06%</strong> and a worst day of <strong>&minus;19.02%</strong>. (Kurtosis is the tail-weight dial from Day 10: 3 is the normal&rsquo;s value; anything far above it means extreme bars are a routine feature, not an anomaly.) Any risk math that reads &sigma; off a normal table &mdash; barrier widths, position sizes, &ldquo;this is a 4-sigma event&rdquo; &mdash; is calibrated to the wrong animal. Remember this on Day 90, when &sigma; becomes a bet size.</p>
+<p><strong>3. Crypto has native instruments equities don&rsquo;t.</strong> The dominant crypto contract is the <em>perpetual swap</em>: a futures contract with no expiry, kept near spot by a <strong>funding rate</strong> &mdash; a small periodic payment between longs and shorts. Funding positive (the usual state in a bull tape) means longs pay shorts; when a rally gets crowded, funding climbs with it (tonight&rsquo;s series: correlation <strong>+0.85</strong> with the trailing 24h return, mean <strong>+0.017%</strong> per 8h, range &minus;0.08% to +0.25%). That crowding is information: extreme funding says the long side is leveraged and leaning one way, which is why tonight adds exactly one new feature &mdash; the funding z-score &mdash; and why the model&rsquo;s largest learned weight lands on it (&minus;0.55, a fade: crowded longs precede weak forward returns in the planted process). One more structural line, no code: there is no single crypto tape &mdash; price is a consensus across fragmented exchanges, so &ldquo;the&rdquo; price is already an aggregation decision upstream of your pipeline.</p>
+<p><strong>4. The barriers must breathe &mdash; this is the one non-optional port.</strong> Day 86&rsquo;s triple barrier used widths suited to daily equity vol. Port them naively &mdash; a fixed &plusmn;2.79% &mdash; and the <em>meaning</em> of a label flips with the regime: in the quiet third of tonight&rsquo;s data (&sigma; &asymp; 0.41%/h) a fixed barrier times out <strong>56%</strong> of the time and takes ~16h to resolve (labels = slow grinds); in the wild third (&sigma; &asymp; 0.91%/h) it resolves in ~8h with only <strong>26%</strong> timeouts (labels = noise flickers). Same &plusmn;2.79%, three different events wearing one label. The fix is Day 86&rsquo;s own rule, enforced: width = 1.0 &times; &sigma;&#770; &times; &radic;H, with &sigma;&#770; the trailing-48h vol <em>shrunk toward the series median</em> (&sigma;&#770; = &radic;(&sigma;&#8324;&#8328; &middot; &sigma;<sub>median</sub>)) &mdash; shrunk because a trailing window lags regime turns, and betting the full width on a lagging estimate overshoots in both directions. Result: timeouts <strong>42% / 45% / 40%</strong> across quiet/middle/wild, resolution times <strong>14h / 12h / 10h</strong>. A label now means roughly the same kind of event in every regime &mdash; which was the entire point of triple-barrier labeling.</p>
+<p>And then the result, in Day 88&rsquo;s reporting format, no cosmetics: pooled walk-forward accuracy <strong>0.581</strong> against a <strong>0.547</strong> majority-class baseline &mdash; a real edge, and a modest one. The per-fold column swings from <strong>0.887</strong> to <strong>0.410</strong> (Days 83&ndash;84&rsquo;s non-stationarity, live in your own table: two folds score <em>below</em> a coin flip during the 240&ndash;300 drawdown). The strategy trades 260 times, wins 53.5%, and nets <strong>+0.026% per trade</strong> &mdash; because the 0.15% round trip (taker fee + slippage; crypto&rsquo;s honest cost is several times the equity line from Day 88) consumed about <strong>85%</strong> of the +0.176% gross. Annualized per-trade Sharpe: <strong>0.19</strong>. Buy &amp; hold over the identical test windows: <strong>+95.4%</strong>, in a year the series rose +134.9%. Both things are true at once: the model learned the planted effects (funding fade &minus;0.55, momentum carrier +0.38) <em>and</em> a two-sided model in a one-way mania pays for every short. Skill and profit are different columns &mdash; Phase G keeps making you read both.</p>
+<p>The data is synthesized, process stated in the code header: GARCH-flavored vol clustering (&alpha;=0.06, &beta;=0.92), Student-t (df=5) innovations, the weekend multiplier, the funding process, and two planted effects &mdash; momentum continuation (0.13) and the crowded-funding fade (&minus;0.08) &mdash; deliberately stronger and cleaner than real tape, because a baseline with literally nothing to learn teaches nothing. If the edge still nearly washes out after costs <em>here</em>, that is the lesson, not a bug.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It&rsquo;s a <strong>port to a new platform</strong>, the kind you&rsquo;ve done at work: same binary, new failure modes. The pipeline stages are the binary &mdash; features, labels, validation, model &mdash; and they compile unchanged. What changes is the platform contract underneath: the clock (no maintenance window, ever &mdash; but traffic thins on weekends), the traffic shape (fat tails are flash crowds that arrive 7&times; more often than the capacity model promised), the config (barrier widths are a config value, and the old value is wrong in a regime-dependent way), and the egress bill (per-trade costs several times higher, charged on every call). Ports don&rsquo;t fail in the code you rewrote. They fail in the assumptions the old platform guaranteed and the new one doesn&rsquo;t. Tonight you audited the assumptions &mdash; that&rsquo;s the whole job, in ML exactly as in storage.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Same pipeline, different beast: the tails and the barriers</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Panel A - return distributions: equity-like (normal) vs crypto (fat-tailed)   |   Panel B - barriers that breathe with volatility</text>
+<rect x="12" y="54" width="656" height="196" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE TAILS: WHERE THE NORMAL DISTRIBUTION LIES TO YOU</text>
+<text x="175.0" y="94" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">equity-like daily returns</text>
+<text x="175.0" y="108" text-anchor="middle" font-size="9" fill="#555555">kurtosis 3.03 - the Day 10 bell, behaving</text>
+<line x1="40" y1="200" x2="310" y2="200" stroke="#999999" stroke-width="1.0"/>
+<line x1="40" y1="92" x2="40" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<line x1="310" y1="92" x2="310" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="40.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">-3sd</text>
+<text x="175.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">0</text>
+<text x="310.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">+3sd</text>
+<polyline points="38,199 44,198 50,198 56,197 62,195 68,193 74,191 80,188 86,184 92,180 98,175 104,168 110,161 116,153 122,145 128,136 134,127 140,119 146,111 152,103 158,98 164,93 170,91 176,90 182,91 188,94 194,99 200,106 206,113 212,122 218,130 224,139 230,148 236,156 242,164 248,170 254,176 260,182 266,186 272,189 278,192 284,194 290,196 296,197 302,198 308,199" fill="none" stroke="#0a7aff" stroke-width="2.0"/>
+<text x="175.0" y="234" text-anchor="middle" font-size="9" fill="#0a54c2">beyond +/-3sd: 0.00% of days - as promised (0.27%)</text>
+<text x="505.0" y="94" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">crypto hourly returns (this lesson's series)</text>
+<text x="505.0" y="108" text-anchor="middle" font-size="9" fill="#555555">kurtosis 13.20 - taller peak AND fat tails</text>
+<line x1="370" y1="200" x2="640" y2="200" stroke="#999999" stroke-width="1.0"/>
+<line x1="391" y1="78" x2="391" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<line x1="619" y1="78" x2="619" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="391.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">-3sd</text>
+<text x="505.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">0</text>
+<text x="619.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">+3sd</text>
+<polyline points="368,197 374,197 380,196 386,195 392,194 398,193 404,191 410,189 416,186 422,183 428,179 434,174 440,169 446,162 452,153 458,144 464,133 470,122 476,110 482,99 488,89 494,81 500,76 506,75 512,78 518,83 524,92 530,103 536,114 542,126 548,137 554,147 560,156 566,164 572,171 578,176 584,181 590,184 596,187 602,190 608,192 614,193 620,194 626,195 632,196 638,197" fill="none" stroke="#c22a2a" stroke-width="2.0"/>
+<text x="505.0" y="234" text-anchor="middle" font-size="9" fill="#a11d1d">beyond +/-3sd: 1.79% of hours - about 7x the promise; worst hour -9.06%</text>
+<rect x="12" y="262" width="656" height="208" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="282" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - TRIPLE BARRIERS THAT BREATHE: WIDTH = 1.0 x SIGMA-HAT x SQRT(24h)</text>
+<text x="175.0" y="302" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">quiet regime - sigma 0.41%/h</text>
+<text x="175.0" y="316" text-anchor="middle" font-size="9" fill="#555555">barriers at +/-2.36% (regime median)</text>
+<line x1="30" y1="340" x2="320" y2="340" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="30" y1="396" x2="320" y2="396" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="30" y1="368" x2="320" y2="368" stroke="#cccccc" stroke-width="1.0"/>
+<text x="322.0" y="343" text-anchor="start" font-size="8.5" fill="#177245">+2.36%</text>
+<text x="322.0" y="399" text-anchor="start" font-size="8.5" fill="#177245">-2.36%</text>
+<polyline points="45,368 58,375 71,378 84,375 97,369 110,363 123,364 136,370 149,378 162,383 175,382 188,376 201,370 214,366 227,366 240,365 253,362 266,358 279,359 292,362 305,367" fill="none" stroke="#0a7aff" stroke-width="1.8"/>
+<text x="175.0" y="424" text-anchor="middle" font-size="9" fill="#0a54c2">no touch in 24h -&gt; timeout label (42% of quiet samples)</text>
+<text x="175.0" y="440" text-anchor="middle" font-size="9" fill="#555555">a FIXED +/-2.79% barrier here: 56% timeouts, resolves in ~16h</text>
+<text x="505.0" y="302" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">wild regime - sigma 0.91%/h</text>
+<text x="505.0" y="316" text-anchor="middle" font-size="9" fill="#555555">barriers at +/-3.52% (regime median)</text>
+<line x1="360" y1="320" x2="650" y2="320" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="360" y1="416" x2="650" y2="416" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="360" y1="368" x2="650" y2="368" stroke="#cccccc" stroke-width="1.0"/>
+<text x="652.0" y="323" text-anchor="start" font-size="8.5" fill="#177245">+3.52%</text>
+<text x="652.0" y="419" text-anchor="start" font-size="8.5" fill="#177245">-3.52%</text>
+<polyline points="375,388 388,400 401,374 414,366 427,358 440,335 453,351 466,376 479,375 492,390 505,388 518,343 531,318 544,307 557,300 570,341 583,379 596,379 609,391 622,387 635,352" fill="none" stroke="#c22a2a" stroke-width="1.8"/>
+<circle cx="525" cy="320" r="4.5" fill="#c22a2a" stroke="#ffffff" stroke-width="1.2"/>
+<text x="505.0" y="424" text-anchor="middle" font-size="9" fill="#a11d1d">first touch ends it -&gt; +1 label (scaled: resolves in ~10h)</text>
+<text x="505.0" y="440" text-anchor="middle" font-size="9" fill="#555555">a FIXED +/-2.79% barrier here: resolves in ~8h - mostly noise</text>
+<text x="340.0" y="460" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Vol-scaled: timeouts 42% / 45% / 40% across regimes - a label means the same kind of event everywhere</text>
+</svg>
+    <div class="caption">Panel A: the equity-like bell (kurtosis 3.03) keeps the normal distribution&rsquo;s promise &mdash; nothing lands beyond &plusmn;3&sigma;. The crypto curve is a different animal: sharper peak, and shoulders that stay high out past the dashed &plusmn;3&sigma; lines &mdash; 1.79% of all hours live out there. Panel B: vol-scaled barriers in two regimes. Quiet (&sigma; 0.41%/h): narrow &plusmn;2.36% barriers, price wanders and times out. Wild (&sigma; 0.91%/h): barriers widen to &plusmn;3.52%, and the first touch still ends the label at a comparable hour. Fixed &plusmn;2.79% barriers would make the quiet panel a 16-hour grind and the wild panel an 8-hour coin flip.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, numpy only. <strong>Part 1</strong> builds the beast with its generating process stated in the header &mdash; no downloads, seed 89, every digit reproducible &mdash; and prints the distribution table next to an equity-like normal series. <strong>Part 2</strong> builds Day 85-shaped features at hourly horizons plus the funding z-score, then labels twice: fixed barriers vs vol-scaled (shrunk) barriers, with the regime table as the verdict. <strong>Part 3</strong> is Day 88&rsquo;s model and Day 87&rsquo;s walk-forward untouched &mdash; expanding window, 24h purge, scaler fit on train only, sequential non-overlapping trades so the Sharpe arithmetic means something &mdash; at crypto&rsquo;s 0.15% round-trip cost. Read the fold table the way Day 31 taught you to read a loss curve: the <em>shape</em> across folds is the information.</p>
+  <pre><code>&quot;&quot;&quot;Day 89 - Build 2: Crypto Data - Same Pipeline, Different Beast.
+
+Day 88 ran the capstone pipeline on daily equity bars:
+features (Day 85) -&gt; triple-barrier labels (Day 86) -&gt;
+walk-forward validation (Day 87) -&gt; a hand-rolled
+logistic baseline. Tonight the SAME four stages run on
+hourly crypto - and the lesson is what breaks:
+
+  Part 1  The beast, measured. No downloads: a synthetic
+          hourly series with its generating process stated
+          up front - GARCH-flavored volatility clustering,
+          Student-t (df=5) fat tails, a weekend liquidity
+          effect, and a funding-rate series that crowds
+          with momentum. Next to it, an equity-like normal
+          series. The distribution table is the Day 10
+          callback: kurtosis, worst bar, and how often
+          price does what a normal distribution calls a
+          3-sigma event (promised: 0.27% of bars).
+  Part 2  The one adaptation that is NOT optional:
+          barrier widths scaled to volatility (shrunk
+          toward the long-run median, because a trailing
+          vol window lags regime turns). A fixed +/-2.8%
+          barrier is a grind in a quiet regime and pure
+          noise in a wild one; the table proves it, and
+          the vol-scaled version makes a label mean the
+          same KIND of event in every regime. Features
+          are Day 85 shapes at hourly horizons, plus one
+          crypto native: funding-rate z-score.
+  Part 3  Same model, same walk-forward (Day 87: purged,
+          expanding window). Report is the Day 88 format:
+          per-fold accuracy, pooled accuracy vs the
+          majority-class baseline, sequential non-
+          overlapping trades net of a stated 0.15% round
+          trip - crypto taker fees plus slippage are
+          several times equity&#x27;s - and buy &amp; hold over
+          the identical windows as the honesty anchor.
+
+The data plants two faint real effects (momentum
+continuation, crowded-funding fade) because a baseline
+with literally nothing to learn teaches nothing. They
+are stronger and cleaner than anything you will find
+in real tape - if the edge still nearly washes out
+after costs here, that IS the lesson.
+
+Runs on the ~/ai-lab venv: numpy only (free), no CUDA,
+no paid APIs, no downloads. Seed fixed: every number
+below reproduces exactly.
+
+Expected output:
+
+  Part 1 - the beast, measured (normal promises 0.27% beyond 3sd, kurtosis 3.00)
+    synthetic crypto: $3,000 -&gt; $7,048 (+134.9% over the year, 8,760 hourly bars)
+    equity daily   n=  252  sd  0.99%  worst  -2.97%  kurtosis  3.03  |r|&gt;3sd 0.00%
+    crypto hourly  n= 8760  sd  0.78%  worst  -9.06%  kurtosis 13.20  |r|&gt;3sd 1.79%
+    crypto daily   n=  365  sd  3.81%  worst -19.02%  kurtosis  5.54  |r|&gt;3sd 1.10%
+    weekend vol 0.95%/h vs weekday 0.70%/h (ratio 1.36 - thin books, planted at 1.25)
+    funding: mean 0.017%/8h, range -0.08..+0.25; corr(funding, trailing 24h return) +0.85
+
+  Part 2 - labels: why the barriers must breathe with vol
+    vol-scaled barrier: median 2.79%  (p10 2.25% .. p90 3.86%)  vs fixed 2.79%
+    label mix (scaled): up 32.6%  down 25.3%  timeout 42.1%
+    regime        sigma/h   fixed: timeout / resolves-in   scaled: timeout / resolves-in
+    quiet third   0.41%     56% /   16h          42% /   14h
+    middle third  0.57%     44% /   12h          45% /   12h
+    wild third    0.91%     26% /    8h          40% /   10h
+
+  Part 3 - walk-forward (Day 87: expanding window, 24h purge, 30-day tests)
+    window        train   acc    trades  net %    tape %
+    days  90-120    1099  0.577     28   +13.93    +12.8
+    days 120-150    1552  0.887     30   +24.91    +68.5
+    days 150-180    1963  0.609     30    -9.02     +8.1
+    days 180-210    2305  0.545     30    +1.23    -10.7
+    days 210-240    2712  0.510     30    -2.43    +16.0
+    days 240-270    3065  0.410     29   -29.25    -40.1
+    days 270-300    3495  0.423     25   -15.25    -37.0
+    days 300-330    3925  0.699     30   +23.80    +85.6
+    days 330-360    4362  0.579     28    -1.27     -7.6
+    pooled walk-forward accuracy 0.581  vs majority-class baseline 0.547
+    trades 260  win rate 53.5%  avg net/trade +0.026%  total net +6.7%
+    per-trade Sharpe, annualized: 0.19   buy &amp; hold, same windows: +95.4%
+    final-fold weights: ret4h -0.08  ret24h +0.07  ret72h +0.08  distMA +0.38  vol24 -0.11  fundZ -0.55
+    verdict: same pipeline, new beast - the code changed in the data
+             and the barrier widths, and that was almost the whole port
+&quot;&quot;&quot;
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+
+SEED = 89
+HOURS = 365 * 24          # one year of hourly bars, 24/7 - no close
+H = 24                    # label horizon: 24 hours (was: days, Day 86)
+K = 1.0                   # barrier width = K * sigma * sqrt(H)
+COST = 0.0015             # 0.15% round trip: taker fee + slippage
+rng = np.random.default_rng(SEED)
+
+# ---------- Part 1: build the beast, process stated ----------
+DF = 5
+z = rng.standard_t(DF, HOURS) * np.sqrt((DF - 2) / DF)   # fat tails, unit var
+eps_f = rng.normal(0.0, 0.003, HOURS)        # funding noise, % per 8h
+SIG_BAR = 0.0055                             # ~0.55%/hour unconditional
+ALPHA, BETA = 0.06, 0.92                     # GARCH-flavored vol clustering
+OMEGA = SIG_BAR**2 * (1 - ALPHA - BETA)
+hour = np.arange(HOURS)
+weekend = ((hour // 24) % 7) &gt;= 5            # Sat/Sun: thinner books
+wk = np.where(weekend, 1.25, 1.0)            # ...so vol runs 25% hotter
+
+logp = np.zeros(HOURS + 1)
+logp[0] = np.log(3000.0)                     # ETH-flavored starting price
+rets = np.zeros(HOURS)                       # hourly log returns
+fund = np.full(HOURS, 0.01)                  # funding, % per 8h (perp swap)
+sig2 = SIG_BAR**2
+f = 0.01
+f_hist = [f] * 200                           # funding history for z-scores
+for t in range(HOURS):
+    s = np.sqrt(sig2) * wk[t]
+    drift = 0.00003                          # gentle bull-tape drift
+    if t &gt;= 168:
+        m24 = logp[t] - logp[t - 24]
+        mom_z = m24 / (s * np.sqrt(24))
+        fh = np.array(f_hist[-168:])
+        fz = (f - fh.mean()) / (fh.std() + 1e-9)
+        # the two planted effects: momentum continues a little,
+        # crowded-long funding (high fz) fades a little
+        drift += s * (0.13 * np.tanh(mom_z) - 0.08 * np.clip(fz, -2, 2))
+    r = drift + s * z[t]
+    rets[t] = r
+    logp[t + 1] = logp[t] + r
+    sig2 = OMEGA + ALPHA * r**2 + BETA * sig2
+    if t + 1 &lt; HOURS:                        # funding crowds with momentum
+        m24n = logp[t + 1] - logp[t + 1 - 24] if t + 1 &gt;= 24 else 0.0
+        f = float(np.clip(0.01 + 0.85 * (f - 0.01) + 0.25 * m24n
+                          + eps_f[t], -0.08, 0.30))
+        fund[t + 1] = f
+    f_hist.append(f)
+price = np.exp(logp)
+
+equity = np.random.default_rng(4).normal(0.0, 0.01, 252)  # equity-like
+daily = np.array([logp[24 * (d + 1)] - logp[24 * d] for d in range(365)])
+
+
+def kurt(x):                                 # Pearson kurtosis; normal = 3
+    xc = x - x.mean()
+    return float((xc**4).mean() / (xc**2).mean()**2)
+
+
+def stats(name, x):
+    sd = x.std()
+    beyond = 100 * np.mean(np.abs(x) &gt; 3 * sd)
+    print(f&quot;  {name:&lt;14} n={len(x):&gt;5}  sd {100 * sd:5.2f}%  &quot;
+          f&quot;worst {100 * x.min():+6.2f}%  kurtosis {kurt(x):5.2f}  &quot;
+          f&quot;|r|&gt;3sd {beyond:4.2f}%&quot;)
+
+
+print(&quot;Part 1 - the beast, measured (normal promises 0.27% beyond 3sd, kurtosis 3.00)&quot;)
+print(f&quot;  synthetic crypto: ${price[0]:,.0f} -&gt; ${price[-1]:,.0f} &quot;
+      f&quot;({100 * (price[-1] / price[0] - 1):+.1f}% over the year, 8,760 hourly bars)&quot;)
+stats(&quot;equity daily&quot;, equity)
+stats(&quot;crypto hourly&quot;, rets)
+stats(&quot;crypto daily&quot;, daily)
+wv, dv = rets[weekend].std(), rets[~weekend].std()
+print(f&quot;  weekend vol {100 * wv:.2f}%/h vs weekday {100 * dv:.2f}%/h &quot;
+      f&quot;(ratio {wv / dv:.2f} - thin books, planted at 1.25)&quot;)
+m24_all = np.array([logp[t] - logp[t - 24] for t in range(24, HOURS)])
+corr_f = np.corrcoef(fund[24:], m24_all)[0, 1]
+print(f&quot;  funding: mean {fund.mean():.3f}%/8h, range {fund.min():+.2f}..&quot;
+      f&quot;{fund.max():+.2f}; corr(funding, trailing 24h return) {corr_f:+.2f}&quot;)
+
+# ---------- Part 2: features + vol-scaled triple-barrier labels ----------
+t0, t1 = 168, HOURS - H                      # need 168h of history, H ahead
+ts = np.arange(t0, t1)
+vol24 = np.array([rets[t - 24:t].std() for t in ts])
+vol48 = np.array([rets[t - 48:t].std() for t in ts])
+ma72 = np.array([logp[t - 71:t + 1].mean() for t in ts])
+fund_z = np.array([(fund[t] - fund[t - 168:t].mean())
+                   / (fund[t - 168:t].std() + 1e-9) for t in ts])
+X = np.column_stack([                        # Day 85 shapes, hourly horizons
+    logp[ts] - logp[ts - 4],                 # ret 4h
+    logp[ts] - logp[ts - 24],                # ret 24h
+    logp[ts] - logp[ts - 72],                # ret 72h
+    (logp[ts] - ma72) / (vol24 * np.sqrt(24)),   # distance from 72h mean, in vol units
+    vol24,                                   # current vol regime
+    fund_z,                                  # crypto native: crowded longs/shorts
+])
+X = np.clip(X, -8, 8)                        # one wild bar must not own the fit
+
+win = sliding_window_view(logp, H + 1)       # win[t] = logp[t .. t+H]
+cw = (win - win[:, [0]])[ts][:, 1:]          # forward path, hours 1..H
+sig_med = np.median(vol48)
+sig_hat = np.sqrt(vol48 * sig_med)           # trailing vol, shrunk to typical
+b = K * sig_hat * np.sqrt(H)                 # vol-scaled barrier half-width
+b_fix = np.median(b)                         # the fixed barrier Day 86 would use
+
+def label_paths(width):
+    up = cw &gt;= width[:, None]
+    dn = cw &lt;= -width[:, None]
+    BIG = H + 5
+    ui = np.where(up.any(1), up.argmax(1), BIG)
+    di = np.where(dn.any(1), dn.argmax(1), BIG)
+    lab = np.where(ui &lt; di, 1, np.where(di &lt; ui, -1, 0))
+    first = np.minimum(ui, di)
+    hrs = np.where(first &lt;= H, first + 1, np.nan)   # hours to resolution
+    return lab, hrs
+
+lab, hrs = label_paths(b)
+lab_f, hrs_f = label_paths(np.full_like(b, b_fix))
+out_ret = np.where(lab == 1, b, np.where(lab == -1, -b, cw[:, -1]))
+
+print(&quot;\nPart 2 - labels: why the barriers must breathe with vol&quot;)
+print(f&quot;  vol-scaled barrier: median {100 * np.median(b):.2f}%  &quot;
+      f&quot;(p10 {100 * np.percentile(b, 10):.2f}% .. p90 {100 * np.percentile(b, 90):.2f}%)&quot;
+      f&quot;  vs fixed {100 * b_fix:.2f}%&quot;)
+print(f&quot;  label mix (scaled): up {np.mean(lab == 1):.1%}  &quot;
+      f&quot;down {np.mean(lab == -1):.1%}  timeout {np.mean(lab == 0):.1%}&quot;)
+terc = np.argsort(np.argsort(vol48)) * 3 // len(vol48)
+print(&quot;  regime        sigma/h   fixed: timeout / resolves-in   scaled: timeout / resolves-in&quot;)
+for name, m in ((&quot;quiet third&quot;, terc == 0), (&quot;middle third&quot;, terc == 1),
+                (&quot;wild third&quot;, terc == 2)):
+    print(f&quot;  {name:&lt;13} {100 * np.median(vol48[m]):.2f}%     &quot;
+          f&quot;{np.mean(lab_f[m] == 0):.0%} / {np.nanmedian(hrs_f[m]):4.0f}h          &quot;
+          f&quot;{np.mean(lab[m] == 0):.0%} / {np.nanmedian(hrs[m]):4.0f}h&quot;)
+
+# ---------- Part 3: same model, same walk-forward, crypto costs ----------
+def fit_logreg(Xtr, ytr, epochs=300, lr=0.1, l2=1e-3):
+    &quot;&quot;&quot;Day 88&#x27;s hand-rolled logistic: full-batch gradient descent.&quot;&quot;&quot;
+    w = np.zeros(Xtr.shape[1])
+    bb = 0.0
+    y01 = (ytr == 1).astype(float)
+    for _ in range(epochs):
+        p = 1 / (1 + np.exp(-(Xtr @ w + bb)))
+        g = p - y01
+        w -= lr * (Xtr.T @ g / len(y01) + l2 * w)
+        bb -= lr * g.mean()
+    return w, bb
+
+
+print(&quot;\nPart 3 - walk-forward (Day 87: expanding window, 24h purge, 30-day tests)&quot;)
+print(&quot;  window        train   acc    trades  net %    tape %&quot;)
+acc_all, lab_all, trades = [], [], []
+bh = 0.0
+test_hours = 0
+T = 2160                                     # first test starts day 90
+while T + 720 &lt;= HOURS - H:
+    tr = (ts + H &lt;= T) &amp; (lab != 0)          # purge: labels resolved before T
+    te = (ts &gt;= T) &amp; (ts &lt; T + 720)
+    mu, sd = X[tr].mean(0), X[tr].std(0) + 1e-12   # scaler fit on train only
+    w, bb = fit_logreg((X[tr] - mu) / sd, lab[tr])
+    ii = np.where(te)[0]
+    p = 1 / (1 + np.exp(-(((X[ii] - mu) / sd) @ w + bb)))
+    yte, ote = lab[ii], out_ret[ii]
+    nz = yte != 0
+    acc = np.mean((p[nz] &gt; 0.5) == (yte[nz] == 1))
+    nets, j = [], 0                          # sequential trades: one position
+    while j &lt; len(ii):                       # at a time, held to its barrier
+        pos = 1 if p[j] &gt; 0.55 else (-1 if p[j] &lt; 0.45 else 0)
+        if pos != 0:
+            nets.append(pos * ote[j] - COST)
+            j += H
+        else:
+            j += 1
+    trades += nets
+    tape = np.exp(logp[T + 720] - logp[T]) - 1
+    bh += tape
+    test_hours += 720
+    acc_all.append((p[nz] &gt; 0.5) == (yte[nz] == 1))
+    lab_all.append(yte[nz])
+    print(f&quot;  days {T // 24:&gt;3}-{T // 24 + 30:&lt;3} {int(tr.sum()):&gt;7}  {acc:.3f}  &quot;
+          f&quot;{len(nets):&gt;5}  {100 * np.sum(nets):+7.2f}  {100 * tape:+7.1f}&quot;)
+    T += 720
+
+acc_all = np.concatenate(acc_all)
+lab_all = np.concatenate(lab_all)
+trades = np.array(trades)
+maj = max(np.mean(lab_all == 1), np.mean(lab_all == -1))
+yrs = test_hours / 8760
+sharpe = trades.mean() / trades.std() * np.sqrt(len(trades) / yrs)
+print(f&quot;  pooled walk-forward accuracy {acc_all.mean():.3f}  &quot;
+      f&quot;vs majority-class baseline {maj:.3f}&quot;)
+print(f&quot;  trades {len(trades)}  win rate {np.mean(trades &gt; 0):.1%}  &quot;
+      f&quot;avg net/trade {100 * trades.mean():+.3f}%  total net {100 * trades.sum():+.1f}%&quot;)
+print(f&quot;  per-trade Sharpe, annualized: {sharpe:.2f}   &quot;
+      f&quot;buy &amp; hold, same windows: {100 * bh:+.1f}%&quot;)
+names = [&quot;ret4h&quot;, &quot;ret24h&quot;, &quot;ret72h&quot;, &quot;distMA&quot;, &quot;vol24&quot;, &quot;fundZ&quot;]
+print(&quot;  final-fold weights: &quot; + &quot;  &quot;.join(f&quot;{n} {v:+.2f}&quot; for n, v in zip(names, w)))
+print(&quot;  verdict: same pipeline, new beast - the code changed in the data&quot;)
+print(&quot;           and the barrier widths, and that was almost the whole port&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the beast, measured (normal promises 0.27% beyond 3sd, kurtosis 3.00)
+  synthetic crypto: $3,000 -&gt; $7,048 (+134.9% over the year, 8,760 hourly bars)
+  equity daily   n=  252  sd  0.99%  worst  -2.97%  kurtosis  3.03  |r|&gt;3sd 0.00%
+  crypto hourly  n= 8760  sd  0.78%  worst  -9.06%  kurtosis 13.20  |r|&gt;3sd 1.79%
+  crypto daily   n=  365  sd  3.81%  worst -19.02%  kurtosis  5.54  |r|&gt;3sd 1.10%
+  weekend vol 0.95%/h vs weekday 0.70%/h (ratio 1.36 - thin books, planted at 1.25)
+  funding: mean 0.017%/8h, range -0.08..+0.25; corr(funding, trailing 24h return) +0.85
+
+Part 2 - labels: why the barriers must breathe with vol
+  vol-scaled barrier: median 2.79%  (p10 2.25% .. p90 3.86%)  vs fixed 2.79%
+  label mix (scaled): up 32.6%  down 25.3%  timeout 42.1%
+  regime        sigma/h   fixed: timeout / resolves-in   scaled: timeout / resolves-in
+  quiet third   0.41%     56% /   16h          42% /   14h
+  middle third  0.57%     44% /   12h          45% /   12h
+  wild third    0.91%     26% /    8h          40% /   10h
+
+Part 3 - walk-forward (Day 87: expanding window, 24h purge, 30-day tests)
+  window        train   acc    trades  net %    tape %
+  days  90-120    1099  0.577     28   +13.93    +12.8
+  days 120-150    1552  0.887     30   +24.91    +68.5
+  days 150-180    1963  0.609     30    -9.02     +8.1
+  days 180-210    2305  0.545     30    +1.23    -10.7
+  days 210-240    2712  0.510     30    -2.43    +16.0
+  days 240-270    3065  0.410     29   -29.25    -40.1
+  days 270-300    3495  0.423     25   -15.25    -37.0
+  days 300-330    3925  0.699     30   +23.80    +85.6
+  days 330-360    4362  0.579     28    -1.27     -7.6
+  pooled walk-forward accuracy 0.581  vs majority-class baseline 0.547
+  trades 260  win rate 53.5%  avg net/trade +0.026%  total net +6.7%
+  per-trade Sharpe, annualized: 0.19   buy &amp; hold, same windows: +95.4%
+  final-fold weights: ret4h -0.08  ret24h +0.07  ret72h +0.08  distMA +0.38  vol24 -0.11  fundZ -0.55
+  verdict: same pipeline, new beast - the code changed in the data
+           and the barrier widths, and that was almost the whole port</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run reproduces the four numbers that carry the lesson: kurtosis <strong>13.20</strong> (crypto hourly) against <strong>3.03</strong> (equity-like); vol-scaled timeouts flat across regimes (<strong>42% / 45% / 40%</strong>) where the fixed barrier swings <strong>56% &rarr; 26%</strong>; pooled accuracy <strong>0.581</strong> vs the <strong>0.547</strong> baseline with the funding z-score carrying the largest weight (<strong>&minus;0.55</strong> &mdash; the model found the crowding fade on its own); and total net <strong>+6.7%</strong> against buy &amp; hold&rsquo;s <strong>+95.4%</strong> on the same windows, with you able to explain &mdash; costs, shorts in a mania, one trade at a time &mdash; why both columns are honest. The keeper sentence: <em>porting a pipeline to crypto changes the data, the label widths, and the cost line &mdash; almost never the model.</em></p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea,&rdquo; run the code, and study only Part 1&rsquo;s table and Part 2&rsquo;s regime table. If you can say out loud why a fixed barrier changes meaning across vol regimes &mdash; and why kurtosis 13 breaks normal-based risk math &mdash; you have tonight. Part 3&rsquo;s fold table will keep; skim its last three lines (pooled accuracy, Sharpe, buy &amp; hold) before you close the file.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Day 90: the model is only half the machine &mdash; tomorrow the other half gets its own math: how much to bet when you&rsquo;re right 58% of the time, why a real edge still gets sized small, and what volatility targeting does to a curve like tonight&rsquo;s.</p>
+  </div>
+
+  <div class="footer">Streak: 89 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

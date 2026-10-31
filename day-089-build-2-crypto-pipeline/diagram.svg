@@ -1,0 +1,51 @@
+<svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Same pipeline, different beast: the tails and the barriers</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Panel A - return distributions: equity-like (normal) vs crypto (fat-tailed)   |   Panel B - barriers that breathe with volatility</text>
+<rect x="12" y="54" width="656" height="196" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE TAILS: WHERE THE NORMAL DISTRIBUTION LIES TO YOU</text>
+<text x="175.0" y="94" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">equity-like daily returns</text>
+<text x="175.0" y="108" text-anchor="middle" font-size="9" fill="#555555">kurtosis 3.03 - the Day 10 bell, behaving</text>
+<line x1="40" y1="200" x2="310" y2="200" stroke="#999999" stroke-width="1.0"/>
+<line x1="40" y1="92" x2="40" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<line x1="310" y1="92" x2="310" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="40.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">-3sd</text>
+<text x="175.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">0</text>
+<text x="310.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">+3sd</text>
+<polyline points="38,199 44,198 50,198 56,197 62,195 68,193 74,191 80,188 86,184 92,180 98,175 104,168 110,161 116,153 122,145 128,136 134,127 140,119 146,111 152,103 158,98 164,93 170,91 176,90 182,91 188,94 194,99 200,106 206,113 212,122 218,130 224,139 230,148 236,156 242,164 248,170 254,176 260,182 266,186 272,189 278,192 284,194 290,196 296,197 302,198 308,199" fill="none" stroke="#0a7aff" stroke-width="2.0"/>
+<text x="175.0" y="234" text-anchor="middle" font-size="9" fill="#0a54c2">beyond +/-3sd: 0.00% of days - as promised (0.27%)</text>
+<text x="505.0" y="94" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">crypto hourly returns (this lesson's series)</text>
+<text x="505.0" y="108" text-anchor="middle" font-size="9" fill="#555555">kurtosis 13.20 - taller peak AND fat tails</text>
+<line x1="370" y1="200" x2="640" y2="200" stroke="#999999" stroke-width="1.0"/>
+<line x1="391" y1="78" x2="391" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<line x1="619" y1="78" x2="619" y2="200" stroke="#d99a00" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="391.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">-3sd</text>
+<text x="505.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">0</text>
+<text x="619.0" y="214" text-anchor="middle" font-size="8.5" fill="#555555">+3sd</text>
+<polyline points="368,197 374,197 380,196 386,195 392,194 398,193 404,191 410,189 416,186 422,183 428,179 434,174 440,169 446,162 452,153 458,144 464,133 470,122 476,110 482,99 488,89 494,81 500,76 506,75 512,78 518,83 524,92 530,103 536,114 542,126 548,137 554,147 560,156 566,164 572,171 578,176 584,181 590,184 596,187 602,190 608,192 614,193 620,194 626,195 632,196 638,197" fill="none" stroke="#c22a2a" stroke-width="2.0"/>
+<text x="505.0" y="234" text-anchor="middle" font-size="9" fill="#a11d1d">beyond +/-3sd: 1.79% of hours - about 7x the promise; worst hour -9.06%</text>
+<rect x="12" y="262" width="656" height="208" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="282" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - TRIPLE BARRIERS THAT BREATHE: WIDTH = 1.0 x SIGMA-HAT x SQRT(24h)</text>
+<text x="175.0" y="302" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">quiet regime - sigma 0.41%/h</text>
+<text x="175.0" y="316" text-anchor="middle" font-size="9" fill="#555555">barriers at +/-2.36% (regime median)</text>
+<line x1="30" y1="340" x2="320" y2="340" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="30" y1="396" x2="320" y2="396" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="30" y1="368" x2="320" y2="368" stroke="#cccccc" stroke-width="1.0"/>
+<text x="322.0" y="343" text-anchor="start" font-size="8.5" fill="#177245">+2.36%</text>
+<text x="322.0" y="399" text-anchor="start" font-size="8.5" fill="#177245">-2.36%</text>
+<polyline points="45,368 58,375 71,378 84,375 97,369 110,363 123,364 136,370 149,378 162,383 175,382 188,376 201,370 214,366 227,366 240,365 253,362 266,358 279,359 292,362 305,367" fill="none" stroke="#0a7aff" stroke-width="1.8"/>
+<text x="175.0" y="424" text-anchor="middle" font-size="9" fill="#0a54c2">no touch in 24h -&gt; timeout label (42% of quiet samples)</text>
+<text x="175.0" y="440" text-anchor="middle" font-size="9" fill="#555555">a FIXED +/-2.79% barrier here: 56% timeouts, resolves in ~16h</text>
+<text x="505.0" y="302" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">wild regime - sigma 0.91%/h</text>
+<text x="505.0" y="316" text-anchor="middle" font-size="9" fill="#555555">barriers at +/-3.52% (regime median)</text>
+<line x1="360" y1="320" x2="650" y2="320" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="360" y1="416" x2="650" y2="416" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line x1="360" y1="368" x2="650" y2="368" stroke="#cccccc" stroke-width="1.0"/>
+<text x="652.0" y="323" text-anchor="start" font-size="8.5" fill="#177245">+3.52%</text>
+<text x="652.0" y="419" text-anchor="start" font-size="8.5" fill="#177245">-3.52%</text>
+<polyline points="375,388 388,400 401,374 414,366 427,358 440,335 453,351 466,376 479,375 492,390 505,388 518,343 531,318 544,307 557,300 570,341 583,379 596,379 609,391 622,387 635,352" fill="none" stroke="#c22a2a" stroke-width="1.8"/>
+<circle cx="525" cy="320" r="4.5" fill="#c22a2a" stroke="#ffffff" stroke-width="1.2"/>
+<text x="505.0" y="424" text-anchor="middle" font-size="9" fill="#a11d1d">first touch ends it -&gt; +1 label (scaled: resolves in ~10h)</text>
+<text x="505.0" y="440" text-anchor="middle" font-size="9" fill="#555555">a FIXED +/-2.79% barrier here: resolves in ~8h - mostly noise</text>
+<text x="340.0" y="460" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Vol-scaled: timeouts 42% / 45% / 40% across regimes - a label means the same kind of event everywhere</text>
+</svg>
