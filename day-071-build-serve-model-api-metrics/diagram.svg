@@ -1,0 +1,45 @@
+<svg viewBox="0 0 680 470" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="470" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">One model, run like a service: API in front, metrics beside</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">The request path is the lesson - validation at the door, the model in the middle, observability on the side</text>
+<rect x="12" y="54" width="656" height="150" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE REQUEST PATH:  every call is validated, timed and counted</text>
+<rect x="28" y="92" width="84" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="70.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Client</text>
+<text x="70.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">curl / client</text>
+<rect x="140" y="92" width="118" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="199.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Validate</text>
+<text x="199.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">5 numbers or 400</text>
+<rect x="286" y="92" width="132" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="352.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Model f(x)</text>
+<text x="352.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">5 -&gt; 16 -&gt; 1, 113 params</text>
+<rect x="446" y="92" width="176" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="534.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">200 {p_up, label}</text>
+<text x="534.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">up if p_up &gt;= 0.5</text>
+<line x1="114" y1="118" x2="138" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="138,118 131,114 131,122" fill="#0a7aff"/>
+<line x1="260" y1="118" x2="284" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="284,118 277,114 277,122" fill="#0a7aff"/>
+<line x1="420" y1="118" x2="444" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="444,118 437,114 437,122" fill="#0a7aff"/>
+<text x="340.0" y="170" text-anchor="middle" font-size="9.0" fill="#1c1c1e">bad shape never reaches the model: 400 at the door, and the error counter moves</text>
+<text x="340.0" y="190" text-anchor="middle" font-size="9.0" fill="#1c1c1e">every valid predict: latency -&gt; ring, features -&gt; drift sums  (in memory, bounded)</text>
+<rect x="12" y="216" width="656" height="106" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="236" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE METRICS RING:  what GET /metrics reads back</text>
+<rect x="28" y="250" width="200" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="128.0" y="269" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">counts</text>
+<text x="128.0" y="284" text-anchor="middle" font-size="8.5" fill="#555555">requests 7 - preds 4 - errors 1</text>
+<rect x="252" y="250" width="200" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="352.0" y="269" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">latency (last 200 predicts)</text>
+<text x="352.0" y="284" text-anchor="middle" font-size="8.5" fill="#555555">avg 0.09 ms - p95 0.15 ms *</text>
+<rect x="476" y="250" width="176" height="44" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="564.0" y="269" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">drift (Day 70, live)</text>
+<text x="564.0" y="284" text-anchor="middle" font-size="8.5" fill="#555555">mean |shift| 0.0238</text>
+<text x="340.0" y="308" text-anchor="middle" font-size="9.0" fill="#177245">worst feature today: mom_20d, shift 0.0435  -  no labels needed to see the input move</text>
+<rect x="12" y="334" width="656" height="120" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340.0" y="354" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE CONTRACT:  three routes, nothing else</text>
+<text x="28.0" y="378" font-size="9.5" fill="#1c1c1e">POST /predict    {"features": [5 numbers]}   -&gt;   200 {p_up, label}   |   bad input -&gt; 400</text>
+<text x="28.0" y="400" font-size="9.5" fill="#1c1c1e">GET  /health     -&gt;   200 {status, model, version}   (is it up, and WHAT is up)</text>
+<text x="28.0" y="422" font-size="9.5" fill="#1c1c1e">GET  /metrics    -&gt;   200 {counts, errors, latency avg/p95, drift}   (how is it behaving)</text>
+<text x="340.0" y="444" text-anchor="middle" font-size="9.0" fill="#9a6b00">* latency is this machine's - yours will differ. The predictions and counts are exact.</text>
+</svg>
