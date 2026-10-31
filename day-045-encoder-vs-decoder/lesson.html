@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encoder vs Decoder vs Encoder-Decoder: Same Block, Three Wirings — Day 45 of 100</title>
+<style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 45 of 100</span>
+  <h1>Encoder vs Decoder vs Encoder-Decoder: Same Block, Three Wirings</h1>
+  <p class="outcome">Tonight you'll be able to: sort any transformer product into encoder, decoder, or encoder-decoder in one line &mdash; by asking who is allowed to read whom &mdash; and spot the one extra mechanism, cross-attention, that bridges two stacks.</p>
+
+  <h2>The one idea</h2>
+  <p>Since Day 37 you have built exactly one object: the transformer block (Day 40) &mdash; attention, MLP, residuals, norms. Yet the products built from it look nothing alike: BERT classifies, GPT chats, Whisper transcribes. The block is not what differs. The <strong>wiring</strong> is &mdash; the rules for who is allowed to read whom inside attention. There are exactly three wirings in production, and sorting any model into one of them takes one question: <em>what exists when the model runs, and what has to be produced?</em></p>
+<p><strong>Encoder &mdash; reads everything at once.</strong> Self-attention with <strong>no mask</strong>: token 1 attends to token 4 as freely as to itself (Part 1 &mdash; it actually leans on token 4 hardest). That is only legal because the whole input already exists: a sentence to classify, a document to embed, a ticket to route. The output is one context-soaked vector per input token, and training aims the stack at <em>understanding</em> &mdash; label the input, compare inputs, retrieve inputs. BERT is the canonical encoder, and the embedding models behind search and RAG are encoders too. What an encoder can never do is generate: nothing in its wiring enforces an order, and token 1 has already peeked at the ending.</p>
+<p><strong>Decoder &mdash; reads only the past.</strong> The same block with one change: the causal mask from Days 38 and 42 sets every future score to &minus;&infin; before the softmax, so future weights land on exactly zero (Part 2). Now the stack is safe to run as a generator &mdash; score the next token from the past only, append it, repeat. (The generation loop itself is Day 47&rsquo;s topic; tonight is the wiring that makes it legal.) GPT and every chat LLM you use are decoder-only stacks. The trade is real: a decoder reading a long contract can never let an early clause consult a later one, so per parameter it is a slightly worse <em>reader</em> &mdash; it pays that to be a writer.</p>
+<p><strong>Encoder-decoder &mdash; two stacks and a bridge.</strong> This is the original 2017 wiring, and the day&rsquo;s only new mechanism. An encoder stack reads the source completely &mdash; no mask, it all exists. A decoder stack generates the target causally, exactly as above. The bridge is <strong>cross-attention</strong>: each decoder block carries a second attention sublayer whose <em>queries come from the decoder&rsquo;s own states</em> while the <em>keys and values come from the encoder&rsquo;s output</em>. At shape level that is the whole trick (Part 3): the score matrix is <strong>rectangular</strong> &mdash; one row per target token written so far, one column per source token &mdash; the output length follows the queries, and the content flows from the encoder&rsquo;s memory. Translation is the problem shaped exactly like this: the French sentence is finished; the English one must be written a token at a time, each new word glancing back at the French. T5 is encoder-decoder, and so is Whisper &mdash; the &ldquo;source sequence&rdquo; there is audio, which is why it transcribes instead of chatting.</p>
+<p><strong>The one-line rule.</strong> Finished input in, a label or vectors out &rarr; <strong>encoder</strong>. New text out, generated token by token &rarr; <strong>decoder</strong>. Finished input in <em>and</em> a new sequence out &rarr; <strong>encoder-decoder</strong>. One honest trend note: general-purpose LLMs have consolidated on decoder-only &mdash; one stack is simpler to train and serve, and a decoder can do understanding jobs by generating the answer as text. Encoder-decoder survives where the in/out split is structural: translation, speech-to-text, document-to-summary pipelines.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Three read patterns you already operate. <strong>Encoder = a batch analytics job over a fully loaded table</strong>: the load finished before the job starts, every row may join against every other row, and the output is a materialized view &mdash; nobody runs it against a half-loaded table. <strong>Decoder = writing the next entry of an append-only log</strong>: causality there is not a preference, it is correctness &mdash; an entry that cited future entries would be corrupt. <strong>Encoder-decoder = an ETL transform with a lookup</strong>: the source is loaded and indexed first (the encoder&rsquo;s output), then the writer streams target rows out one at a time, and for each row it does an indexed lookup back into the source (cross-attention) to fetch exactly the rows this target row depends on. Same engine underneath all three; the access pattern is the architecture.</p>
+<p>Trading version, one line: encoder = post-close analysis with the full day&rsquo;s tape on disk; decoder = live trading, where the next bar has not printed and never will early; encoder-decoder = turning a finished earnings call into a written summary, one sentence at a time, glancing back at the transcript.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 448" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="448" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Same block, three wirings - who may read whom</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">The Day-40 block never changes - only the mask, plus one extra read</text>
+<rect x="12" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="235" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<rect x="458" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="117" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - ENCODER</text>
+<text x="117" y="94" text-anchor="middle" font-size="9" fill="#555555">no mask - bidirectional</text>
+<rect x="47" y="104" width="140" height="22" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="117" y="119" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">BLOCK x N (Day 40)</text>
+<rect x="65" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<text x="117" y="262" text-anchor="middle" font-size="8.5" fill="#666666">rows ask - cols are read</text>
+<text x="117" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">every token reads past + future</text>
+<text x="117" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">output: 1 vector per input token</text>
+<text x="117" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: UNDERSTAND a finished input</text>
+<text x="117" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">BERT - embeddings - search</text>
+<text x="340" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">B - DECODER</text>
+<text x="340" y="94" text-anchor="middle" font-size="9" fill="#555555">causal mask (Days 38/42)</text>
+<rect x="270" y="104" width="140" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="119" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">BLOCK x N (Day 40)</text>
+<rect x="288" y="140" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="166" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="166" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="166" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="166" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="192" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<text x="340" y="262" text-anchor="middle" font-size="8.5" fill="#666666">rows ask - cols are read</text>
+<text x="340" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">each token reads only the past</text>
+<text x="340" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">output: next token, then repeat</text>
+<text x="340" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: GENERATE left to right</text>
+<text x="340" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">GPT - chat - code completion</text>
+<text x="563" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">C - ENCODER-DECODER</text>
+<text x="563" y="94" text-anchor="middle" font-size="9" fill="#555555">two stacks + one bridge</text>
+<text x="563" y="100" text-anchor="middle" font-size="8" fill="#5a3fd4">cross-attn</text>
+<rect x="466" y="106" width="86" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="509" y="121" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">ENCODER</text>
+<rect x="574" y="106" width="86" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="617" y="121" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">DECODER</text>
+<line x1="554" y1="117" x2="570" y2="117" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="572,117 565,113 565,121" fill="#7a5cff"/>
+<rect x="497" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="146" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="146" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="497" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="162" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="497" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<text x="521" y="212" text-anchor="middle" font-size="8.5" fill="#555555">self: causal</text>
+<text x="597" y="212" text-anchor="middle" font-size="8.5" fill="#555555">cross: full</text>
+<text x="563" y="262" text-anchor="middle" font-size="8.5" fill="#5a3fd4">cross scores are RECTANGULAR</text>
+<text x="563" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">decoder Q reads encoder K, V</text>
+<text x="563" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">rows: target - cols: source</text>
+<text x="563" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: TRANSFORM a sequence</text>
+<text x="563" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">translation - Whisper - T5</text>
+<rect x="12" y="386" width="656" height="48" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="406" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">THE RULE: finished input in, label or vectors out -&gt; ENCODER</text>
+<text x="340" y="424" text-anchor="middle" font-size="9" fill="#1c1c1e">new text out, token by token -&gt; DECODER  |  finished input in, NEW sequence out -&gt; ENCODER-DECODER</text>
+</svg>
+    <div class="caption">Same block (Day 40), three wirings &mdash; read each grid as &ldquo;rows ask, columns are read.&rdquo; Left: the encoder&rsquo;s full grid, every cell open. Middle: the decoder&rsquo;s causal triangle, the future half switched off. Right: the encoder-decoder&rsquo;s two grids &mdash; the decoder&rsquo;s own causal triangle, plus the rectangular cross grid whose rows are target tokens and columns are source tokens, every cell open. Learn to read a mask grid and you can sort any transformer product on sight.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, one attention function, three wirings. Identity projections (<code>Wq = Wk = Wv = I</code>) keep Day 38&rsquo;s arithmetic fully on the table &mdash; the masks are the only moving parts. <strong>Part 1</strong> runs the encoder wiring on four tokens. <strong>Part 2</strong> changes exactly one argument and prints the same matrix again &mdash; diff the two by eye. <strong>Part 3</strong> feeds the same function queries from one sequence and keys/values from another, and prints the shapes that make cross-attention cross.</p>
+  <pre><code>&quot;&quot;&quot;Day 45 - Encoder vs Decoder vs Encoder-Decoder: Same Block, Three Wirings.
+
+Days 37-42 you built one transformer block (Day 40) and ran
+it decoder-style, behind a causal mask. Tonight that same
+block gets sorted into the only three wiring patterns the
+field ships. The difference is never the block - it is who
+is allowed to READ whom inside attention:
+
+  Encoder           self-attention, NO mask. Every token
+                    reads every token, past and future.
+                    Output: one informed vector per input
+                    token. Built to UNDERSTAND a finished
+                    input - BERT, embeddings, search.
+  Decoder           self-attention WITH the causal mask
+                    (Days 38/42). Each token reads only
+                    itself and the past, so the stack can
+                    GENERATE left to right - GPT, chat,
+                    code completion.
+  Encoder-decoder   two stacks. The encoder reads the
+                    source fully (no mask - it all exists);
+                    the decoder generates causally AND gets
+                    one extra sublayer per block:
+                    cross-attention, where the queries come
+                    from decoder states and the keys/values
+                    come from the encoder&#x27;s output. Built to
+                    turn one finished sequence into a NEW
+                    sequence - translation, Whisper, T5.
+
+  Part 1  One tiny attention() function, identity
+          projections, four hand-set tokens. No mask: the
+          bidirectional weight matrix. Token 1 already
+          leans hardest on token 4 - exactly right for
+          understanding, cheating for generation.
+  Part 2  The SAME function, one argument different: the
+          causal mask. Every future weight lands on
+          exactly 0.0000 and every row still sums to 1.
+          That mask is the entire difference between an
+          encoder layer and a decoder layer.
+  Part 3  Cross-attention at shape level. Queries from
+          two decoder states, keys/values from three
+          encoder states: the weight matrix is RECTANGULAR
+          (2 x 3), its rows still softmax to 1, and the
+          output carries the DECODER&#x27;s length - queries
+          ask, the memory answers.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data), no CUDA, no paid APIs, no downloads.
+Every tensor is set by hand, so every number is exact -
+no RNG anywhere in this lesson.
+
+Expected output:
+
+  Part 1 - ENCODER wiring: no mask, every token reads every token
+    token 1 reads: 0.2212, 0.1091, 0.2212, 0.4486   row sum 1.0000
+    token 2 reads: 0.1651, 0.3349, 0.3349, 0.1651   row sum 1.0000
+    token 3 reads: 0.1651, 0.1651, 0.3349, 0.3349   row sum 1.0000
+    token 4 reads: 0.1573, 0.0382, 0.1573, 0.6471   row sum 1.0000
+    token 1 puts 0.4486 on token 4 - it reads the FUTURE, on purpose
+    verdict: built to UNDERSTAND a finished input (BERT-style)
+  Part 2 - DECODER wiring: same call + the causal mask (Days 38/42)
+    token 1 reads: 1.0000, 0.0000, 0.0000, 0.0000   row sum 1.0000
+    token 2 reads: 0.3302, 0.6698, 0.0000, 0.0000   row sum 1.0000
+    token 3 reads: 0.2483, 0.2483, 0.5035, 0.0000   row sum 1.0000
+    token 4 reads: 0.1573, 0.0382, 0.1573, 0.6471   row sum 1.0000
+    biggest future weight anywhere: 0.0000 - the future is sealed
+    token 4&#x27;s row is unchanged: it has no future to hide
+    verdict: same block + one mask, now it can GENERATE (GPT-style)
+  Part 3 - CROSS-attention: Q from the decoder, K/V from the encoder
+    shapes: Q (2, 2) from decoder, K (3, 2) and V (3, 2) from encoder
+    weight matrix shape (2, 3) - RECTANGULAR: 2 asking, 3 answering
+    decoder step 1 reads source: 0.4011, 0.1978, 0.4011   row sum 1.0000
+    decoder step 2 reads source: 0.2483, 0.2483, 0.5035   row sum 1.0000
+    output row 1: 0.8022, 0.5989   output row 2: 0.7517, 0.7517
+    output shape (2, 2): length follows the QUERIES (decoder),
+      content flows from the MEMORY (encoder output)
+    verdict: TRANSFORM one finished sequence into a new one (T5/Whisper)
+&quot;&quot;&quot;
+import math
+
+import torch
+
+
+def attention(Q, K, V, mask=None):
+    &quot;&quot;&quot;Day 38&#x27;s scaled dot-product attention, unchanged.
+
+    Q (Tq, d), K (Tk, d), V (Tk, dv) -&gt; (out (Tq, dv), weights (Tq, Tk)).
+    mask: 1 = may read, 0 = blocked (score set to -inf pre-softmax).
+    Self-attention is Q, K, V from the SAME sequence; cross-attention
+    is Q from one sequence, K/V from another. One function, both.
+    &quot;&quot;&quot;
+    d = Q.shape[-1]
+    scores = Q @ K.T / math.sqrt(d)
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, float(&quot;-inf&quot;))
+    weights = torch.softmax(scores, dim=-1)
+    return weights @ V, weights
+
+
+row = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.tolist())
+
+# Four hand-set tokens, d = 2. Identity projections (Wq = Wk = Wv = I)
+# keep Day 38&#x27;s arithmetic on the table - the mask is the only
+# moving part today.
+X = torch.tensor([[1.0, 0.0],     # the
+                  [0.0, 1.0],     # cat
+                  [1.0, 1.0],     # sat
+                  [2.0, 0.0]])    # down
+
+# ---------- Part 1: encoder wiring - no mask ----------
+print(&quot;Part 1 - ENCODER wiring: no mask, every token reads every token&quot;)
+_, w_enc = attention(X, X, X)
+for i, w in enumerate(w_enc):
+    print(f&quot;  token {i + 1} reads: {row(w)}   row sum {w.sum().item():.4f}&quot;)
+print(f&quot;  token 1 puts {w_enc[0, 3].item():.4f} on token 4&quot;
+      &quot; - it reads the FUTURE, on purpose&quot;)
+print(&quot;  verdict: built to UNDERSTAND a finished input (BERT-style)&quot;)
+
+# ---------- Part 2: decoder wiring - same call + causal mask ----------
+print(&quot;Part 2 - DECODER wiring: same call + the causal mask (Days 38/42)&quot;)
+causal = torch.tril(torch.ones(4, 4))          # 1 on/below diagonal
+_, w_dec = attention(X, X, X, mask=causal)
+for i, w in enumerate(w_dec):
+    print(f&quot;  token {i + 1} reads: {row(w)}   row sum {w.sum().item():.4f}&quot;)
+future = w_dec.triu(diagonal=1).abs().max().item()
+print(f&quot;  biggest future weight anywhere: {future:.4f}&quot;
+      &quot; - the future is sealed&quot;)
+print(&quot;  token 4&#x27;s row is unchanged: it has no future to hide&quot;)
+print(&quot;  verdict: same block + one mask, now it can GENERATE (GPT-style)&quot;)
+
+# ---------- Part 3: cross-attention - Q and K/V from different stacks ----
+print(&quot;Part 3 - CROSS-attention: Q from the decoder, K/V from the encoder&quot;)
+E = torch.tensor([[1.0, 0.0],     # encoder output, source token 1
+                  [0.0, 1.0],     # encoder output, source token 2
+                  [1.0, 1.0]])    # encoder output, source token 3
+D = torch.tensor([[1.0, 0.0],     # decoder state, step 1
+                  [1.0, 1.0]])    # decoder state, step 2
+out, w_cross = attention(D, E, E)
+print(f&quot;  shapes: Q {tuple(D.shape)} from decoder,&quot;
+      f&quot; K {tuple(E.shape)} and V {tuple(E.shape)} from encoder&quot;)
+print(f&quot;  weight matrix shape {tuple(w_cross.shape)}&quot;
+      &quot; - RECTANGULAR: 2 asking, 3 answering&quot;)
+for i, w in enumerate(w_cross):
+    print(f&quot;  decoder step {i + 1} reads source: {row(w)}&quot;
+          f&quot;   row sum {w.sum().item():.4f}&quot;)
+print(f&quot;  output row 1: {row(out[0])}   output row 2: {row(out[1])}&quot;)
+print(f&quot;  output shape {tuple(out.shape)}: length follows the QUERIES&quot;
+      &quot; (decoder),&quot;)
+print(&quot;    content flows from the MEMORY (encoder output)&quot;)
+print(&quot;  verdict: TRANSFORM one finished sequence into a new one&quot;
+      &quot; (T5/Whisper)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - ENCODER wiring: no mask, every token reads every token
+  token 1 reads: 0.2212, 0.1091, 0.2212, 0.4486   row sum 1.0000
+  token 2 reads: 0.1651, 0.3349, 0.3349, 0.1651   row sum 1.0000
+  token 3 reads: 0.1651, 0.1651, 0.3349, 0.3349   row sum 1.0000
+  token 4 reads: 0.1573, 0.0382, 0.1573, 0.6471   row sum 1.0000
+  token 1 puts 0.4486 on token 4 - it reads the FUTURE, on purpose
+  verdict: built to UNDERSTAND a finished input (BERT-style)
+Part 2 - DECODER wiring: same call + the causal mask (Days 38/42)
+  token 1 reads: 1.0000, 0.0000, 0.0000, 0.0000   row sum 1.0000
+  token 2 reads: 0.3302, 0.6698, 0.0000, 0.0000   row sum 1.0000
+  token 3 reads: 0.2483, 0.2483, 0.5035, 0.0000   row sum 1.0000
+  token 4 reads: 0.1573, 0.0382, 0.1573, 0.6471   row sum 1.0000
+  biggest future weight anywhere: 0.0000 - the future is sealed
+  token 4&#x27;s row is unchanged: it has no future to hide
+  verdict: same block + one mask, now it can GENERATE (GPT-style)
+Part 3 - CROSS-attention: Q from the decoder, K/V from the encoder
+  shapes: Q (2, 2) from decoder, K (3, 2) and V (3, 2) from encoder
+  weight matrix shape (2, 3) - RECTANGULAR: 2 asking, 3 answering
+  decoder step 1 reads source: 0.4011, 0.1978, 0.4011   row sum 1.0000
+  decoder step 2 reads source: 0.2483, 0.2483, 0.5035   row sum 1.0000
+  output row 1: 0.8022, 0.5989   output row 2: 0.7517, 0.7517
+  output shape (2, 2): length follows the QUERIES (decoder),
+    content flows from the MEMORY (encoder output)
+  verdict: TRANSFORM one finished sequence into a new one (T5/Whisper)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three signatures: Part 1&rsquo;s token 1 putting <code>0.4486</code> on token 4 (an encoder reads the future, on purpose); Part 2&rsquo;s biggest future weight at exactly <code>0.0000</code> with every row still summing to <code>1.0000</code>; and Part 3&rsquo;s rectangular <code>(2, 3)</code> weight matrix producing an output at the decoder&rsquo;s length, <code>(2, 2)</code>. The keeper test, no notes allowed: name any product &mdash; a sentiment classifier, ChatGPT, a speech-to-text API &mdash; and sort it in one line using only &ldquo;what goes in finished, what comes out new.&rdquo;</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, then run Parts 1 and 2 and diff the two matrices row by row until the triangle is obvious. If you can say out loud why the <em>mask</em> &mdash; not the block &mdash; is what makes generation legal, and state the rule for all three wirings, you have the day; Part 3&rsquo;s bridge is one extra look at the same function.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: a guided read of the short 2017 paper this whole phase is named after. Bring today&rsquo;s three wirings &mdash; you will be able to spot each one in it.</p>
+  </div>
+
+  <div class="footer">Streak: 45 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

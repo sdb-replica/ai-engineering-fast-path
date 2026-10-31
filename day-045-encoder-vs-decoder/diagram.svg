@@ -1,0 +1,98 @@
+<svg viewBox="0 0 680 448" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="448" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Same block, three wirings - who may read whom</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">The Day-40 block never changes - only the mask, plus one extra read</text>
+<rect x="12" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="235" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<rect x="458" y="56" width="210" height="316" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="117" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - ENCODER</text>
+<text x="117" y="94" text-anchor="middle" font-size="9" fill="#555555">no mask - bidirectional</text>
+<rect x="47" y="104" width="140" height="22" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="117" y="119" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">BLOCK x N (Day 40)</text>
+<rect x="65" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="140" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="166" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="192" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="65" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="91" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="117" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="143" y="218" width="26" height="26" rx="0" fill="#0a7aff" stroke="#ffffff" stroke-width="1.0"/>
+<text x="117" y="262" text-anchor="middle" font-size="8.5" fill="#666666">rows ask - cols are read</text>
+<text x="117" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">every token reads past + future</text>
+<text x="117" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">output: 1 vector per input token</text>
+<text x="117" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: UNDERSTAND a finished input</text>
+<text x="117" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">BERT - embeddings - search</text>
+<text x="340" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">B - DECODER</text>
+<text x="340" y="94" text-anchor="middle" font-size="9" fill="#555555">causal mask (Days 38/42)</text>
+<rect x="270" y="104" width="140" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="119" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">BLOCK x N (Day 40)</text>
+<rect x="288" y="140" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="140" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="166" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="166" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="166" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="166" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="192" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="192" width="26" height="26" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="288" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="314" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="340" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="366" y="218" width="26" height="26" rx="0" fill="#22a355" stroke="#ffffff" stroke-width="1.0"/>
+<text x="340" y="262" text-anchor="middle" font-size="8.5" fill="#666666">rows ask - cols are read</text>
+<text x="340" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">each token reads only the past</text>
+<text x="340" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">output: next token, then repeat</text>
+<text x="340" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: GENERATE left to right</text>
+<text x="340" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">GPT - chat - code completion</text>
+<text x="563" y="78" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">C - ENCODER-DECODER</text>
+<text x="563" y="94" text-anchor="middle" font-size="9" fill="#555555">two stacks + one bridge</text>
+<text x="563" y="100" text-anchor="middle" font-size="8" fill="#5a3fd4">cross-attn</text>
+<rect x="466" y="106" width="86" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="509" y="121" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">ENCODER</text>
+<rect x="574" y="106" width="86" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="617" y="121" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">DECODER</text>
+<line x1="554" y1="117" x2="570" y2="117" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="572,117 565,113 565,121" fill="#7a5cff"/>
+<rect x="497" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="146" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="146" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="497" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="162" width="16" height="16" rx="0" fill="#e8e8e8" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="497" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="513" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="529" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="146" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="162" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="565" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="581" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="597" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<rect x="613" y="178" width="16" height="16" rx="0" fill="#7a5cff" stroke="#ffffff" stroke-width="1.0"/>
+<text x="521" y="212" text-anchor="middle" font-size="8.5" fill="#555555">self: causal</text>
+<text x="597" y="212" text-anchor="middle" font-size="8.5" fill="#555555">cross: full</text>
+<text x="563" y="262" text-anchor="middle" font-size="8.5" fill="#5a3fd4">cross scores are RECTANGULAR</text>
+<text x="563" y="290" text-anchor="middle" font-size="9" fill="#1c1c1e">decoder Q reads encoder K, V</text>
+<text x="563" y="310" text-anchor="middle" font-size="9" fill="#1c1c1e">rows: target - cols: source</text>
+<text x="563" y="330" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">job: TRANSFORM a sequence</text>
+<text x="563" y="350" text-anchor="middle" font-size="9" fill="#1c1c1e">translation - Whisper - T5</text>
+<rect x="12" y="386" width="656" height="48" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="406" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">THE RULE: finished input in, label or vectors out -&gt; ENCODER</text>
+<text x="340" y="424" text-anchor="middle" font-size="9" fill="#1c1c1e">new text out, token by token -&gt; DECODER  |  finished input in, NEW sequence out -&gt; ENCODER-DECODER</text>
+</svg>
