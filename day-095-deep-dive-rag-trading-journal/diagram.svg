@@ -1,0 +1,67 @@
+<svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13" fill="#1c1c1e" font-weight="bold">Journal RAG: filter first (exact), rank second (fuzzy), gate at the exit</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 59&#x27;s engine, re-plumbed for records that carry dates, tickers and actions</text>
+<rect x="12" y="54" width="656" height="86" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE CORPUS: THE JOURNAL (24 fictional entries, standing in for the tradebot&#x27;s real rows)</text>
+<rect x="20" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="28" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-09-15 META trim]</text>
+<text x="28" y="107" font-size="8.5" fill="#555555">Trimmed a third into the rally...</text>
+<rect x="236" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="244" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-10-21 META sell]</text>
+<text x="244" y="107" font-size="8.5" fill="#555555">Exited the rest after the print...</text>
+<rect x="452" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="460" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-10-26 META note]</text>
+<text x="460" y="107" font-size="8.5" fill="#555555">Post-exit review: the June thesis...</text>
+<text x="340" y="130" text-anchor="middle" font-size="9" fill="#1c1c1e">every row = date, ticker, action, the reason typed at the time - already atomic, so no chunking</text>
+<line x1="340" y1="140" x2="340" y2="166" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="340,166 336,159 344,159" fill="#0a7aff"/>
+<rect x="24" y="168" width="120" height="58" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="84" y="190" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Question</text>
+<text x="84" y="206" text-anchor="middle" font-size="8.5" fill="#555555">why did I exit</text>
+<text x="84" y="218" text-anchor="middle" font-size="8.5" fill="#555555">META in October?</text>
+<rect x="170" y="168" width="340" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="340" y="188" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">STAGE 1 - METADATA FILTER</text>
+<text x="340" y="204" text-anchor="middle" font-size="8.5" fill="#555555">ticker = META, month = 10 - an exact WHERE clause, no scores</text>
+<text x="340" y="218" text-anchor="middle" font-size="8.5" fill="#0a54c2">3 of 24 rows survive</text>
+<rect x="536" y="168" width="132" height="58" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602" y="190" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE (early)</text>
+<text x="602" y="206" text-anchor="middle" font-size="8.5" fill="#555555">0 rows survive:</text>
+<text x="602" y="218" text-anchor="middle" font-size="8.5" fill="#555555">ranking never runs (Q3)</text>
+<line x1="144" y1="197" x2="168" y2="197" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="168,197 161,193 161,201" fill="#22a355"/>
+<line x1="510" y1="197" x2="534" y2="197" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="534,197 527,193 527,201" fill="#c23b3b"/>
+<text x="522" y="188" text-anchor="middle" font-size="8.5" fill="#c23b3b">0 rows</text>
+<polyline points="200,226 200,240 84,240 84,252" fill="none" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="84,252 80,245 88,245" fill="#7a5cff"/>
+<text x="142" y="234" text-anchor="middle" font-size="8.5" fill="#5a3fd4">event? expand the anchor</text>
+<line x1="340" y1="226" x2="340" y2="252" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,252 336,245 344,245" fill="#22a355"/>
+<text x="350" y="244" font-size="8.5" fill="#177245">survivors</text>
+<rect x="24" y="254" width="120" height="58" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="84" y="276" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">EVENT WINDOW</text>
+<text x="84" y="292" text-anchor="middle" font-size="8.5" fill="#555555">anchor +/- neighbours on</text>
+<text x="84" y="304" text-anchor="middle" font-size="8.5" fill="#555555">the ticker&#x27;s timeline (Q2)</text>
+<rect x="170" y="254" width="340" height="58" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="340" y="274" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">STAGE 2 - RANK + GATE, INSIDE THE SLICE</text>
+<text x="340" y="290" text-anchor="middle" font-size="8.5" fill="#555555">Day 59 TF-IDF cosine over the survivors only</text>
+<text x="340" y="304" text-anchor="middle" font-size="8.5" fill="#177245">best score &gt;= 0.25, else refuse</text>
+<rect x="536" y="254" width="132" height="58" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602" y="276" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE (gate)</text>
+<text x="602" y="292" text-anchor="middle" font-size="8.5" fill="#555555">best score &lt; 0.25</text>
+<text x="602" y="304" text-anchor="middle" font-size="8.5" fill="#555555">inside the slice</text>
+<line x1="510" y1="283" x2="534" y2="283" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="534,283 527,279 527,287" fill="#c23b3b"/>
+<text x="522" y="274" text-anchor="middle" font-size="8.5" fill="#c23b3b">&lt; 0.25</text>
+<line x1="340" y1="312" x2="340" y2="338" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,338 336,331 344,331" fill="#22a355"/>
+<line x1="120" y1="312" x2="248" y2="336" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="250,338 240,335 243,326" fill="#7a5cff"/>
+<rect x="220" y="340" width="240" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2.4"/>
+<text x="340" y="362" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ANSWER</text>
+<text x="340" y="378" text-anchor="middle" font-size="8.5" fill="#555555">verbatim sentences + [date TICKER action] citations</text>
+<rect x="12" y="404" width="656" height="44" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="422" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">The corpus is you: a hallucinated reason for a trade is a false memory, not just a wrong fact -</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.5" fill="#1c1c1e">so this gate fires earlier than Day 59&#x27;s, and errs toward silence.</text>
+</svg>

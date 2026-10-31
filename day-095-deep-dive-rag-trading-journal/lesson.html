@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Dive: RAG Over Your Trading Journal — Day 95 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 95 of 100</span>
+  <h1>Deep Dive: RAG Over Your Trading Journal</h1>
+  <p class="outcome">Tonight you'll be able to: point Day 59&rsquo;s RAG at your trading journal and make it answer &ldquo;why did I do that?&rdquo; from your own entries &mdash; an exact metadata filter in front of the fuzzy ranker, event windows for time questions, and a refusal gate that can fire before ranking even starts.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 59&rsquo;s RAG treated its corpus as prose: chunk it, rank
+everything by word overlap, gate on the best score. A trading journal is not
+prose. Every entry your tradebot collects is a <em>record</em> &mdash; a date, a
+ticker, an action, and the reason you typed at the time &mdash; and records
+break the doc design in three specific places. Today&rsquo;s build fixes each
+one. The journal in the code is <strong>fictional</strong>: 24 invented entries
+in your journal&rsquo;s format, standing in for the real thing. None of them are
+real trades; the format and the machinery are the lesson.</p>
+<p><strong>Fix 1: an exact stage in front of the fuzzy one.</strong> A question
+that names a ticker or a month is not a similarity question &mdash; it is a
+<code>WHERE</code> clause. So retrieval becomes two-stage: stage 1 filters on
+metadata (ticker, date) deterministically, and Day 59&rsquo;s TF-IDF ranker
+only ever sees the survivors. Part 2 prints the receipt. Asked &ldquo;was the
+trim about the thesis or about position size&rdquo; over all 24 entries, the
+#1 hit is a PLTR <em>buy</em> at <code>0.2403</code> &mdash; its note says
+&ldquo;sizing up&rdquo;, which is word-near the question and factually the
+wrong trade. The actual trim entry ranks #2 at <code>0.2228</code>. Now the
+subtle part: inside the META slice, that same entry still scores exactly
+<code>0.2228</code>. The filter did not make the right answer score higher by
+a single point &mdash; it made the wrong answers <em>impossible</em>. That is
+the whole argument for hybrid retrieval: spend determinism on the parts of
+the question that are exact, and reserve the fuzzy machinery for the part
+that is genuinely fuzzy.</p>
+<p><strong>Fix 2: events get windows, not just matches.</strong> &ldquo;Why did
+I exit META in October?&rdquo; The October filter finds three entries and the
+<code>sell</code> among them is the anchor &mdash; but the <em>meaning</em> of
+the exit lives around it: the September trim that started the reduction, the
+Oct 7 note where the exit triggers were written down in advance, the Oct 26
+post-exit review that drew the rule from it. So the system expands the anchor
+into a window on META&rsquo;s own timeline &mdash; two entries before, one
+after &mdash; deliberately reaching <em>outside</em> the month filter that
+found it. The filter&rsquo;s job is to locate the event; the window&rsquo;s
+job is context, and context is not bound by the filter.</p>
+<p><strong>Fix 3: the gate moves earlier, because the corpus is you.</strong>
+Day 59&rsquo;s gate sat after ranking: best score too low, refuse. The journal
+adds a gate <em>before</em> ranking: if stage 1 returns zero rows, stage 2
+never runs. Q3 asks why you bought the COIN dip; this journal has never
+traded COIN, the filter returns <code>0 of 24</code>, and the system refuses
+at the index &mdash; there is nothing to rank and nothing to remember. Why be
+stricter here than over lesson notes? A hallucinated cake temperature is a
+wrong fact about the world. A hallucinated <em>reason you sold</em> is a
+false memory about your own decisions &mdash; and future-you, reading it back
+in a review, would quote it as fact. The cost asymmetry justifies the extra
+gate. (One repair from Day 59 falls away, honestly: no chunking. An entry is
+already atomic, so the row <em>is</em> the chunk, and the citation changes
+shape to match: <code>[2026-09-15 META trim]</code> instead of
+<code>[doc#chunk]</code>.)</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It is the difference between <code>grep</code> and a database.
+Day 59 grepped prose, because prose has no schema to exploit. The journal is
+a table: ticker and date are the index, the note is the payload. You would
+never full-text-scan a table for rows an index can hand you &mdash; you use
+the structure the data already has, and save the expensive fuzzy machinery
+for the one column that is actually fuzzy. And the pre-ranking refusal is a
+miss with correct semantics: NOT FOUND at the index layer, so the ranking
+tier is never consulted. Same shape as your storage reads &mdash; the cheap,
+exact layer gets to say &ldquo;not here&rdquo; before the expensive layer
+wakes up.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13" fill="#1c1c1e" font-weight="bold">Journal RAG: filter first (exact), rank second (fuzzy), gate at the exit</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 59&#x27;s engine, re-plumbed for records that carry dates, tickers and actions</text>
+<rect x="12" y="54" width="656" height="86" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE CORPUS: THE JOURNAL (24 fictional entries, standing in for the tradebot&#x27;s real rows)</text>
+<rect x="20" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="28" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-09-15 META trim]</text>
+<text x="28" y="107" font-size="8.5" fill="#555555">Trimmed a third into the rally...</text>
+<rect x="236" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="244" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-10-21 META sell]</text>
+<text x="244" y="107" font-size="8.5" fill="#555555">Exited the rest after the print...</text>
+<rect x="452" y="82" width="208" height="30" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="460" y="95" font-size="9" fill="#1c1c1e" font-weight="bold">[2026-10-26 META note]</text>
+<text x="460" y="107" font-size="8.5" fill="#555555">Post-exit review: the June thesis...</text>
+<text x="340" y="130" text-anchor="middle" font-size="9" fill="#1c1c1e">every row = date, ticker, action, the reason typed at the time - already atomic, so no chunking</text>
+<line x1="340" y1="140" x2="340" y2="166" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="340,166 336,159 344,159" fill="#0a7aff"/>
+<rect x="24" y="168" width="120" height="58" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="84" y="190" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Question</text>
+<text x="84" y="206" text-anchor="middle" font-size="8.5" fill="#555555">why did I exit</text>
+<text x="84" y="218" text-anchor="middle" font-size="8.5" fill="#555555">META in October?</text>
+<rect x="170" y="168" width="340" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="340" y="188" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">STAGE 1 - METADATA FILTER</text>
+<text x="340" y="204" text-anchor="middle" font-size="8.5" fill="#555555">ticker = META, month = 10 - an exact WHERE clause, no scores</text>
+<text x="340" y="218" text-anchor="middle" font-size="8.5" fill="#0a54c2">3 of 24 rows survive</text>
+<rect x="536" y="168" width="132" height="58" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602" y="190" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE (early)</text>
+<text x="602" y="206" text-anchor="middle" font-size="8.5" fill="#555555">0 rows survive:</text>
+<text x="602" y="218" text-anchor="middle" font-size="8.5" fill="#555555">ranking never runs (Q3)</text>
+<line x1="144" y1="197" x2="168" y2="197" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="168,197 161,193 161,201" fill="#22a355"/>
+<line x1="510" y1="197" x2="534" y2="197" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="534,197 527,193 527,201" fill="#c23b3b"/>
+<text x="522" y="188" text-anchor="middle" font-size="8.5" fill="#c23b3b">0 rows</text>
+<polyline points="200,226 200,240 84,240 84,252" fill="none" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="84,252 80,245 88,245" fill="#7a5cff"/>
+<text x="142" y="234" text-anchor="middle" font-size="8.5" fill="#5a3fd4">event? expand the anchor</text>
+<line x1="340" y1="226" x2="340" y2="252" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,252 336,245 344,245" fill="#22a355"/>
+<text x="350" y="244" font-size="8.5" fill="#177245">survivors</text>
+<rect x="24" y="254" width="120" height="58" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="84" y="276" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">EVENT WINDOW</text>
+<text x="84" y="292" text-anchor="middle" font-size="8.5" fill="#555555">anchor +/- neighbours on</text>
+<text x="84" y="304" text-anchor="middle" font-size="8.5" fill="#555555">the ticker&#x27;s timeline (Q2)</text>
+<rect x="170" y="254" width="340" height="58" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+<text x="340" y="274" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">STAGE 2 - RANK + GATE, INSIDE THE SLICE</text>
+<text x="340" y="290" text-anchor="middle" font-size="8.5" fill="#555555">Day 59 TF-IDF cosine over the survivors only</text>
+<text x="340" y="304" text-anchor="middle" font-size="8.5" fill="#177245">best score &gt;= 0.25, else refuse</text>
+<rect x="536" y="254" width="132" height="58" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602" y="276" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE (gate)</text>
+<text x="602" y="292" text-anchor="middle" font-size="8.5" fill="#555555">best score &lt; 0.25</text>
+<text x="602" y="304" text-anchor="middle" font-size="8.5" fill="#555555">inside the slice</text>
+<line x1="510" y1="283" x2="534" y2="283" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="534,283 527,279 527,287" fill="#c23b3b"/>
+<text x="522" y="274" text-anchor="middle" font-size="8.5" fill="#c23b3b">&lt; 0.25</text>
+<line x1="340" y1="312" x2="340" y2="338" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,338 336,331 344,331" fill="#22a355"/>
+<line x1="120" y1="312" x2="248" y2="336" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="250,338 240,335 243,326" fill="#7a5cff"/>
+<rect x="220" y="340" width="240" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2.4"/>
+<text x="340" y="362" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ANSWER</text>
+<text x="340" y="378" text-anchor="middle" font-size="8.5" fill="#555555">verbatim sentences + [date TICKER action] citations</text>
+<rect x="12" y="404" width="656" height="44" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="422" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">The corpus is you: a hallucinated reason for a trade is a false memory, not just a wrong fact -</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.5" fill="#1c1c1e">so this gate fires earlier than Day 59&#x27;s, and errs toward silence.</text>
+</svg>
+    <div class="caption">Two-stage retrieval over the journal. Stage 1 (blue) is an exact metadata filter &mdash; and the only stage that can refuse before ranking (Q3). Stage 2 (green) is Day 59&rsquo;s TF-IDF ranker, now confined to the surviving slice, with the score gate at its exit. Event questions branch sideways into a window (purple): the anchor&rsquo;s neighbours on the ticker&rsquo;s own timeline, filter be damned.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Standard library only, like Day 59 &mdash; run it in
+<code>~/ai-lab</code> with <code>python3 code.py</code>. <strong>Part 1</strong>
+loads the 24 fictional entries and builds Day 59&rsquo;s TF-IDF index over
+them, one row per entry; the indexed text includes the metadata as words
+(ticker, action, month name) so the fuzzy ranker can hear &ldquo;September&rdquo;
+&mdash; the filter remains the exact path. <strong>Part 2</strong> runs one
+question both ways: ranked over the whole journal, then inside the META
+slice. <strong>Part 3</strong> is the payoff: Q1 answered by a single verbatim
+sentence with its citation; Q2&rsquo;s window printed around the
+<code>&gt;&gt;</code> anchor; Q3 refused at stage 1 with stage 2 skipped. On
+your machine, the same three functions take your real journal export &mdash;
+the fictional rows are the only thing that changes.</p>
+  <pre><code>&quot;&quot;&quot;Day 95 - Deep Dive: RAG Over Your Trading Journal.
+
+Day 59 pointed the tiny RAG at lesson notes. Today the same
+engine is pointed at the corpus where a wrong answer costs
+the most: your trading journal - the entries your tradebot
+collects (date, ticker, action, and the reason you typed at
+the time). The journal below is FICTIONAL: 24 invented
+entries in your journal&#x27;s format, standing in for the real
+thing. None of these are real trades.
+
+Doc-RAG ranked the whole corpus by word overlap and gated
+on the best score. A journal breaks that design in three
+places, and each break gets a fix today:
+
+  1. Some questions are EXACT, not fuzzy. &quot;My META entries&quot;
+     is a WHERE clause, not a vibe. So retrieval is now
+     two-stage: a metadata filter (ticker, date range)
+     slices the journal deterministically, and only then
+     does Day 59&#x27;s TF-IDF rank inside the slice. Hybrid
+     retrieval: SQL brain first, fuzzy brain second.
+
+  2. Some questions are about EVENTS in time. &quot;Why did I
+     exit in October?&quot; is answered by the entries AROUND
+     the exit - the trim before it, the note where the
+     exit triggers were written down, the post-exit review
+     after it. So the system can expand an anchor entry
+     into a window on that ticker&#x27;s timeline.
+
+  3. The refusal gate matters MORE here. A hallucinated
+     cake temperature is funny; a hallucinated memory of
+     why you sold is a false fact about your own money.
+     The gate now also fires BEFORE ranking: if the filter
+     matches nothing, there is nothing to rank, and the
+     system refuses without ever consulting the fuzzy brain.
+
+No chunking this time: a journal entry is already atomic -
+one date, one action, one reason. The citation changes
+shape to match: [date TICKER action] names the exact
+journal row a sentence came from.
+
+  Part 1  The journal as an index: 24 fictional entries,
+          Day 59&#x27;s TF-IDF engine, one row per entry.
+  Part 2  Stage 1 vs no stage 1: the same question ranked
+          over the whole journal, then inside the META
+          slice - watch what the filter removes for free.
+  Part 3  Three questions end to end: filter + rank with
+          citations; an event window around the October
+          exit; and a ticker never traded, refused at the
+          filter, ranking never consulted.
+
+Runs anywhere: Python 3.11+ standard library ONLY (math,
+re). No torch, no APIs, no downloads, no RNG - every score
+below is exact and reproducible digit for digit.
+
+Expected output:
+  Part 1 - THE JOURNAL AS AN INDEX: one row per entry, no chunking
+    24 fictional entries, 2026-06-09 .. 2026-10-27
+    per ticker: AMD 5  META 8  NVDA 6  PLTR 5
+    no chunking: an entry is already atomic - one date, one
+    action, one reason. The row IS the chunk (Day 59 contrast).
+    vocabulary = 258 terms; index shape: 24 entry vectors x 258 dims
+  Part 2 - STAGE 1 FIRST: same question, whole journal vs the slice
+    Q: &quot;was the trim about the thesis or about position size&quot; (no ticker named in the words)
+    ranked over ALL 24 entries (Day 59&#x27;s way):
+      #1  [2026-06-23 PLTR buy   ] cos 0.2403
+      #2  [2026-09-15 META trim  ] cos 0.2228
+      #3  [2026-10-13 NVDA trim  ] cos 0.1550
+    stage 1 filter ticker=META: 8 of 24 entries survive
+    ranked inside the META slice only:
+      #1  [2026-09-15 META trim  ] cos 0.2228
+      #2  [2026-10-26 META note  ] cos 0.1276
+      #3  [2026-07-28 META add   ] cos 0.1195
+    the filter does not make the right entry score higher - it
+    makes the wrong-ticker entries IMPOSSIBLE. Exact beats fuzzy
+    wherever the question is exact.
+  Part 3 - END TO END: filter -&gt; rank -&gt; gate, or the window, or refuse
+    Q1: &quot;why did I trim META in September - thesis or position size&quot;
+      stage 1: ticker=META -&gt; 8 entries; stage 2 top score 0.3384
+      gate: 0.3384 &gt;= 0.25 -&gt; ANSWER
+        &quot;Reason: position size, not thesis - it had grown past my single-name limit.&quot; [2026-09-15 META trim]
+    Q2: &quot;why did I exit META in October&quot;
+      stage 1: ticker=META, month=10 -&gt; 3 entries; anchor = the sell
+      event window on META&#x27;s timeline (reaches past the month filter):
+         [2026-09-15 META trim  ] Trimmed a third into the rally.
+         [2026-10-07 META note  ] Pre-earnings jitters in the group.
+      &gt;&gt; [2026-10-21 META sell  ] Exited the rest after the print.
+         [2026-10-26 META note  ] Post-exit review: the June thesis died on guidance, not price.
+      ANSWER (the anchor entry states its own reason):
+        &quot;Exited the rest after the print.&quot; [2026-10-21 META sell]
+        &quot;Guidance cut the ad growth outlook and capex jumped again; the thesis I wrote in June no longer matches the numbers, so I closed it rather than argue with the tape.&quot; [2026-10-21 META sell]
+    Q3: &quot;why did I buy the COIN dip in August&quot;
+      stage 1: ticker=COIN -&gt; 0 of 24 entries
+      stage 2: SKIPPED - no candidates, ranking never runs
+      REFUSE: this journal has no COIN entries, so there is
+              nothing to remember. A bare LLM, asked why you
+              bought a dip you never traded, would invent a
+              reason. The filter makes the invention impossible.
+    verdict: exact questions get exact filters, fuzzy questions
+             get ranked inside the slice, events get a window -
+             and every path still ends at the gate.
+&quot;&quot;&quot;
+import math
+import re
+from collections import Counter
+
+# The journal: 24 FICTIONAL entries in tradebot format -
+# date, ticker, action, and the reason typed at the time.
+# Invented for this lesson; NOT real trades.
+JOURNAL = [
+    {&quot;date&quot;: &quot;2026-06-09&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;buy&quot;,
+     &quot;note&quot;: &quot;Opened a starter position after the post-earnings dip. &quot;
+             &quot;Thesis: ad revenue still compounding and the valuation &quot;
+             &quot;finally looks reasonable.&quot;},
+    {&quot;date&quot;: &quot;2026-06-16&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;buy&quot;,
+     &quot;note&quot;: &quot;Started a position ahead of the data center print. &quot;
+             &quot;Hyperscaler capex commentary keeps pointing at more &quot;
+             &quot;accelerators.&quot;},
+    {&quot;date&quot;: &quot;2026-06-23&quot;, &quot;ticker&quot;: &quot;PLTR&quot;, &quot;action&quot;: &quot;buy&quot;,
+     &quot;note&quot;: &quot;Small starter. Commercial revenue growth is the number &quot;
+             &quot;I care about; government work is the base load.&quot;},
+    {&quot;date&quot;: &quot;2026-06-30&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Reality Labs losses widened again. Watching whether &quot;
+             &quot;management guides capex up at the next print.&quot;},
+    {&quot;date&quot;: &quot;2026-07-07&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Supply chatter: lead times normalizing. Not a thesis &quot;
+             &quot;break, but the scarcity premium may fade.&quot;},
+    {&quot;date&quot;: &quot;2026-07-14&quot;, &quot;ticker&quot;: &quot;AMD&quot;, &quot;action&quot;: &quot;buy&quot;,
+     &quot;note&quot;: &quot;Starter position as the second-source play on AI &quot;
+             &quot;accelerators. Smaller size than NVDA because the &quot;
+             &quot;software moat is thinner.&quot;},
+    {&quot;date&quot;: &quot;2026-07-28&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;add&quot;,
+     &quot;note&quot;: &quot;Added on strength after the earnings beat. Ad &quot;
+             &quot;impressions up, pricing held, and the AI capex guide &quot;
+             &quot;was raised without the stock selling off.&quot;},
+    {&quot;date&quot;: &quot;2026-07-30&quot;, &quot;ticker&quot;: &quot;PLTR&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Bootcamp conversions look real but lumpy. I want two &quot;
+             &quot;more quarters of evidence before sizing up.&quot;},
+    {&quot;date&quot;: &quot;2026-08-11&quot;, &quot;ticker&quot;: &quot;AMD&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Accelerator traction is the whole thesis. I need &quot;
+             &quot;design-win evidence, not roadmap slides.&quot;},
+    {&quot;date&quot;: &quot;2026-08-19&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Position is now my largest. Reminder to self: &quot;
+             &quot;concentration is a risk even when the thesis is intact.&quot;},
+    {&quot;date&quot;: &quot;2026-08-26&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;add&quot;,
+     &quot;note&quot;: &quot;Added after earnings. Data center revenue beat and the &quot;
+             &quot;guide implied another step up in accelerator shipments.&quot;},
+    {&quot;date&quot;: &quot;2026-09-02&quot;, &quot;ticker&quot;: &quot;PLTR&quot;, &quot;action&quot;: &quot;add&quot;,
+     &quot;note&quot;: &quot;Added after the commercial segment accelerated again. &quot;
+             &quot;Growth at this quality is hard to ignore.&quot;},
+    {&quot;date&quot;: &quot;2026-09-08&quot;, &quot;ticker&quot;: &quot;AMD&quot;, &quot;action&quot;: &quot;sell&quot;,
+     &quot;note&quot;: &quot;Sold the starter. Two quarters without the design wins &quot;
+             &quot;I asked for in July; capital works harder elsewhere. &quot;
+             &quot;Small loss, thesis exit, not a price exit.&quot;},
+    {&quot;date&quot;: &quot;2026-09-15&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;trim&quot;,
+     &quot;note&quot;: &quot;Trimmed a third into the rally. Reason: position size, &quot;
+             &quot;not thesis - it had grown past my single-name limit.&quot;},
+    {&quot;date&quot;: &quot;2026-09-22&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Customer concentration is the bear case I take &quot;
+             &quot;seriously: two buyers are a huge share of revenue.&quot;},
+    {&quot;date&quot;: &quot;2026-09-29&quot;, &quot;ticker&quot;: &quot;PLTR&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Valuation is the whole argument against. Multiple &quot;
+             &quot;expansion did the heavy lifting this year, not estimates.&quot;},
+    {&quot;date&quot;: &quot;2026-09-30&quot;, &quot;ticker&quot;: &quot;AMD&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Watchlist only now. Would revisit on a named &quot;
+             &quot;hyperscaler deployment, in size.&quot;},
+    {&quot;date&quot;: &quot;2026-10-07&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Pre-earnings jitters in the group. Decided to hold &quot;
+             &quot;through the print but wrote down my exit triggers &quot;
+             &quot;in advance.&quot;},
+    {&quot;date&quot;: &quot;2026-10-13&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;trim&quot;,
+     &quot;note&quot;: &quot;Trimmed into all-time highs to fund other ideas. Still &quot;
+             &quot;bullish; this was sizing discipline, not a verdict &quot;
+             &quot;on the quarter.&quot;},
+    {&quot;date&quot;: &quot;2026-10-15&quot;, &quot;ticker&quot;: &quot;AMD&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Still no deployment news. Staying patient; no &quot;
+             &quot;fear-of-missing-out re-entry.&quot;},
+    {&quot;date&quot;: &quot;2026-10-19&quot;, &quot;ticker&quot;: &quot;PLTR&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;No action. Watching whether US commercial growth &quot;
+             &quot;holds up at the next print.&quot;},
+    {&quot;date&quot;: &quot;2026-10-21&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;sell&quot;,
+     &quot;note&quot;: &quot;Exited the rest after the print. Guidance cut the ad &quot;
+             &quot;growth outlook and capex jumped again; the thesis I &quot;
+             &quot;wrote in June no longer matches the numbers, so I &quot;
+             &quot;closed it rather than argue with the tape.&quot;},
+    {&quot;date&quot;: &quot;2026-10-26&quot;, &quot;ticker&quot;: &quot;META&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Post-exit review: the June thesis died on guidance, &quot;
+             &quot;not price. Rule reinforced - when the stated reason &quot;
+             &quot;breaks, the position goes.&quot;},
+    {&quot;date&quot;: &quot;2026-10-27&quot;, &quot;ticker&quot;: &quot;NVDA&quot;, &quot;action&quot;: &quot;note&quot;,
+     &quot;note&quot;: &quot;Holding the remainder. Next checkpoint is the January &quot;
+             &quot;print and any export-control headlines.&quot;},
+]
+
+K = 3                # top-k retrieval
+THRESHOLD = 0.25     # Day 59&#x27;s gate, unchanged: best cosine must clear this
+
+
+def tokenize(text):
+    &quot;&quot;&quot;Lowercase word tokens; punctuation is dropped. (Day 59, verbatim.)&quot;&quot;&quot;
+    return re.findall(r&quot;[a-z0-9]+&quot;, text.lower())
+
+
+MONTHS = [&quot;january&quot;, &quot;february&quot;, &quot;march&quot;, &quot;april&quot;, &quot;may&quot;, &quot;june&quot;,
+          &quot;july&quot;, &quot;august&quot;, &quot;september&quot;, &quot;october&quot;, &quot;november&quot;,
+          &quot;december&quot;]
+
+
+def entry_text(e):
+    &quot;&quot;&quot;What the index sees: the note, plus the metadata as words -
+    ticker, action, and the month name - so &#x27;September&#x27; is
+    searchable text too. The stage-1 filter stays the exact path;
+    this only helps the fuzzy ranker.&quot;&quot;&quot;
+    month = MONTHS[int(e[&quot;date&quot;][5:7]) - 1]
+    return f&quot;{e[&#x27;ticker&#x27;]} {e[&#x27;action&#x27;]} {month} {e[&#x27;note&#x27;]}&quot;
+
+
+def entry_id(e):
+    &quot;&quot;&quot;The journal citation: one exact row. [2026-09-15 META trim]&quot;&quot;&quot;
+    return f&quot;{e[&#x27;date&#x27;]} {e[&#x27;ticker&#x27;]} {e[&#x27;action&#x27;]}&quot;
+
+
+# ---------- Part 1: THE JOURNAL AS AN INDEX (Day 59&#x27;s engine) --------------
+print(&quot;Part 1 - THE JOURNAL AS AN INDEX: one row per entry, no chunking&quot;)
+counts = Counter(e[&quot;ticker&quot;] for e in JOURNAL)
+print(f&quot;  {len(JOURNAL)} fictional entries, &quot;
+      f&quot;{JOURNAL[0][&#x27;date&#x27;]} .. {JOURNAL[-1][&#x27;date&#x27;]}&quot;)
+print(&quot;  per ticker: &quot; + &quot;  &quot;.join(f&quot;{t} {counts[t]}&quot;
+                                   for t in sorted(counts)))
+print(&quot;  no chunking: an entry is already atomic - one date, one&quot;)
+print(&quot;  action, one reason. The row IS the chunk (Day 59 contrast).&quot;)
+
+entry_tokens = [tokenize(entry_text(e)) for e in JOURNAL]
+vocab = sorted({t for toks in entry_tokens for t in toks})
+V = {w: i for i, w in enumerate(vocab)}
+N = len(JOURNAL)
+df = Counter()
+for toks in entry_tokens:
+    df.update(set(toks))
+idf = {w: math.log((1 + N) / (1 + df[w])) + 1.0 for w in vocab}
+
+
+def embed(tokens):
+    &quot;&quot;&quot;TF-IDF vector: count of each word, weighted by its idf.
+    (Day 59, verbatim.)&quot;&quot;&quot;
+    counts_ = Counter(tokens)
+    vec = [0.0] * len(vocab)
+    for w, c in counts_.items():
+        if w in V:                       # unknown words are ignored
+            vec[V[w]] = c * idf[w]
+    return vec
+
+
+index = [embed(toks) for toks in entry_tokens]
+print(f&quot;  vocabulary = {len(vocab)} terms; index shape: &quot;
+      f&quot;{len(index)} entry vectors x {len(vocab)} dims&quot;)
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+# ---------- The two stages --------------------------------------------------
+def stage1_filter(ticker=None, month=None):
+    &quot;&quot;&quot;STAGE 1 - exact metadata filter. Returns journal indices.
+    Deterministic: a row matches or it does not. No scores.&quot;&quot;&quot;
+    return [i for i, e in enumerate(JOURNAL)
+            if (ticker is None or e[&quot;ticker&quot;] == ticker)
+            and (month is None or e[&quot;date&quot;][5:7] == month)]
+
+
+def stage2_rank(query, subset, k=K):
+    &quot;&quot;&quot;STAGE 2 - Day 59&#x27;s TF-IDF cosine rank, INSIDE the slice only.&quot;&quot;&quot;
+    qv = embed(tokenize(query))
+    scored = [(cosine(qv, index[i]), i) for i in subset]
+    scored.sort(key=lambda p: (-p[0], p[1]))
+    return scored[:k]
+
+
+def sentences(text):
+    return [s for s in re.split(r&quot;(?&lt;=[.!?])\s+&quot;, text) if s]
+
+
+def extract_answer(query, hits, n=2):
+    &quot;&quot;&quot;Extractive assembly, Day 59&#x27;s rules with one journal
+    twist: lift the best COMPLETE sentences from the TOP
+    entry&#x27;s note only, verbatim, each printed with its
+    [date TICKER action] citation. Day 59 read the top 2
+    chunks because a chunk is a fragment of a document;
+    a journal entry is a complete record of one event,
+    so the answer quotes the event itself.&quot;&quot;&quot;
+    qtoks = set(tokenize(query))
+    cands = []
+    for _, i in hits[:1]:
+        for si, sent in enumerate(sentences(JOURNAL[i][&quot;note&quot;])):
+            if not (sent[0].isupper() and sent[-1] in &quot;.!?&quot;):
+                continue                 # a fragment, not a sentence
+            shared = qtoks &amp; set(tokenize(sent))
+            s = sum(idf[w] for w in shared if w in idf)
+            if s &gt; 0:
+                cands.append((s, i, si, sent))
+    if not cands:
+        return []
+    floor = 0.4 * max(s for s, _, _, _ in cands)
+    strong = [c for c in cands if c[0] &gt;= floor]
+    strong.sort(key=lambda t: (-t[0], t[1], t[2]))
+    picked = sorted(strong[:n], key=lambda t: (t[1], t[2]))
+    return [(sent, entry_id(JOURNAL[i])) for _, i, _, sent in picked]
+
+
+# ---------- Part 2: WHY THE FILTER GOES FIRST -------------------------------
+print(&quot;Part 2 - STAGE 1 FIRST: same question, whole journal vs the slice&quot;)
+Q = &quot;was the trim about the thesis or about position size&quot;
+print(f&quot;  Q: \&quot;{Q}\&quot; (no ticker named in the words)&quot;)
+all_hits = stage2_rank(Q, range(len(JOURNAL)))
+print(&quot;  ranked over ALL 24 entries (Day 59&#x27;s way):&quot;)
+for rank, (score, i) in enumerate(all_hits, start=1):
+    print(f&quot;    #{rank}  [{entry_id(JOURNAL[i]):&lt;22}] cos {score:.4f}&quot;)
+meta_slice = stage1_filter(ticker=&quot;META&quot;)
+print(f&quot;  stage 1 filter ticker=META: {len(meta_slice)} of 24 entries survive&quot;)
+meta_hits = stage2_rank(Q, meta_slice)
+print(&quot;  ranked inside the META slice only:&quot;)
+for rank, (score, i) in enumerate(meta_hits, start=1):
+    print(f&quot;    #{rank}  [{entry_id(JOURNAL[i]):&lt;22}] cos {score:.4f}&quot;)
+print(&quot;  the filter does not make the right entry score higher - it&quot;)
+print(&quot;  makes the wrong-ticker entries IMPOSSIBLE. Exact beats fuzzy&quot;)
+print(&quot;  wherever the question is exact.&quot;)
+
+# ---------- Part 3: THREE QUESTIONS, END TO END -----------------------------
+print(&quot;Part 3 - END TO END: filter -&gt; rank -&gt; gate, or the window, or refuse&quot;)
+
+# Q1: filter + rank, answered with citations.
+Q1 = &quot;why did I trim META in September - thesis or position size&quot;
+print(f&quot;  Q1: \&quot;{Q1}\&quot;&quot;)
+q1_hits = stage2_rank(Q1, meta_slice)
+best = q1_hits[0][0]
+print(f&quot;    stage 1: ticker=META -&gt; {len(meta_slice)} entries; &quot;
+      f&quot;stage 2 top score {best:.4f}&quot;)
+if best &lt; THRESHOLD:
+    print(f&quot;    gate: {best:.4f} &lt; {THRESHOLD:.2f} -&gt; REFUSE&quot;)
+else:
+    print(f&quot;    gate: {best:.4f} &gt;= {THRESHOLD:.2f} -&gt; ANSWER&quot;)
+    for sent, cid in extract_answer(Q1, q1_hits):
+        print(f&quot;      \&quot;{sent}\&quot; [{cid}]&quot;)
+
+# Q2: the event window around the October META exit.
+print(&quot;  Q2: \&quot;why did I exit META in October\&quot;&quot;)
+oct_meta = stage1_filter(ticker=&quot;META&quot;, month=&quot;10&quot;)
+anchor = next(i for i in oct_meta if JOURNAL[i][&quot;action&quot;] == &quot;sell&quot;)
+timeline = stage1_filter(ticker=&quot;META&quot;)          # META&#x27;s own timeline
+pos = timeline.index(anchor)
+window = timeline[max(0, pos - 2):pos + 2]        # 2 before, anchor, 1 after
+print(f&quot;    stage 1: ticker=META, month=10 -&gt; {len(oct_meta)} entries; &quot;
+      f&quot;anchor = the sell&quot;)
+print(&quot;    event window on META&#x27;s timeline (reaches past the month filter):&quot;)
+for i in window:
+    mark = &quot;&gt;&gt;&quot; if i == anchor else &quot;  &quot;
+    print(f&quot;    {mark} [{entry_id(JOURNAL[i]):&lt;22}] &quot;
+          f&quot;{sentences(JOURNAL[i][&#x27;note&#x27;])[0]}&quot;)
+print(&quot;    ANSWER (the anchor entry states its own reason):&quot;)
+for sent in sentences(JOURNAL[anchor][&quot;note&quot;]):
+    print(f&quot;      \&quot;{sent}\&quot; [{entry_id(JOURNAL[anchor])}]&quot;)
+
+# Q3: a ticker never traded - refused at the filter, before ranking.
+print(&quot;  Q3: \&quot;why did I buy the COIN dip in August\&quot;&quot;)
+coin_slice = stage1_filter(ticker=&quot;COIN&quot;)
+print(f&quot;    stage 1: ticker=COIN -&gt; {len(coin_slice)} of 24 entries&quot;)
+if not coin_slice:
+    print(&quot;    stage 2: SKIPPED - no candidates, ranking never runs&quot;)
+    print(&quot;    REFUSE: this journal has no COIN entries, so there is&quot;)
+    print(&quot;            nothing to remember. A bare LLM, asked why you&quot;)
+    print(&quot;            bought a dip you never traded, would invent a&quot;)
+    print(&quot;            reason. The filter makes the invention impossible.&quot;)
+print(&quot;  verdict: exact questions get exact filters, fuzzy questions&quot;)
+print(&quot;           get ranked inside the slice, events get a window -&quot;)
+print(&quot;           and every path still ends at the gate.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - THE JOURNAL AS AN INDEX: one row per entry, no chunking
+  24 fictional entries, 2026-06-09 .. 2026-10-27
+  per ticker: AMD 5  META 8  NVDA 6  PLTR 5
+  no chunking: an entry is already atomic - one date, one
+  action, one reason. The row IS the chunk (Day 59 contrast).
+  vocabulary = 258 terms; index shape: 24 entry vectors x 258 dims
+Part 2 - STAGE 1 FIRST: same question, whole journal vs the slice
+  Q: &quot;was the trim about the thesis or about position size&quot; (no ticker named in the words)
+  ranked over ALL 24 entries (Day 59&#x27;s way):
+    #1  [2026-06-23 PLTR buy   ] cos 0.2403
+    #2  [2026-09-15 META trim  ] cos 0.2228
+    #3  [2026-10-13 NVDA trim  ] cos 0.1550
+  stage 1 filter ticker=META: 8 of 24 entries survive
+  ranked inside the META slice only:
+    #1  [2026-09-15 META trim  ] cos 0.2228
+    #2  [2026-10-26 META note  ] cos 0.1276
+    #3  [2026-07-28 META add   ] cos 0.1195
+  the filter does not make the right entry score higher - it
+  makes the wrong-ticker entries IMPOSSIBLE. Exact beats fuzzy
+  wherever the question is exact.
+Part 3 - END TO END: filter -&gt; rank -&gt; gate, or the window, or refuse
+  Q1: &quot;why did I trim META in September - thesis or position size&quot;
+    stage 1: ticker=META -&gt; 8 entries; stage 2 top score 0.3384
+    gate: 0.3384 &gt;= 0.25 -&gt; ANSWER
+      &quot;Reason: position size, not thesis - it had grown past my single-name limit.&quot; [2026-09-15 META trim]
+  Q2: &quot;why did I exit META in October&quot;
+    stage 1: ticker=META, month=10 -&gt; 3 entries; anchor = the sell
+    event window on META&#x27;s timeline (reaches past the month filter):
+       [2026-09-15 META trim  ] Trimmed a third into the rally.
+       [2026-10-07 META note  ] Pre-earnings jitters in the group.
+    &gt;&gt; [2026-10-21 META sell  ] Exited the rest after the print.
+       [2026-10-26 META note  ] Post-exit review: the June thesis died on guidance, not price.
+    ANSWER (the anchor entry states its own reason):
+      &quot;Exited the rest after the print.&quot; [2026-10-21 META sell]
+      &quot;Guidance cut the ad growth outlook and capex jumped again; the thesis I wrote in June no longer matches the numbers, so I closed it rather than argue with the tape.&quot; [2026-10-21 META sell]
+  Q3: &quot;why did I buy the COIN dip in August&quot;
+    stage 1: ticker=COIN -&gt; 0 of 24 entries
+    stage 2: SKIPPED - no candidates, ranking never runs
+    REFUSE: this journal has no COIN entries, so there is
+            nothing to remember. A bare LLM, asked why you
+            bought a dip you never traded, would invent a
+            reason. The filter makes the invention impossible.
+  verdict: exact questions get exact filters, fuzzy questions
+           get ranked inside the slice, events get a window -
+           and every path still ends at the gate.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints Part 2&rsquo;s unfiltered #1 as
+<code>[2026-06-23 PLTR buy]</code> at <code>0.2403</code> with the real trim
+at #2, the in-slice #1 as <code>[2026-09-15 META trim]</code>, Q1 answered at
+<code>0.3384</code> by the single sentence cited
+<code>[2026-09-15 META trim]</code>, Q2&rsquo;s four-entry window with
+<code>&gt;&gt;</code> on <code>[2026-10-21 META sell]</code>, and Q3 refused
+with <code>stage 2: SKIPPED</code>. Keeper test, no notes: say why the filter
+cannot change the right entry&rsquo;s score, why the window is allowed to
+cross the month filter, and why the journal&rsquo;s first gate sits before
+ranking while Day 59&rsquo;s sat after it.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can
+trace Q3&rsquo;s path with a finger, then run the code and read only Part 3.
+Now the experiment: in Q3, swap <code>COIN</code> for <code>AMD</code> and
+re-run &mdash; the refusal vanishes, because the journal <em>does</em> hold
+AMD rows. The gate was never about the question being silly; it is about the
+index being empty. That precision is the lesson.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: this journal system now answers three kinds of
+questions &mdash; but if you tweak the gate or the ranker, how would you know
+whether it got better or worse? Next you build the harness that grades it,
+so every change gets a score instead of a vibe.</p>
+  </div>
+
+  <div class="footer">Streak: 95 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
