@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG 1: Retrieval-Augmented Generation — The Architecture — Day 58 of 100</title>
+<!--
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 58 of 100</span>
+  <h1>RAG 1: Retrieval-Augmented Generation — The Architecture</h1>
+  <p class="outcome">Tonight you'll be able to: draw RAG as two paths you already know how to build — an offline indexing <em>write path</em> and an online retrieval <em>read path</em> — and run a working retrieval (no generation yet) that hands a model exactly the chunk that answers the question.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 49 ended on an uncomfortable fact: context is expensive, so a model can only read a little at a time. There is a second problem stacked on top of it — the model&rsquo;s knowledge froze at training time. Your design docs, your runbooks, last week&rsquo;s postmortem: not in the weights, never will be. Two bad fixes present themselves. Stuff everything into the prompt — impossible past a few documents, and you pay for all of it on every question. Or retrain the facts in — absurd: you don&rsquo;t ship a new model because a wiki page changed.</p>
+<p><strong>RAG — retrieval-augmented generation</strong> — is the third option, and it is an architecture, not a model: <strong>don&rsquo;t memorize the library in the weights; keep knowledge in an external index and fetch the relevant chunks at query time.</strong> Generation (the LLM writing an answer) is <em>augmented</em> by a retrieval step that runs first and pastes what it found into the prompt as context. The model answers from what it is <em>reading</em>, not from what it memorized.</p>
+<p><strong>The write path (offline).</strong> Three steps, run once per document change, with no user waiting: <strong>chunk</strong> — split each document into pieces of roughly one idea (a whole doc is too coarse to retrieve; a single sentence is a fragment of an answer). <strong>Embed</strong> — turn each chunk into a vector, Day 15&rsquo;s move: text in, point in space out, near points = near meanings. <strong>Index</strong> — store each vector next to its chunk&rsquo;s text in a vector store. That is the whole build job.</p>
+<p><strong>The read path (online).</strong> Per question: embed the question with <em>the same embedder</em> (load-bearing — a query vector and a chunk vector only live in the same space if the same function made both), rank every index row by cosine similarity to it, take the <strong>top-k</strong> chunks, <strong>stuff</strong> them into the prompt as context, and let the model generate. Notice what this means for quality: the answer is bounded by what retrieval handed over. If the right chunk isn&rsquo;t in the prompt, the model doesn&rsquo;t say &ldquo;not found&rdquo; — it guesses fluently. Most &ldquo;the model hallucinated&rdquo; bugs are retrieval bugs wearing a costume.</p>
+<p><strong>The failure modes, honestly</strong> — they all live in the seams, and you&rsquo;ll meet all three tomorrow: <strong>bad chunks</strong> (an idea split across a chunk boundary, so the retrieved piece is half an answer); <strong>missed retrieval</strong> (the right chunk exists but doesn&rsquo;t make the top-k — the question and the chunk say the same thing in different words, or k is just too small); <strong>stale index</strong> (the doc was updated, the index wasn&rsquo;t rebuilt, and the model now answers confidently from last month&rsquo;s runbook). None of these are model bugs. All three are platform bugs — which is good news, because platform bugs are your home turf.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You have built this system before — it&rsquo;s a <strong>secondary index in front of a compute engine</strong>. The documents are the table. The vector store is a global secondary index in DynamoDB terms: a <em>derived</em> structure, built offline from the source of truth, disposable and rebuildable, kept fresh by re-running the build when the source changes. A query never scans the table; it hits the index, fetches the few matching items, and only then does compute run. The LLM is the compute: a brilliant on-call engineer with total amnesia, who answers purely from the pages you hand them. RAG engineering is building that engineer a good paging system. And the split should feel familiar from systems you trust: <strong>weights are the compiled binary — skills, frozen at build time; the index is the database — live data, updated without recompiling.</strong> Nobody redeploys a binary to change a row.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 478" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="478" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13" fill="#1c1c1e" font-weight="bold">RAG: fetch the knowledge at query time - don&#x27;t bake it into the weights</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Two paths you already know: an offline build job, and an online read path</text>
+<rect x="12" y="54" width="656" height="118" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - OFFLINE: THE WRITE PATH (runs when documents change - no user waiting)</text>
+<rect x="28" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="93.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Documents</text>
+<text x="93.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">design docs, wiki</text>
+<rect x="190" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="255.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Chunk</text>
+<text x="255.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">split: ~1 idea each</text>
+<rect x="352" y="88" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="422.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed</text>
+<text x="422.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">chunk -&gt; vector</text>
+<rect x="524" y="88" width="128" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="588.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Index</text>
+<text x="588.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">store vector + text</text>
+<line x1="160" y1="114" x2="188" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="188,114 181,110 181,118" fill="#0a7aff"/>
+<line x1="322" y1="114" x2="350" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="350,114 343,110 343,118" fill="#0a7aff"/>
+<line x1="494" y1="114" x2="522" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="522,114 515,110 515,118" fill="#0a7aff"/>
+<text x="340" y="160" text-anchor="middle" font-size="9" fill="#1c1c1e">Day 15&#x27;s embeddings do this job in real systems; today&#x27;s code uses TF-IDF so you can see every number</text>
+<rect x="12" y="188" width="656" height="86" rx="10" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="208" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE VECTOR STORE - the model&#x27;s external memory (a secondary index, not weights)</text>
+<text x="340" y="230" text-anchor="middle" font-size="9.5" fill="#1c1c1e">chunk 0 text  &lt;-&gt;  [0.00, 0.00, 2.50, 1.59, 2.50, ...]      chunk 5 text  &lt;-&gt;  [ ... ]</text>
+<text x="340" y="250" text-anchor="middle" font-size="9.5" fill="#1c1c1e">one row per chunk: the words AND the vector that finds them</text>
+<text x="340" y="266" text-anchor="middle" font-size="9" fill="#5a3fd4">updating knowledge = re-chunk + re-index - the model itself never changes</text>
+<line x1="588" y1="142" x2="588" y2="186" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="588,186 584,179 592,179" fill="#7a5cff"/>
+<rect x="12" y="290" width="656" height="118" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="310" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONLINE: THE READ PATH (runs per question - the user IS waiting)</text>
+<rect x="24" y="324" width="104" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="76.0" y="346" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Question</text>
+<text x="76.0" y="364" text-anchor="middle" font-size="8.5" fill="#555555">user asks</text>
+<rect x="152" y="324" width="116" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="210.0" y="346" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed query</text>
+<text x="210.0" y="364" text-anchor="middle" font-size="8.5" fill="#555555">SAME embedder</text>
+<rect x="292" y="324" width="124" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="354.0" y="346" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Retrieve top-k</text>
+<text x="354.0" y="364" text-anchor="middle" font-size="8.5" fill="#555555">cosine-rank rows</text>
+<rect x="440" y="324" width="116" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="498.0" y="346" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Stuff context</text>
+<text x="498.0" y="364" text-anchor="middle" font-size="8.5" fill="#555555">chunks -&gt; prompt</text>
+<rect x="580" y="324" width="76" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="618.0" y="346" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Generate</text>
+<text x="618.0" y="364" text-anchor="middle" font-size="8.5" fill="#555555">the LLM</text>
+<line x1="130" y1="350" x2="150" y2="350" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="150,350 143,346 143,354" fill="#22a355"/>
+<line x1="270" y1="350" x2="290" y2="350" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="290,350 283,346 283,354" fill="#22a355"/>
+<line x1="418" y1="350" x2="438" y2="350" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="438,350 431,346 431,354" fill="#22a355"/>
+<line x1="558" y1="350" x2="578" y2="350" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="578,350 571,346 571,354" fill="#22a355"/>
+<text x="340" y="396" text-anchor="middle" font-size="9" fill="#1c1c1e">the answer can only be as good as the chunks retrieval handed it - garbage in, confident garbage out</text>
+<line x1="354" y1="322" x2="354" y2="276" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="354,276 350,269 358,269" fill="#7a5cff"/>
+<text x="300" y="286" text-anchor="middle" font-size="8.5" fill="#5a3fd4">reads</text>
+<rect x="12" y="422" width="656" height="42" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="440" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Weights = frozen skills. Index = live knowledge. RAG keeps them separate on purpose.</text>
+<text x="340" y="456" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Failure modes live in the seams: bad chunks, missed retrieval, a stale index.</text>
+</svg>
+    <div class="caption">Top lane: the write path — documents are chunked, embedded, and indexed, offline, whenever they change. Middle: the vector store, holding chunk text and its vector side by side — external memory, not weights. Bottom lane: the read path — the question is embedded by the <em>same</em> embedder, cosine-ranked against the store, the top-k chunks are stuffed into the prompt, and only then does the frozen model generate.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Retrieval only — no model, no generation, no APIs. To keep every number visible, the &ldquo;embedder&rdquo; is a <strong>TF-IDF vectorizer</strong> from the standard library: each chunk becomes a bag of word-counts weighted by <code>idf</code> (rare words count more — the same weighted-sum instinct as Day 15, minus the learning). Real systems swap this one function for a neural embedder and the linear scan for an approximate index; the pipeline&rsquo;s shape does not change. <strong>Part 1</strong> runs the write path over 8 chunks from one object-storage design doc. <strong>Part 2</strong> runs the read path for two questions. <strong>Part 3</strong> prints the exact prompt block that would be handed to a model — with a stub where tomorrow&rsquo;s answer goes. Read the results honestly: both winners are correct by a wide margin, but Q1&rsquo;s #2 and #3 slots are lexical near-misses (they share a stray &ldquo;data&rdquo; or &ldquo;disks&rdquo;) — at 8 chunks that&rsquo;s harmless filler; at 8 million chunks it&rsquo;s the precision fight real systems are in.</p>
+  <pre><code>&quot;&quot;&quot;Day 58 - RAG 1: Retrieval-Augmented Generation, the Architecture.
+
+Yesterday&#x27;s problem (Day 49): context is expensive, so a model
+can only read a little at a time - and its weights froze at
+training time anyway. RAG&#x27;s answer is an architecture, not a
+bigger model:
+
+    Don&#x27;t memorize the library in the weights. Keep knowledge
+    in an external index and FETCH the relevant chunks at
+    query time.
+
+Two paths, exactly like a storage system:
+
+  WRITE PATH (offline, once per document change)
+    documents -&gt; chunk -&gt; embed each chunk -&gt; index the
+    vectors next to the chunk text. This is a build job:
+    no user is waiting on it.
+
+  READ PATH (online, once per question)
+    question -&gt; embed it the SAME way -&gt; cosine-rank the
+    index -&gt; take the top-k chunks -&gt; stuff them into the
+    prompt as context -&gt; the model generates an answer that
+    can only be as good as what retrieval handed it.
+
+The model is a very smart but amnesiac compute engine. The
+index is its external memory - a read-through cache / a
+secondary index in front of it. Nothing here retrains
+anything: new knowledge = re-index, not re-train.
+
+Today is retrieval ONLY - no generation (that assembly is
+tomorrow&#x27;s build). The &quot;embeddings&quot; are transparent TF-IDF
+vectors built with the stdlib, standing in for Day 15&#x27;s
+learned embeddings: rare words weigh more (idf), and a chunk
+is a bag of weighted word-counts. Real systems swap this
+vectorizer for a neural embedder and an approximate index;
+the shape of the pipeline does not change.
+
+  Part 1  Write path: 8 hand-written chunks about object
+          storage, chunked, tokenized, TF-IDF embedded, and
+          indexed - print the index shape and one vector.
+  Part 2  Read path: two questions, embedded the same way,
+          cosine-ranked against the index - print the top 3
+          chunks with scores. Watch WHICH chunks win and
+          which relevant-looking one misses.
+  Part 3  Stuff the context: assemble the exact prompt block
+          that would be handed to a model for question 1 -
+          context chunks + question - and a stub where the
+          generated answer would go.
+
+Runs anywhere: Python 3.11+ standard library ONLY (math, re).
+No torch, no APIs, no downloads, no RNG - every score below
+is exact and reproducible digit for digit.
+
+Expected output:
+
+  Part 1 - WRITE PATH (offline): chunk -&gt; embed -&gt; index
+    8 chunks indexed; vocabulary = 108 terms
+    index shape: 8 chunk vectors x 108 dims (one row per chunk)
+    chunk 0 vector (first 6 of 108 dims): [0.0000, 0.0000, 2.5041, 1.5878, 2.5041, 0.0000]
+    (dims are vocabulary words in sorted order; most entries are 0 - sparse)
+  Part 2 - READ PATH (online): embed query -&gt; cosine-rank -&gt; top-k
+    Q1: &quot;how does erasure coding protect data when disks fail&quot;
+      #1  chunk 0  cos 0.4295  Erasure coding splits an object into data shards and parity shards, so the
+      #2  chunk 6  cos 0.0982  Compaction merges small objects into large segments and rewrites live data, reclaiming space
+      #3  chunk 5  cos 0.0856  A cold object lives on dense hard disks; the first read pays a
+    Q2: &quot;why is the first read of a cold object slow&quot;
+      #1  chunk 5  cos 0.4574  A cold object lives on dense hard disks; the first read pays a
+      #2  chunk 2  cos 0.3167  A write is acknowledged only once a quorum of nodes has durably stored
+      #3  chunk 7  cos 0.2570  The metadata index maps each object name to its shard locations, so a
+  Part 3 - STUFF THE CONTEXT: the prompt the model would receive (Q1, k=3)
+    ----- PROMPT -----
+    Answer the question using only the context below.
+    Context:
+    [chunk 0] Erasure coding splits an object into data shards and parity shards, so the object survives the loss of any few disks or nodes.
+    [chunk 6] Compaction merges small objects into large segments and rewrites live data, reclaiming space from deleted objects.
+    [chunk 5] A cold object lives on dense hard disks; the first read pays a disk seek, so cold reads are far slower than cached reads.
+    Question: how does erasure coding protect data when disks fail
+    ----- END PROMPT -----
+    [stub] generation happens here tomorrow - today the win is that the
+           model would be reading chunk 0, the one chunk that answers Q1.
+    verdict: the model never memorized any of this - it was fetched, at query time
+&quot;&quot;&quot;
+import math
+import re
+from collections import Counter
+
+# The &quot;corpus&quot;: 8 short chunks, as if split from one design doc
+# about an object storage system. In production a chunker cuts
+# real documents; here each chunk is already one idea.
+CHUNKS = [
+    &quot;Erasure coding splits an object into data shards and parity shards, &quot;
+    &quot;so the object survives the loss of any few disks or nodes.&quot;,
+    &quot;Replication keeps three full copies of every object on different &quot;
+    &quot;nodes; reads are fast, but storage costs three times the raw size.&quot;,
+    &quot;A write is acknowledged only once a quorum of nodes has durably &quot;
+    &quot;stored the shards; that quorum wait is what makes writes slower than reads.&quot;,
+    &quot;Checksums are computed on every read and write; a mismatch marks &quot;
+    &quot;the shard corrupt and triggers repair from the surviving shards.&quot;,
+    &quot;Hot objects are cached in memory on the read path, so a cache hit &quot;
+    &quot;skips disk and keeps tail latency low.&quot;,
+    &quot;A cold object lives on dense hard disks; the first read pays a disk &quot;
+    &quot;seek, so cold reads are far slower than cached reads.&quot;,
+    &quot;Compaction merges small objects into large segments and rewrites &quot;
+    &quot;live data, reclaiming space from deleted objects.&quot;,
+    &quot;The metadata index maps each object name to its shard locations, &quot;
+    &quot;so a read first looks up where the pieces live.&quot;,
+]
+
+QUERIES = [
+    &quot;how does erasure coding protect data when disks fail&quot;,
+    &quot;why is the first read of a cold object slow&quot;,
+]
+K = 3
+
+
+def tokenize(text):
+    &quot;&quot;&quot;Lowercase word tokens; punctuation is dropped.&quot;&quot;&quot;
+    return re.findall(r&quot;[a-z0-9]+&quot;, text.lower())
+
+
+# ---------- Part 1: WRITE PATH - chunk -&gt; embed -&gt; index ----------
+print(&quot;Part 1 - WRITE PATH (offline): chunk -&gt; embed -&gt; index&quot;)
+chunk_tokens = [tokenize(c) for c in CHUNKS]
+vocab = sorted({t for toks in chunk_tokens for t in toks})
+V = {w: i for i, w in enumerate(vocab)}
+
+# idf: a word in few chunks is informative; a word everywhere is not.
+N = len(CHUNKS)
+df = Counter()
+for toks in chunk_tokens:
+    df.update(set(toks))
+idf = {w: math.log((1 + N) / (1 + df[w])) + 1.0 for w in vocab}
+
+
+def embed(tokens):
+    &quot;&quot;&quot;TF-IDF vector: count of each word, weighted by its idf.&quot;&quot;&quot;
+    counts = Counter(tokens)
+    vec = [0.0] * len(vocab)
+    for w, c in counts.items():
+        if w in V:                       # unknown words are ignored
+            vec[V[w]] = c * idf[w]
+    return vec
+
+
+index = [embed(toks) for toks in chunk_tokens]   # the &quot;vector store&quot;
+print(f&quot;  {N} chunks indexed; vocabulary = {len(vocab)} terms&quot;)
+print(f&quot;  index shape: {len(index)} chunk vectors x {len(vocab)} dims &quot;
+      &quot;(one row per chunk)&quot;)
+first6 = &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in index[0][:6])
+print(f&quot;  chunk 0 vector (first 6 of {len(vocab)} dims): [{first6}]&quot;)
+print(&quot;  (dims are vocabulary words in sorted order; most entries &quot;
+      &quot;are 0 - sparse)&quot;)
+
+# ---------- Part 2: READ PATH - embed query -&gt; rank -&gt; top-k ----------
+print(&quot;Part 2 - READ PATH (online): embed query -&gt; cosine-rank -&gt; top-k&quot;)
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def retrieve(query, k=K):
+    qv = embed(tokenize(query))         # SAME embedder as the write path
+    scored = [(cosine(qv, row), i) for i, row in enumerate(index)]
+    scored.sort(key=lambda p: (-p[0], p[1]))
+    return scored[:k]
+
+
+results = {}
+for qi, q in enumerate(QUERIES, start=1):
+    hits = retrieve(q)
+    results[q] = hits
+    print(f&quot;  Q{qi}: \&quot;{q}\&quot;&quot;)
+    for rank, (score, ci) in enumerate(hits, start=1):
+        preview = &quot; &quot;.join(CHUNKS[ci].split()[:13])
+        print(f&quot;    #{rank}  chunk {ci}  cos {score:.4f}  {preview}&quot;)
+
+# ---------- Part 3: STUFF THE CONTEXT - build the prompt ----------
+print(&quot;Part 3 - STUFF THE CONTEXT: the prompt the model would &quot;
+      &quot;receive (Q1, k=3)&quot;)
+q1 = QUERIES[0]
+lines = [&quot;----- PROMPT -----&quot;,
+         &quot;Answer the question using only the context below.&quot;,
+         &quot;Context:&quot;]
+for _, ci in results[q1]:
+    lines.append(f&quot;[chunk {ci}] {CHUNKS[ci]}&quot;)
+lines.append(f&quot;Question: {q1}&quot;)
+lines.append(&quot;----- END PROMPT -----&quot;)
+for line in lines:
+    print(f&quot;  {line}&quot;)
+print(&quot;  [stub] generation happens here tomorrow - today the win is that the&quot;)
+print(&quot;         model would be reading chunk 0, the one chunk that answers Q1.&quot;)
+print(&quot;  verdict: the model never memorized any of this - it was &quot;
+      &quot;fetched, at query time&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - WRITE PATH (offline): chunk -&gt; embed -&gt; index
+  8 chunks indexed; vocabulary = 108 terms
+  index shape: 8 chunk vectors x 108 dims (one row per chunk)
+  chunk 0 vector (first 6 of 108 dims): [0.0000, 0.0000, 2.5041, 1.5878, 2.5041, 0.0000]
+  (dims are vocabulary words in sorted order; most entries are 0 - sparse)
+Part 2 - READ PATH (online): embed query -&gt; cosine-rank -&gt; top-k
+  Q1: &quot;how does erasure coding protect data when disks fail&quot;
+    #1  chunk 0  cos 0.4295  Erasure coding splits an object into data shards and parity shards, so the
+    #2  chunk 6  cos 0.0982  Compaction merges small objects into large segments and rewrites live data, reclaiming space
+    #3  chunk 5  cos 0.0856  A cold object lives on dense hard disks; the first read pays a
+  Q2: &quot;why is the first read of a cold object slow&quot;
+    #1  chunk 5  cos 0.4574  A cold object lives on dense hard disks; the first read pays a
+    #2  chunk 2  cos 0.3167  A write is acknowledged only once a quorum of nodes has durably stored
+    #3  chunk 7  cos 0.2570  The metadata index maps each object name to its shard locations, so a
+Part 3 - STUFF THE CONTEXT: the prompt the model would receive (Q1, k=3)
+  ----- PROMPT -----
+  Answer the question using only the context below.
+  Context:
+  [chunk 0] Erasure coding splits an object into data shards and parity shards, so the object survives the loss of any few disks or nodes.
+  [chunk 6] Compaction merges small objects into large segments and rewrites live data, reclaiming space from deleted objects.
+  [chunk 5] A cold object lives on dense hard disks; the first read pays a disk seek, so cold reads are far slower than cached reads.
+  Question: how does erasure coding protect data when disks fail
+  ----- END PROMPT -----
+  [stub] generation happens here tomorrow - today the win is that the
+         model would be reading chunk 0, the one chunk that answers Q1.
+  verdict: the model never memorized any of this - it was fetched, at query time</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows chunk 0 winning Q1 at <code>cos 0.4295</code>, chunk 5 winning Q2 at <code>cos 0.4574</code>, and Part 3&rsquo;s prompt block containing chunk 0&rsquo;s full text above the question. The keeper test, no notes: sketch the two lanes from memory, say which lane each box belongs to, and name the three failure modes — bad chunks, missed retrieval, stale index — in one breath.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can redraw both lanes, then run the code and look only at Part 3: that prompt block <em>is</em> RAG — everything else is plumbing that produces it. If you can explain why the query and the chunks must go through the same embedder, you have today&rsquo;s concept.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow you build it for real: this same pipeline over your own documents, with a proper local embedder — and the stub in Part 3 finally replaced by a generated answer.</p>
+  </div>
+
+  <div class="footer">Streak: 58 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
