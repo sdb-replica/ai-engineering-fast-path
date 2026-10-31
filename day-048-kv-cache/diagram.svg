@@ -1,0 +1,150 @@
+<svg viewBox="0 0 680 520" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="520" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The KV cache: compute each token's K/V once, then only append</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Causality is the correctness proof - a past token's K and V can never change</text>
+<rect x="12" y="56" width="656" height="200" rx="10" fill="#ffffff" stroke="#b03a2e" stroke-width="1.2"/>
+<text x="340" y="77" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - NO CACHE (Day 47's loop): the whole attention grid, rebuilt every step</text>
+<text x="130" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 4</text>
+<rect x="106" y="104" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="116" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="116" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="116" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="116" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="128" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="130" y="170" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">16 score dots</text>
+<text x="130" y="185" text-anchor="middle" font-size="8.5" fill="#555555">all 4 tokens re-projected</text>
+<text x="340" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 5</text>
+<rect x="312" y="104" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="115" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="115" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="126" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="126" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="137" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="340" y="177" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">25 score dots</text>
+<text x="340" y="192" text-anchor="middle" font-size="8.5" fill="#555555">all 5 tokens re-projected</text>
+<text x="550" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 6</text>
+<rect x="520" y="104" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="114" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="114" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="134" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="134" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="144" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="550" y="182" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">36 score dots</text>
+<text x="550" y="197" text-anchor="middle" font-size="8.5" fill="#555555">all 6 tokens re-projected</text>
+<text x="340" y="226" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per-step score work: 16 -&gt; 25 -&gt; 36 -&gt; 49 (next step) ... grows as L x L</text>
+<text x="340" y="244" text-anchor="middle" font-size="9.0" fill="#555555">pale cells are masked out - computed anyway, then thrown away. Total for 4 tokens: 126 dots, 22 projected.</text>
+<rect x="12" y="270" width="656" height="176" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="291" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - KV CACHE: project ONE new token, append its K/V, run ONE query</text>
+<text x="130" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 5: 5 dots, 1 projection</text>
+<rect x="98" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="130" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="86" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="94" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="104" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="112" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="122" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="130" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="140" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="148" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="158" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="166" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="130" y="384" text-anchor="middle" font-size="8.5" fill="#555555">4 stored + 1 new</text>
+<text x="340" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 6: 6 dots, 1 projection</text>
+<rect x="308" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="340" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="287" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="295" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="305" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="313" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="323" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="331" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="341" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="349" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="359" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="367" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="377" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="385" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="340" y="384" text-anchor="middle" font-size="8.5" fill="#555555">5 stored + 1 new</text>
+<text x="550" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 7: 7 dots, 1 projection</text>
+<rect x="518" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="550" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="488" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="496" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="506" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="514" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="524" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="532" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="542" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="550" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="560" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="568" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="578" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="586" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="596" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="604" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="550" y="384" text-anchor="middle" font-size="8.5" fill="#555555">6 stored + 1 new</text>
+<text x="340" y="414" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per-step score work: 5 -&gt; 6 -&gt; 7 ... grows as L - one query row. Total for 4 tokens: 34 dots, 7 projected.</text>
+<text x="340" y="432" text-anchor="middle" font-size="9.0" fill="#555555">prefill is the one equal step: the prompt's first pass fills the cache (16 dots, once), then decode takes over</text>
+<rect x="12" y="460" width="656" height="44" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="478" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Prefill: prompt processed in parallel, big matmuls - compute-bound (the slow first token)</text>
+<text x="340" y="495" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Decode: one token at a time, the whole cache re-read per step - bandwidth-bound. Price: 2 x layers x d_model values/token.</text>
+</svg>

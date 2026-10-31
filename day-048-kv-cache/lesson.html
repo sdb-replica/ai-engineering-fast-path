@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The KV Cache: Never Recompute the Past — Day 48 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 48 of 100</span>
+  <h1>The KV Cache: Never Recompute the Past</h1>
+  <p class="outcome">Tonight you'll be able to: spot the wasted recompute in Day 47&rsquo;s generation loop, explain why causality makes a past token&rsquo;s K and V immutable, and prove a cached generator returns identical output while doing O(T) attention work per token instead of O(T&sup2;).</p>
+
+  <h2>The one idea</h2>
+  <p>Day 47&rsquo;s generator works, but look at what it pays per token. To produce token number L+1 it re-runs attention over the <em>entire</em> prefix: every token&rsquo;s Q, K, and V projections recomputed from scratch, the full L&times;L score grid rebuilt &mdash; for a step whose only genuinely new input is one token. At L = 1,000 that is a million score dots (Day 38&rsquo;s grid) to emit a single token, and the step after costs even more. The recompute isn&rsquo;t buying accuracy; it is recomputing answers that cannot have changed.</p>
+<p><strong>Why they cannot change:</strong> token j&rsquo;s K and V are computed from token j and its position &mdash; nothing else enters the projection. And the causal mask (Day 38) guarantees the rest: no position is ever allowed to look at a later one, so appending token L+1 cannot reach backward and alter anything about tokens 1&hellip;L. In a deep stack the same argument holds layer by layer &mdash; at every layer, a position&rsquo;s K and V depend only on positions up to and including itself. Causality isn&rsquo;t just a training rule here; it is a proof that the past is frozen.</p>
+<p><strong>The cache:</strong> so store each token&rsquo;s K and V the first time they are computed, once per layer, in an append-only buffer &mdash; the <strong>KV cache</strong>. A decode step then does the minimum possible work: embed and project only the newest token (1 projection instead of L), append its K and V rows, and run its <em>single</em> query against the whole cache: L score dots instead of L&sup2;. Per-token attention work drops from quadratic to linear, and the projections drop from L to 1. Part 1 of the code proves the two generators agree exactly &mdash; same tokens, outputs matching to 0.000000, and the cache&rsquo;s contents matching a fresh recompute to 0.000000. The cache changes the cost, never the answer.</p>
+<p><strong>Prefill vs decode</strong> &mdash; the one paragraph that names the two regimes (full serving treatment is Phase E). <em>Prefill</em> is the prompt&rsquo;s first pass: all its positions processed in parallel as big matmuls, compute-bound &mdash; this is the slow wait for the first token, and it is also what fills the cache. <em>Decode</em> is everything after: one token at a time, a single-query matvec that must re-read the entire cache from memory on every step, so decode is bound by memory bandwidth, not FLOPs. Same model, two opposite bottlenecks &mdash; and now you know which one a user is waiting on at any moment.</p>
+<p><strong>The bill:</strong> the cache is not free, it is a trade &mdash; memory for compute. It holds <strong>2 &times; layers &times; d<sub>model</sub> values per token</strong> (a K vector and a V vector, per layer), and it only ever grows. At toy scale that is 8 values a token; at a realistic 32 layers and d<sub>model</sub> 4096 in fp16 it is about half a megabyte per token &mdash; 524.3 MB for a 1,000-token conversation. You are trading a linearly growing memory footprint for the right to never recompute. Tonight&rsquo;s code prints both ends of that trade with real numbers.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>This is the cache you would design in your sleep &mdash; except it has the property production caches never get: <strong>a 100% hit rate with zero invalidation logic</strong>. Normally a cache is a bet that data won&rsquo;t change, plus a TTL and an invalidation protocol for when the bet loses. Here the causal mask <em>proves</em> entries can never go stale: a cached K/V is write-once, read-many, immutable forever &mdash; an append-only log of projections, closer to Conveyor&rsquo;s immutable objects than to a memcached tier. Every systems instinct you have applies directly: the access pattern is sequential-append with full-prefix reads, the sizing math is capacity planning (values per token &times; tokens &times; layers), and the failure mode is the familiar one &mdash; the cache grows until memory, not compute, is the wall. When an AI scientist says &ldquo;we&rsquo;re KV-cache-bound,&rdquo; they are speaking your native language: it&rsquo;s a working-set problem.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 520" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="520" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The KV cache: compute each token's K/V once, then only append</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Causality is the correctness proof - a past token's K and V can never change</text>
+<rect x="12" y="56" width="656" height="200" rx="10" fill="#ffffff" stroke="#b03a2e" stroke-width="1.2"/>
+<text x="340" y="77" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - NO CACHE (Day 47's loop): the whole attention grid, rebuilt every step</text>
+<text x="130" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 4</text>
+<rect x="106" y="104" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="104" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="116" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="116" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="116" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="116" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="128" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="128" width="12" height="12" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="106" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="118" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="130" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="142" y="140" width="12" height="12" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="130" y="170" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">16 score dots</text>
+<text x="130" y="185" text-anchor="middle" font-size="8.5" fill="#555555">all 4 tokens re-projected</text>
+<text x="340" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 5</text>
+<rect x="312" y="104" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="104" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="115" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="115" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="115" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="126" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="126" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="126" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="137" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="137" width="11" height="11" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="312" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="324" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="334" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="346" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="356" y="148" width="11" height="11" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="340" y="177" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">25 score dots</text>
+<text x="340" y="192" text-anchor="middle" font-size="8.5" fill="#555555">all 5 tokens re-projected</text>
+<text x="550" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">step at L = 6</text>
+<rect x="520" y="104" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="104" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="114" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="114" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="114" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="124" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="124" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="134" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="134" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="134" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="144" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="144" width="10" height="10" fill="#f2f2f2" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="520" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="530" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="540" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="550" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="560" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<rect x="570" y="154" width="10" height="10" fill="#d9534f" fill-opacity="0.55" stroke="#ffffff" stroke-width="0.5"/>
+<text x="550" y="182" text-anchor="middle" font-size="9.5" fill="#b03a2e" font-weight="bold">36 score dots</text>
+<text x="550" y="197" text-anchor="middle" font-size="8.5" fill="#555555">all 6 tokens re-projected</text>
+<text x="340" y="226" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per-step score work: 16 -&gt; 25 -&gt; 36 -&gt; 49 (next step) ... grows as L x L</text>
+<text x="340" y="244" text-anchor="middle" font-size="9.0" fill="#555555">pale cells are masked out - computed anyway, then thrown away. Total for 4 tokens: 126 dots, 22 projected.</text>
+<rect x="12" y="270" width="656" height="176" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="291" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - KV CACHE: project ONE new token, append its K/V, run ONE query</text>
+<text x="130" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 5: 5 dots, 1 projection</text>
+<rect x="98" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="130" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="86" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="94" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="104" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="112" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="122" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="130" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="140" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="148" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="158" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="130" y1="333" x2="166" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="130" y="384" text-anchor="middle" font-size="8.5" fill="#555555">4 stored + 1 new</text>
+<text x="340" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 6: 6 dots, 1 projection</text>
+<rect x="308" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="340" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="287" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="295" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="305" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="313" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="323" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="331" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="341" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="349" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="359" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="367" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="377" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="340" y1="333" x2="385" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="340" y="384" text-anchor="middle" font-size="8.5" fill="#555555">5 stored + 1 new</text>
+<text x="550" y="308" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">decode at L = 7: 7 dots, 1 projection</text>
+<rect x="518" y="316" width="64" height="17" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.1"/>
+<text x="550" y="328" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">1 new query</text>
+<rect x="488" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="496" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="506" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="514" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="524" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="532" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="542" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="550" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="560" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="568" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="578" y="352" width="16" height="16" fill="#e9f9ee" stroke="#22a355" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="586" y2="352" stroke="#999999" stroke-width="0.7"/>
+<rect x="596" y="352" width="16" height="16" fill="#e8912d" stroke="#b96a00" stroke-width="1.1"/>
+<line x1="550" y1="333" x2="604" y2="352" stroke="#999999" stroke-width="0.7"/>
+<text x="550" y="384" text-anchor="middle" font-size="8.5" fill="#555555">6 stored + 1 new</text>
+<text x="340" y="414" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per-step score work: 5 -&gt; 6 -&gt; 7 ... grows as L - one query row. Total for 4 tokens: 34 dots, 7 projected.</text>
+<text x="340" y="432" text-anchor="middle" font-size="9.0" fill="#555555">prefill is the one equal step: the prompt's first pass fills the cache (16 dots, once), then decode takes over</text>
+<rect x="12" y="460" width="656" height="44" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="478" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Prefill: prompt processed in parallel, big matmuls - compute-bound (the slow first token)</text>
+<text x="340" y="495" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Decode: one token at a time, the whole cache re-read per step - bandwidth-bound. Price: 2 x layers x d_model values/token.</text>
+</svg>
+    <div class="caption">Top: no cache &mdash; each step rebuilds the full causal grid (16, 25, 36, 49&hellip; score dots), re-projects every token, and even computes the masked-out cells before throwing them away. Bottom: with the cache, a decode step projects one new token, appends its K/V (orange), and runs one query against the stored rows (green) &mdash; 5, 6, 7&hellip; dots per step. The footer names the two regimes the cache creates: parallel, compute-bound prefill vs sequential, bandwidth-bound decode.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One layer, one head, d<sub>model</sub> 4, every weight hand-set &mdash; no RNG, and greedy argmax (Day 47&rsquo;s sampling turned all the way down to &ldquo;always take the best&rdquo;) so both generators must agree digit for digit. The output head is rigged so the toy cycles 0, 1, 2, 3, which makes the generated sequence easy to eyeball. <strong>Part 1</strong> runs both generators and diffs everything: per-step outputs, and the cache&rsquo;s K/V against a fresh recompute. <strong>Part 2</strong> counts attention work inside the loops &mdash; score dots and token projections per step, both ways. <strong>Part 3</strong> does the memory math: per-token cache cost for the toy config, then the same formula at 32 layers / d<sub>model</sub> 4096 / fp16.</p>
+  <pre><code>&quot;&quot;&quot;Day 48 - The KV Cache: Never Recompute the Past.
+
+Day 47&#x27;s generation loop produces one token at a time - and
+pays for every one of them with a full forward pass over the
+whole prefix: every Q, K, V projection recomputed, the full
+L x L score grid rebuilt, for a step whose only genuinely new
+input is ONE token. Tonight that waste dies.
+
+The invariant: token j&#x27;s K and V are computed from token j
+(and its position) only, and the causal mask guarantees
+nothing about them can depend on tokens after j - in a
+multi-layer stack the same holds layer by layer, because no
+layer ever lets a position look forward. So a past token&#x27;s
+K and V can NEVER change when a new token is appended.
+Cache them. Each decode step then projects only the newest
+token, appends its K/V to the cache, and runs ONE query
+against everything stored: L score dots instead of L^2,
+1 projection instead of L.
+
+  Part 1  The proof: generate 4 tokens the naive way and
+          the cached way with the same hand-set tiny causal
+          attention (one layer, one head, d_model 4, greedy
+          argmax - no RNG). Identical tokens, per-step
+          outputs matching to 0.000000, and the cache&#x27;s
+          contents matching a fresh recompute of K/V to
+          0.000000.
+  Part 2  The work: per-step counts, measured in the code.
+          A naive step costs L^2 score dots and L token
+          projections; a cached step costs L and 1. Prefill
+          (the prompt&#x27;s first pass) is the one step where
+          both ways pay the same - that is what fills the
+          cache.
+  Part 3  The bill: cache memory is 2 (K and V) x layers x
+          d_model values per token, append-only, forever.
+          Toy numbers first, then a realistic config -
+          32 layers, d_model 4096, fp16 - where one token
+          costs about half a megabyte and 1,000 tokens cost
+          over half a gigabyte.
+
+Prefill vs decode, in one breath: prefill processes the
+whole prompt in parallel (big matmuls, compute-bound - it
+is the slow first token); decode then emits one token per
+step with a tiny matvec that must re-read the entire cache
+from memory (memory-bandwidth-bound). Full serving
+treatment is Phase E; tonight is the cache itself.
+
+Runs on the ~/ai-lab venv: torch only (free), MPS if
+available else CPU, no CUDA, no paid APIs, no downloads.
+Every weight is set by hand - no RNG anywhere, and greedy
+argmax margins are wide (&gt; 0.25), so every printed digit
+is exact on either device.
+
+Expected output:
+
+  Part 1 - two ways to generate, one answer (greedy argmax, no RNG)
+    prompt: [0, 1, 2, 3]
+    naive   generated: [0, 1, 2, 3]
+    cached  generated: [0, 1, 2, 3]
+    per-step outputs, cached vs naive: max diff 0.000000
+    cache K/V vs fresh recompute at the end: max diff 0.000000
+    why exactly zero: causality - a past token&#x27;s K and V cannot see
+      the future, so they can never change; only the newest token is new
+  Part 2 - attention work per step (1 score = one q.k dot product)
+    step 1 (prefill, 4 tokens in): naive 16 scores, 4 projected | cached 16 scores, 4 projected
+    step 2 (decode, 5 tokens in): naive 25 scores, 5 projected | cached  5 scores, 1 projected
+    step 3 (decode, 6 tokens in): naive 36 scores, 6 projected | cached  6 scores, 1 projected
+    step 4 (decode, 7 tokens in): naive 49 scores, 7 projected | cached  7 scores, 1 projected
+    totals: naive 126 scores / 22 projected - cached 34 scores / 7 projected (3.7x less attention work)
+    the pattern: a naive step costs L^2 and grows; a cached step costs L - one query row
+  Part 3 - the bill: cache memory = 2 (K and V) x layers x d_model values per token
+    toy (1 layer, d_model 4, fp32): 8 values = 32 bytes per token
+      cache after generating: 7 tokens stored -&gt; 56 values = 224 bytes
+    real (32 layers, d_model 4096, fp16): 262,144 values = 524,288 bytes per token (~0.5 MB)
+      1,000 tokens: 524,288,000 bytes = 524.3 MB
+      100,000 tokens: 52,428,800,000 bytes = 52.4 GB - the cache becomes the memory wall
+    verdict: the cache trades memory for compute - recompute nothing, store everything
+&quot;&quot;&quot;
+import torch
+
+device = &quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;
+
+# Toy config: vocab 6, d_model 4, ONE layer, ONE head.
+# Every weight hand-set below - this exact toy cycled cleanly
+# in verification (generated tokens repeat the prompt&#x27;s cycle).
+E = torch.tensor([                     # token embeddings (Day 15)
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+    [0.5, 0.5, 0.0, 0.0],
+    [0.0, 0.0, 0.5, 0.5]], device=device)
+POS = torch.tensor([                   # positional vectors (Day 41),
+    [0.6, 0.0, 0.0, 0.0],              # cycling with period 4
+    [0.0, 0.6, 0.0, 0.0],
+    [0.0, 0.0, 0.6, 0.0],
+    [0.0, 0.0, 0.0, 0.6]], device=device)
+WQ = torch.tensor([
+    [1.0, 0.0, 0.5, 0.0],
+    [0.0, 1.0, 0.0, 0.5],
+    [0.5, 0.0, 1.0, 0.0],
+    [0.0, 0.5, 0.0, 1.0]], device=device)
+WK = torch.tensor([
+    [1.0, 0.5, 0.0, 0.0],
+    [0.5, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.5],
+    [0.0, 0.0, 0.5, 1.0]], device=device)
+WV = torch.tensor([
+    [1.0, 0.0, 0.0, 0.5],
+    [0.0, 1.0, 0.5, 0.0],
+    [0.0, 0.5, 1.0, 0.0],
+    [0.5, 0.0, 0.0, 1.0]], device=device)
+WO = torch.tensor([                    # head: d_model -&gt; vocab logits;
+    [0.0, 2.0, 0.0, 0.0, 1.0, 0.0],    # dim i votes for token i+1,
+    [0.0, 0.0, 2.0, 0.0, 1.0, 0.0],    # so the toy cycles 0,1,2,3
+    [0.0, 0.0, 0.0, 2.0, 0.0, 1.0],
+    [2.0, 0.0, 0.0, 0.0, 0.0, 1.0]], device=device)
+D = 4
+PROMPT = [0, 1, 2, 3]
+N_GEN = 4
+
+
+def softmax_rows(S):
+    &quot;&quot;&quot;Day 14&#x27;s softmax, row-wise, max-subtracted for stability.&quot;&quot;&quot;
+    S = S - S.max(dim=-1, keepdim=True).values
+    e = torch.exp(S)
+    return e / e.sum(dim=-1, keepdim=True)
+
+
+def embed(seq):
+    idx = torch.tensor(seq, device=device)
+    pos = torch.arange(len(seq), device=device) % 4
+    return E[idx] + POS[pos]
+
+
+def full_forward(seq):
+    &quot;&quot;&quot;Day 47&#x27;s way: project EVERYTHING, full masked grid.
+    Returns (outputs, K, V) for the whole sequence.&quot;&quot;&quot;
+    X = embed(seq)
+    Q, K, V = X @ WQ.T, X @ WK.T, X @ WV.T
+    S = Q @ K.T / D ** 0.5
+    mask = torch.triu(torch.ones(len(seq), len(seq), dtype=torch.bool,
+                                 device=device), diagonal=1)
+    S = torch.where(mask, torch.tensor(-1e9, device=device), S)
+    return softmax_rows(S) @ V, K, V
+
+
+def generate_naive(prompt, n_gen, stats):
+    &quot;&quot;&quot;Every step recomputes the whole prefix from scratch.&quot;&quot;&quot;
+    seq, outs = list(prompt), []
+    for _ in range(n_gen):
+        out, _, _ = full_forward(seq)
+        outs.append(out[-1])
+        stats.append((len(seq), len(seq) ** 2, len(seq)))
+        seq.append(int(torch.argmax(out[-1] @ WO).item()))
+    return seq[len(prompt):], outs
+
+
+def generate_cached(prompt, n_gen, stats):
+    &quot;&quot;&quot;Prefill once, then per step: project ONE token, append
+    its K/V, run ONE query against the cache.&quot;&quot;&quot;
+    seq, outs = list(prompt), []
+    out, K, V = full_forward(seq)                    # prefill
+    outs.append(out[-1])
+    stats.append((len(seq), len(seq) ** 2, len(seq)))
+    seq.append(int(torch.argmax(out[-1] @ WO).item()))
+    for _ in range(n_gen - 1):                       # decode steps
+        x = E[seq[-1]] + POS[(len(seq) - 1) % 4]     # newest token only
+        q = x @ WQ.T                                 # ONE new query
+        K = torch.cat([K, (x @ WK.T).unsqueeze(0)])  # append-only:
+        V = torch.cat([V, (x @ WV.T).unsqueeze(0)])  # past rows untouched
+        out = softmax_rows(q @ K.T / D ** 0.5) @ V
+        outs.append(out)
+        stats.append((len(seq), len(seq), 1))
+        seq.append(int(torch.argmax(out @ WO).item()))
+    return seq[len(prompt):], outs, K, V
+
+
+# ---------- Part 1: the proof - same answers, two ways ----------
+print(&quot;Part 1 - two ways to generate, one answer (greedy argmax, no RNG)&quot;)
+stats_n, stats_c = [], []
+gen_n, outs_n = generate_naive(PROMPT, N_GEN, stats_n)
+gen_c, outs_c, K_cache, V_cache = generate_cached(PROMPT, N_GEN, stats_c)
+print(f&quot;  prompt: {PROMPT}&quot;)
+print(f&quot;  naive   generated: {gen_n}&quot;)
+print(f&quot;  cached  generated: {gen_c}&quot;)
+with torch.no_grad():
+    odiff = max((a - b).abs().max().item()
+                for a, b in zip(outs_n, outs_c))
+    _, K_fresh, V_fresh = full_forward((PROMPT + gen_c)[:-1])
+    kdiff = max((K_cache - K_fresh).abs().max().item(),
+                (V_cache - V_fresh).abs().max().item())
+print(f&quot;  per-step outputs, cached vs naive: max diff {odiff:.6f}&quot;)
+print(f&quot;  cache K/V vs fresh recompute at the end: max diff {kdiff:.6f}&quot;)
+print(&quot;  why exactly zero: causality - a past token&#x27;s K and V cannot see&quot;)
+print(&quot;    the future, so they can never change; &quot;
+      &quot;only the newest token is new&quot;)
+
+# ---------- Part 2: the work ----------
+print(&quot;Part 2 - attention work per step (1 score = one q.k dot product)&quot;)
+for i, ((L, ns, nproj), (_, cs, cproj)) in enumerate(
+        zip(stats_n, stats_c), start=1):
+    kind = &quot;prefill&quot; if i == 1 else &quot;decode&quot;
+    print(f&quot;  step {i} ({kind}, {L} tokens in): naive {ns:&gt;2} scores, &quot;
+          f&quot;{nproj} projected | cached {cs:&gt;2} scores, {cproj} projected&quot;)
+tn = sum(s[1] for s in stats_n); tc = sum(s[1] for s in stats_c)
+tp = sum(s[2] for s in stats_n); cp = sum(s[2] for s in stats_c)
+print(f&quot;  totals: naive {tn} scores / {tp} projected - &quot;
+      f&quot;cached {tc} scores / {cp} projected &quot;
+      f&quot;({tn / tc:.1f}x less attention work)&quot;)
+print(&quot;  the pattern: a naive step costs L^2 and grows; &quot;
+      &quot;a cached step costs L - one query row&quot;)
+
+# ---------- Part 3: the bill ----------
+print(&quot;Part 3 - the bill: cache memory = &quot;
+      &quot;2 (K and V) x layers x d_model values per token&quot;)
+toy_vals = 2 * 1 * D                       # 1 layer, d_model 4
+rows = K_cache.shape[0]                    # tokens actually stored
+print(f&quot;  toy (1 layer, d_model 4, fp32): {toy_vals} values = &quot;
+      f&quot;{toy_vals * 4} bytes per token&quot;)
+print(f&quot;    cache after generating: {rows} tokens stored -&gt; &quot;
+      f&quot;{rows * toy_vals} values = {rows * toy_vals * 4} bytes&quot;)
+real_vals = 2 * 32 * 4096                  # 32 layers, d_model 4096
+real_bytes = real_vals * 2                 # fp16 = 2 bytes per value
+print(f&quot;  real (32 layers, d_model 4096, fp16): {real_vals:,} values = &quot;
+      f&quot;{real_bytes:,} bytes per token (~0.5 MB)&quot;)
+print(f&quot;    1,000 tokens: {1000 * real_bytes:,} bytes = &quot;
+      f&quot;{1000 * real_bytes / 1e6:.1f} MB&quot;)
+print(f&quot;    100,000 tokens: {100000 * real_bytes:,} bytes = &quot;
+      f&quot;{100000 * real_bytes / 1e9:.1f} GB - &quot;
+      &quot;the cache becomes the memory wall&quot;)
+print(&quot;  verdict: the cache trades memory for compute - &quot;
+      &quot;recompute nothing, store everything&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - two ways to generate, one answer (greedy argmax, no RNG)
+  prompt: [0, 1, 2, 3]
+  naive   generated: [0, 1, 2, 3]
+  cached  generated: [0, 1, 2, 3]
+  per-step outputs, cached vs naive: max diff 0.000000
+  cache K/V vs fresh recompute at the end: max diff 0.000000
+  why exactly zero: causality - a past token&#x27;s K and V cannot see
+    the future, so they can never change; only the newest token is new
+Part 2 - attention work per step (1 score = one q.k dot product)
+  step 1 (prefill, 4 tokens in): naive 16 scores, 4 projected | cached 16 scores, 4 projected
+  step 2 (decode, 5 tokens in): naive 25 scores, 5 projected | cached  5 scores, 1 projected
+  step 3 (decode, 6 tokens in): naive 36 scores, 6 projected | cached  6 scores, 1 projected
+  step 4 (decode, 7 tokens in): naive 49 scores, 7 projected | cached  7 scores, 1 projected
+  totals: naive 126 scores / 22 projected - cached 34 scores / 7 projected (3.7x less attention work)
+  the pattern: a naive step costs L^2 and grows; a cached step costs L - one query row
+Part 3 - the bill: cache memory = 2 (K and V) x layers x d_model values per token
+  toy (1 layer, d_model 4, fp32): 8 values = 32 bytes per token
+    cache after generating: 7 tokens stored -&gt; 56 values = 224 bytes
+  real (32 layers, d_model 4096, fp16): 262,144 values = 524,288 bytes per token (~0.5 MB)
+    1,000 tokens: 524,288,000 bytes = 524.3 MB
+    100,000 tokens: 52,428,800,000 bytes = 52.4 GB - the cache becomes the memory wall
+  verdict: the cache trades memory for compute - recompute nothing, store everything</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows the proof and the trade in one screen: generated <code>[0, 1, 2, 3]</code> from <em>both</em> generators, both max diffs <code>0.000000</code>, totals <code>126 scores / 22 projected</code> naive vs <code>34 scores / 7 projected</code> cached &mdash; and you can do the capacity math unaided: 2 &times; layers &times; d<sub>model</sub> values per token, &asymp;0.5 MB per token at the realistic config. The keeper sentence: causality is the proof the cache can never go stale.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s two panels until you can say why the bottom row of numbers grows as L while the top grows as L&sup2;, then run the code and check the two <code>0.000000</code> lines and the totals line in Part 2. If you can explain why the cache needs no invalidation, you have the lesson &mdash; Part 3&rsquo;s arithmetic is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: that cache grows by half a megabyte with every single token &mdash; we follow a conversation out to 100,000 tokens and find exactly where the wall is.</p>
+  </div>
+
+  <div class="footer">Streak: 48 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
