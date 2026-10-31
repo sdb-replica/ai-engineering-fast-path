@@ -1,0 +1,69 @@
+<svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" fill="#ffffff"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The serving tradeoff: batch buys throughput with latency</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">step_ms(B) = 4.0 + 0.75 x B - one model, both curves, no magic numbers</text>
+<text x="330.0" y="66" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">OPERATING POINT: batch 48</text>
+<text x="330.0" y="81" text-anchor="middle" font-size="9.5" fill="#555555">1200 tok/s at TPOT exactly 40 ms - the largest batch the SLO allows</text>
+<line x1="84" y1="336.0" x2="596" y2="336.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="340.0" text-anchor="end" font-size="9.5" fill="#0a54c2">0</text>
+<line x1="84" y1="210.0" x2="596" y2="210.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="214.0" text-anchor="end" font-size="9.5" fill="#0a54c2">700</text>
+<line x1="84" y1="84.0" x2="596" y2="84.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="88.0" text-anchor="end" font-size="9.5" fill="#0a54c2">1400</text>
+<line x1="84" y1="252.0" x2="596" y2="252.0" stroke="#f0e6e0" stroke-width="1"/>
+<text x="602" y="256.0" text-anchor="start" font-size="9.5" fill="#c2510a">20</text>
+<line x1="84" y1="84.0" x2="596" y2="84.0" stroke="#f0e6e0" stroke-width="1"/>
+<text x="602" y="88.0" text-anchor="start" font-size="9.5" fill="#c2510a">60</text>
+<text x="602" y="172.0" text-anchor="start" font-size="9.5" fill="#c2510a">40</text>
+<text x="602" y="340.0" text-anchor="start" font-size="9.5" fill="#c2510a">0</text>
+<line x1="84" y1="336" x2="596" y2="336" stroke="#999999" stroke-width="1.2"/>
+<line x1="84" y1="84" x2="84" y2="336" stroke="#999999" stroke-width="1.2"/>
+<line x1="596" y1="84" x2="596" y2="336" stroke="#999999" stroke-width="1.2"/>
+<text x="18" y="210" text-anchor="middle" font-size="10" fill="#0a54c2" font-weight="bold" transform="rotate(-90 18 210)">tokens / sec per GPU</text>
+<text x="662" y="210" text-anchor="middle" font-size="10" fill="#c2510a" font-weight="bold" transform="rotate(90 662 210)">TPOT ms / token</text>
+<line x1="84" y1="168.0" x2="596" y2="168.0" stroke="#d42a2a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="90" y="160.0" font-size="10" fill="#d42a2a" font-weight="bold">SLO: TPOT &lt;= 40 ms</text>
+<polyline points="84.0,298.1 169.3,270.5 254.7,233.1 340.0,192.0 425.3,156.0 510.7,130.3 560.6,120.0 596.0,114.5" fill="none" stroke="#0a7aff" stroke-width="2.4"/>
+<polyline points="84.0,316.1 169.3,312.9 254.7,306.6 340.0,294.0 425.3,268.8 510.7,218.4 560.6,168.0 596.0,117.6" fill="none" stroke="#e07b28" stroke-width="2.4"/>
+<circle cx="84.0" cy="298.1" r="3" fill="#0a7aff"/>
+<circle cx="84.0" cy="316.1" r="3" fill="#e07b28"/>
+<circle cx="169.3" cy="270.5" r="3" fill="#0a7aff"/>
+<circle cx="169.3" cy="312.9" r="3" fill="#e07b28"/>
+<circle cx="254.7" cy="233.1" r="3" fill="#0a7aff"/>
+<circle cx="254.7" cy="306.6" r="3" fill="#e07b28"/>
+<circle cx="340.0" cy="192.0" r="3" fill="#0a7aff"/>
+<circle cx="340.0" cy="294.0" r="3" fill="#e07b28"/>
+<circle cx="425.3" cy="156.0" r="3" fill="#0a7aff"/>
+<circle cx="425.3" cy="268.8" r="3" fill="#e07b28"/>
+<circle cx="510.7" cy="130.3" r="3" fill="#0a7aff"/>
+<circle cx="510.7" cy="218.4" r="3" fill="#e07b28"/>
+<circle cx="560.6" cy="120.0" r="3" fill="#0a7aff"/>
+<circle cx="560.6" cy="168.0" r="3" fill="#e07b28"/>
+<circle cx="596.0" cy="114.5" r="3" fill="#0a7aff"/>
+<circle cx="596.0" cy="117.6" r="3" fill="#e07b28"/>
+<line x1="560.6" y1="168.0" x2="560.6" y2="336" stroke="#d42a2a" stroke-width="1.2" stroke-dasharray="4 3"/>
+<circle cx="560.6" cy="168.0" r="6" fill="none" stroke="#d42a2a" stroke-width="2.2"/>
+<circle cx="560.6" cy="120.0" r="6" fill="none" stroke="#d42a2a" stroke-width="2.2"/>
+<text x="552.6" y="108.0" text-anchor="end" font-size="10" fill="#1c1c1e" font-weight="bold">1200 tok/s</text>
+<text x="84.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">1</text>
+<text x="169.3" y="354" text-anchor="middle" font-size="9.5" fill="#555555">2</text>
+<text x="254.7" y="354" text-anchor="middle" font-size="9.5" fill="#555555">4</text>
+<text x="340.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">8</text>
+<text x="425.3" y="354" text-anchor="middle" font-size="9.5" fill="#555555">16</text>
+<text x="510.7" y="354" text-anchor="middle" font-size="9.5" fill="#555555">32</text>
+<text x="560.6" y="354" text-anchor="middle" font-size="9.5" fill="#555555">48</text>
+<text x="596.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">64</text>
+<text x="340.0" y="372" text-anchor="middle" font-size="10" fill="#1c1c1e">batch size - sequences sharing each decode step (log scale)</text>
+<text x="150" y="150" font-size="10" fill="#0a54c2">throughput climbs,</text>
+<text x="150" y="165" font-size="10" fill="#0a54c2">then flattens (ceiling 1333)</text>
+<text x="372" y="246" font-size="10" fill="#c2510a">TPOT worsens linearly:</text>
+<text x="372" y="261" font-size="10" fill="#c2510a">every rider pays the whole step</text>
+<line x1="84" y1="394" x2="112" y2="394" stroke="#0a7aff" stroke-width="2.4"/>
+<text x="118" y="398" font-size="10" fill="#1c1c1e">throughput (tok/s)</text>
+<line x1="262" y1="394" x2="290" y2="394" stroke="#e07b28" stroke-width="2.4"/>
+<text x="296" y="398" font-size="10" fill="#1c1c1e">TPOT (ms/token)</text>
+<line x1="446" y1="394" x2="474" y2="394" stroke="#d42a2a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="480" y="398" font-size="10" fill="#1c1c1e">latency SLO line</text>
+<rect x="12" y="412" width="656" height="36" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Little&#x27;s law: concurrency = throughput x latency - 5.988 req/s x 8.016 s = 48 in flight. Pick two; the third is arithmetic.</text>
+</svg>

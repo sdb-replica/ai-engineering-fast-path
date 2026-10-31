@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latency vs Throughput: The Serving Tradeoff — Day 66 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 66 of 100</span>
+  <h1>Latency vs Throughput: The Serving Tradeoff</h1>
+  <p class="outcome">Tonight you'll be able to: read any serving setup on its two clocks &mdash; TTFT (prefill-bound) and TPOT (step-bound) &mdash; sweep batch size against a stated step-time model, and use Little&rsquo;s law to pick the operating point that meets the latency SLO at the best $/token instead of the biggest benchmark number.</p>
+
+  <h2>The one idea</h2>
+  <p>Every serving system you will ever capacity-plan runs on <strong>two clocks</strong>, and they fail differently. <strong>TTFT &mdash; time to first token</strong> &mdash; is how long a user stares at a blank screen. It is paid once per request and dominated by <strong>prefill</strong>: the prompt is processed all at once, in parallel, compute-bound (Day 48). <strong>TPOT &mdash; time per output token</strong> &mdash; is the drip rate after that: how fast the answer streams. It is paid once per generated token, and it <em>is</em> the decode step time &mdash; one step reads the weights from memory once and emits exactly one token per sequence, which is why decode is bandwidth-bound (Day 48 again). A user&rsquo;s total wait is <code>TTFT + (tokens &minus; 1) &times; TPOT</code> &mdash; and the two terms have different bottlenecks, so they have different fixes. Tuning one clock with the other clock&rsquo;s tool is the classic serving own-goal.</p>
+<p><strong>Batching is how you spend one clock to buy the other.</strong> A decode step has a fixed cost &mdash; launching the kernels and reading the weights &mdash; no matter how many sequences ride it. Put 1 sequence on the step and that sequence alone pays the whole read; put 48 on it (Day 64&rsquo;s continuous batching is what makes this practical) and the read is amortized 48 ways. So tokens/sec per GPU climbs steeply with batch size. But the step also gets <em>slower</em> as riders are added &mdash; more KV cache to read, more logits to write &mdash; and every rider waits for the whole step, every token. Throughput rises and flattens toward a ceiling; TPOT worsens linearly, forever. There is no batch size that is best at both. There is only a curve, and a point on it.</p>
+<p><strong>Little&rsquo;s law is the conservation law that keeps you honest:</strong> <code>concurrency = throughput &times; latency</code>. Requests in flight = requests completed per second &times; seconds each one spends inside. It is pure bookkeeping &mdash; it held for your thread pools and connection pools, and it holds here: if 6 requests/sec complete and each spends 8 s generating, you have 48 in flight, whether you planned for them or not. The practical consequence: you cannot independently promise high throughput, low latency, and low concurrency. Pick two and the third is arithmetic. An SLO is how you make the pick deliberately: state the latency budget first (say, p95 TPOT &le; 40 ms &mdash; about 25 tokens/sec per user, faster than anyone reads), then run the <em>largest batch that still meets it</em>. That point is where the GPU earns the most tokens per dollar without a user ever feeling the trade &mdash; and it is exactly where tonight&rsquo;s sweep lands.</p>
+<p><strong>The model, stated so you can audit every number:</strong> <code>step_ms(B) = 4.0 + 0.75&middot;B</code> (4.0 ms fixed: launch + one full weight read; 0.75 ms per sequence riding the step), prefill at 0.02 ms/token over an 800-token prompt, 200 output tokens. Real engines differ in the constants &mdash; quantized weights (Day 65) shrink the fixed read, faster memory raises it less &mdash; but never in the shape: throughput concave and saturating at <code>1000/0.75 &asymp; 1333 tok/s</code>, TPOT a straight line up. Learn the shape once and every vendor benchmark becomes a claim about two constants you can ask for.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>This is a capacity review you have already run a hundred times, wearing new labels. A database connection pool: batch size is pool size, the step&rsquo;s fixed 4.0 ms is the per-query overhead you amortize by keeping connections busy, TPOT is per-query latency, throughput is QPS &mdash; and Little&rsquo;s law is the reason a pool of 50 at 10 QPS means 5-second waits are <em>somewhere</em> in your system, whatever the dashboard&rsquo;s averages say. Or a highway: batching is carpooling. One GPU &ldquo;trip&rdquo; (the weight read) happens either way; the only question is how many passengers split it &mdash; and past a point the on-ramp queue (each rider&rsquo;s TPOT) costs more than the shared trip saves. Nobody sizes a pool or a fleet by &ldquo;max possible&rdquo;; you size it at the latency budget. Serving is the same discipline with tokens instead of queries: <strong>the SLO chooses the batch, not the benchmark.</strong></p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" fill="#ffffff"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The serving tradeoff: batch buys throughput with latency</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">step_ms(B) = 4.0 + 0.75 x B - one model, both curves, no magic numbers</text>
+<text x="330.0" y="66" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">OPERATING POINT: batch 48</text>
+<text x="330.0" y="81" text-anchor="middle" font-size="9.5" fill="#555555">1200 tok/s at TPOT exactly 40 ms - the largest batch the SLO allows</text>
+<line x1="84" y1="336.0" x2="596" y2="336.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="340.0" text-anchor="end" font-size="9.5" fill="#0a54c2">0</text>
+<line x1="84" y1="210.0" x2="596" y2="210.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="214.0" text-anchor="end" font-size="9.5" fill="#0a54c2">700</text>
+<line x1="84" y1="84.0" x2="596" y2="84.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="88.0" text-anchor="end" font-size="9.5" fill="#0a54c2">1400</text>
+<line x1="84" y1="252.0" x2="596" y2="252.0" stroke="#f0e6e0" stroke-width="1"/>
+<text x="602" y="256.0" text-anchor="start" font-size="9.5" fill="#c2510a">20</text>
+<line x1="84" y1="84.0" x2="596" y2="84.0" stroke="#f0e6e0" stroke-width="1"/>
+<text x="602" y="88.0" text-anchor="start" font-size="9.5" fill="#c2510a">60</text>
+<text x="602" y="172.0" text-anchor="start" font-size="9.5" fill="#c2510a">40</text>
+<text x="602" y="340.0" text-anchor="start" font-size="9.5" fill="#c2510a">0</text>
+<line x1="84" y1="336" x2="596" y2="336" stroke="#999999" stroke-width="1.2"/>
+<line x1="84" y1="84" x2="84" y2="336" stroke="#999999" stroke-width="1.2"/>
+<line x1="596" y1="84" x2="596" y2="336" stroke="#999999" stroke-width="1.2"/>
+<text x="18" y="210" text-anchor="middle" font-size="10" fill="#0a54c2" font-weight="bold" transform="rotate(-90 18 210)">tokens / sec per GPU</text>
+<text x="662" y="210" text-anchor="middle" font-size="10" fill="#c2510a" font-weight="bold" transform="rotate(90 662 210)">TPOT ms / token</text>
+<line x1="84" y1="168.0" x2="596" y2="168.0" stroke="#d42a2a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="90" y="160.0" font-size="10" fill="#d42a2a" font-weight="bold">SLO: TPOT &lt;= 40 ms</text>
+<polyline points="84.0,298.1 169.3,270.5 254.7,233.1 340.0,192.0 425.3,156.0 510.7,130.3 560.6,120.0 596.0,114.5" fill="none" stroke="#0a7aff" stroke-width="2.4"/>
+<polyline points="84.0,316.1 169.3,312.9 254.7,306.6 340.0,294.0 425.3,268.8 510.7,218.4 560.6,168.0 596.0,117.6" fill="none" stroke="#e07b28" stroke-width="2.4"/>
+<circle cx="84.0" cy="298.1" r="3" fill="#0a7aff"/>
+<circle cx="84.0" cy="316.1" r="3" fill="#e07b28"/>
+<circle cx="169.3" cy="270.5" r="3" fill="#0a7aff"/>
+<circle cx="169.3" cy="312.9" r="3" fill="#e07b28"/>
+<circle cx="254.7" cy="233.1" r="3" fill="#0a7aff"/>
+<circle cx="254.7" cy="306.6" r="3" fill="#e07b28"/>
+<circle cx="340.0" cy="192.0" r="3" fill="#0a7aff"/>
+<circle cx="340.0" cy="294.0" r="3" fill="#e07b28"/>
+<circle cx="425.3" cy="156.0" r="3" fill="#0a7aff"/>
+<circle cx="425.3" cy="268.8" r="3" fill="#e07b28"/>
+<circle cx="510.7" cy="130.3" r="3" fill="#0a7aff"/>
+<circle cx="510.7" cy="218.4" r="3" fill="#e07b28"/>
+<circle cx="560.6" cy="120.0" r="3" fill="#0a7aff"/>
+<circle cx="560.6" cy="168.0" r="3" fill="#e07b28"/>
+<circle cx="596.0" cy="114.5" r="3" fill="#0a7aff"/>
+<circle cx="596.0" cy="117.6" r="3" fill="#e07b28"/>
+<line x1="560.6" y1="168.0" x2="560.6" y2="336" stroke="#d42a2a" stroke-width="1.2" stroke-dasharray="4 3"/>
+<circle cx="560.6" cy="168.0" r="6" fill="none" stroke="#d42a2a" stroke-width="2.2"/>
+<circle cx="560.6" cy="120.0" r="6" fill="none" stroke="#d42a2a" stroke-width="2.2"/>
+<text x="552.6" y="108.0" text-anchor="end" font-size="10" fill="#1c1c1e" font-weight="bold">1200 tok/s</text>
+<text x="84.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">1</text>
+<text x="169.3" y="354" text-anchor="middle" font-size="9.5" fill="#555555">2</text>
+<text x="254.7" y="354" text-anchor="middle" font-size="9.5" fill="#555555">4</text>
+<text x="340.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">8</text>
+<text x="425.3" y="354" text-anchor="middle" font-size="9.5" fill="#555555">16</text>
+<text x="510.7" y="354" text-anchor="middle" font-size="9.5" fill="#555555">32</text>
+<text x="560.6" y="354" text-anchor="middle" font-size="9.5" fill="#555555">48</text>
+<text x="596.0" y="354" text-anchor="middle" font-size="9.5" fill="#555555">64</text>
+<text x="340.0" y="372" text-anchor="middle" font-size="10" fill="#1c1c1e">batch size - sequences sharing each decode step (log scale)</text>
+<text x="150" y="150" font-size="10" fill="#0a54c2">throughput climbs,</text>
+<text x="150" y="165" font-size="10" fill="#0a54c2">then flattens (ceiling 1333)</text>
+<text x="372" y="246" font-size="10" fill="#c2510a">TPOT worsens linearly:</text>
+<text x="372" y="261" font-size="10" fill="#c2510a">every rider pays the whole step</text>
+<line x1="84" y1="394" x2="112" y2="394" stroke="#0a7aff" stroke-width="2.4"/>
+<text x="118" y="398" font-size="10" fill="#1c1c1e">throughput (tok/s)</text>
+<line x1="262" y1="394" x2="290" y2="394" stroke="#e07b28" stroke-width="2.4"/>
+<text x="296" y="398" font-size="10" fill="#1c1c1e">TPOT (ms/token)</text>
+<line x1="446" y1="394" x2="474" y2="394" stroke="#d42a2a" stroke-width="1.6" stroke-dasharray="7 4"/>
+<text x="480" y="398" font-size="10" fill="#1c1c1e">latency SLO line</text>
+<rect x="12" y="412" width="656" height="36" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Little&#x27;s law: concurrency = throughput x latency - 5.988 req/s x 8.016 s = 48 in flight. Pick two; the third is arithmetic.</text>
+</svg>
+    <div class="caption">One stated model (<code>step_ms(B) = 4.0 + 0.75&middot;B</code>), both curves drawn from it. Blue: tokens/sec per GPU &mdash; steep early gains as the fixed weight read is amortized, flattening toward the 1333 tok/s ceiling. Orange: TPOT &mdash; a straight line up, because every sequence riding a step pays the whole step. The dashed red SLO line (TPOT &le; 40 ms) cuts the orange curve at batch 48: the operating point, 1200 tok/s at exactly the budget. One step further right buys +2.6% throughput for a blown SLO.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure Python standard library &mdash; no torch, no GPU, no benchmark to argue with: a stated model, swept honestly. <strong>Part 1</strong> prices one request on both clocks at batch 1 vs batch 48. <strong>Part 2</strong> sweeps batch 1&rarr;64 and checks Little&rsquo;s law on every row (<code>&lambda; &times; W</code> must return the batch). <strong>Part 3</strong> picks the operating point: the largest batch inside the TPOT budget, the bad trade one step past it, and a first cost sketch (the full $/token treatment is Day 72). Change any of the five constants at the top and re-run &mdash; the verdict moves, the shape doesn&rsquo;t.</p>
+  <pre><code>&quot;&quot;&quot;Day 66 - Latency vs Throughput: The Serving Tradeoff.
+
+Phase E. Yesterday&#x27;s quantization (Day 65) made each step
+cheaper; Day 64&#x27;s continuous batching decides how many
+sequences share a step. Tonight is the capacity review for
+that step: serving runs on TWO clocks, and batching trades
+one against the other.
+
+  TTFT  time to first token. Paid once per request, before
+        anything streams. Dominated by prefill: the prompt
+        is processed in parallel, compute-bound (Day 48).
+  TPOT  time per output token. Paid once per generated
+        token. It IS the decode step time: one step reads
+        the weights once and emits one token for every
+        sequence in the batch (Day 48&#x27;s KV cache makes the
+        step mostly a weight read, i.e. bandwidth-bound).
+
+The step-time model - stated, not magic. Every number in
+this lesson comes from these five constants:
+
+  step_ms(B)   = 4.0 + 0.75 * B        (decode step)
+                 4.0 ms fixed: launch + one full read of
+                 the weights from HBM, shared by the batch
+                 0.75 ms per sequence riding the step
+  prefill_ms   = 0.02 * prompt_tokens  (parallel, compute)
+  prompt       = 800 tokens, output = 200 tokens
+  TPOT budget  = 40 ms/token  (= 25 tok/s per user: a fast
+                 reader streams comfortably above this)
+
+  Part 1  One request, two clocks. At batch 1 and batch
+          48: TTFT, TPOT, and the total time to produce
+          a 200-token answer. The first token is a sprint;
+          the other 199 are a toll road.
+  Part 2  The sweep, batch 1 -&gt; 64. Bigger batch: the
+          fixed 4.0 ms is amortized over more sequences,
+          so tokens/sec per GPU climbs steeply then flattens
+          toward the 1000/0.75 = 1333 tok/s ceiling - while
+          TPOT worsens linearly and TTFT creeps up. The
+          last column checks Little&#x27;s law on every row:
+          concurrency = req/s x latency, exactly B.
+  Part 3  The operating point. The largest batch inside
+          the TPOT budget wins the GPU&#x27;s throughput at the
+          best $/token - and one batch step past it buys
+          almost no throughput for a blown SLO. Little&#x27;s
+          law is the conservation law: concurrency,
+          throughput and latency - pick two, the third is
+          arithmetic. Full cost math is Day 72.
+
+Pure standard library: no torch, no GPU, no APIs - this is
+a model on purpose, so the tradeoff&#x27;s SHAPE is auditable
+arithmetic, not a benchmark. Real engines differ in the
+constants, never in the shape. Runs anywhere Python 3 runs,
+including the ~/ai-lab venv on the MacBook.
+
+Expected output:
+
+  Part 1 - one request, two clocks (800-token prompt, 200-token answer)
+    batch  1: TTFT  20.75 ms (once)   TPOT  4.75 ms x 199 tokens   total 0.966 s   user sees 210.5 tok/s
+    batch 48: TTFT  56.00 ms (once)   TPOT 40.00 ms x 199 tokens   total 8.016 s   user sees 25.0 tok/s
+    TTFT is paid once and is prefill-bound; TPOT is paid
+    per token and is step-bound. Different clocks,
+    different bottlenecks, different fixes.
+  Part 2 - the sweep: batch trades TPOT for throughput
+    batch  TPOT ms  TTFT ms  total s    tok/s   req/s  lam x W
+        1     4.75    20.75    0.966    210.5   1.035     1.00
+        2     5.50    21.50    1.116    363.6   1.792     2.00
+        4     7.00    23.00    1.416    571.4   2.825     4.00
+        8    10.00    26.00    2.016    800.0   3.968     8.00
+       16    16.00    32.00    3.216   1000.0   4.975    16.00
+       32    28.00    44.00    5.616   1142.9   5.698    32.00
+       48    40.00    56.00    8.016   1200.0   5.988    48.00
+       64    52.00    68.00   10.416   1230.8   6.144    64.00
+    lam x W = concurrency = batch, every row: Little&#x27;s
+    law holds exactly, because it is bookkeeping, not luck.
+  Part 3 - the operating point (SLO: TPOT &lt;= 40 ms)
+    largest batch inside budget: 48 (TPOT 40.00 ms, 1200.0 tok/s decode, 1197.6 tok/s end-to-end)
+    batch 64: TPOT 52.00 ms breaks the SLO for only +2.6% throughput - a bad trade
+    cost sketch @ $2/GPU-hr, batch  1: $2.68 per 1M tokens
+    cost sketch @ $2/GPU-hr, batch 48: $0.46 per 1M tokens
+    verdict: you cannot cheat Little&#x27;s law - concurrency =
+    throughput x latency. You can only CHOOSE the point on
+    the curve: the largest batch the latency SLO allows.
+&quot;&quot;&quot;
+
+# ---- the model: five constants, everything derives ----
+STEP_BASE_MS = 4.0        # fixed per step: launch + weight read
+STEP_PER_SEQ_MS = 0.75    # marginal cost per batched sequence
+PREFILL_MS_PER_TOKEN = 0.02
+PROMPT_TOKENS = 800
+OUTPUT_TOKENS = 200
+TPOT_BUDGET_MS = 40.0     # SLO: at most 40 ms per output token
+GPU_USD_PER_HOUR = 2.0    # sketch only - full cost math Day 72
+
+
+def step_ms(batch):
+    &quot;&quot;&quot;One decode step: every sequence in the batch emits
+    exactly one token, so step time == TPOT.&quot;&quot;&quot;
+    return STEP_BASE_MS + STEP_PER_SEQ_MS * batch
+
+
+def ttft_ms(batch):
+    &quot;&quot;&quot;Prefill the 800-token prompt (parallel compute), plus
+    waiting for the in-flight decode step to finish so the
+    new sequence can join the batch (Day 64).&quot;&quot;&quot;
+    return PREFILL_MS_PER_TOKEN * PROMPT_TOKENS + step_ms(batch)
+
+
+def total_ms(batch):
+    &quot;&quot;&quot;One full request: TTFT once, then TPOT per token.&quot;&quot;&quot;
+    return ttft_ms(batch) + (OUTPUT_TOKENS - 1) * step_ms(batch)
+
+
+def decode_tok_s(batch):
+    &quot;&quot;&quot;Tokens/sec during decode: B tokens per step.&quot;&quot;&quot;
+    return 1000.0 * batch / step_ms(batch)
+
+
+def req_per_s(batch):
+    &quot;&quot;&quot;Steady-state completions: B requests finish per
+    total_ms window (Little&#x27;s-law throughput).&quot;&quot;&quot;
+    return 1000.0 * batch / total_ms(batch)
+
+
+# ---------- Part 1: one request, two clocks ----------
+print(&quot;Part 1 - one request, two clocks &quot;
+      &quot;(800-token prompt, 200-token answer)&quot;)
+for b in (1, 48):
+    print(f&quot;  batch {b:&gt;2}: TTFT {ttft_ms(b):6.2f} ms (once)   &quot;
+          f&quot;TPOT {step_ms(b):5.2f} ms x {OUTPUT_TOKENS - 1} tokens   &quot;
+          f&quot;total {total_ms(b) / 1000:.3f} s   &quot;
+          f&quot;user sees {1000.0 / step_ms(b):.1f} tok/s&quot;)
+print(&quot;  TTFT is paid once and is prefill-bound; TPOT is paid&quot;)
+print(&quot;  per token and is step-bound. Different clocks,&quot;)
+print(&quot;  different bottlenecks, different fixes.&quot;)
+
+# ---------- Part 2: the sweep ----------
+print(&quot;Part 2 - the sweep: batch trades TPOT for throughput&quot;)
+print(f&quot;  {&#x27;batch&#x27;:&gt;5} {&#x27;TPOT ms&#x27;:&gt;8} {&#x27;TTFT ms&#x27;:&gt;8} {&#x27;total s&#x27;:&gt;8} &quot;
+      f&quot;{&#x27;tok/s&#x27;:&gt;8} {&#x27;req/s&#x27;:&gt;7} {&#x27;lam x W&#x27;:&gt;8}&quot;)
+for b in (1, 2, 4, 8, 16, 32, 48, 64):
+    lam = req_per_s(b)
+    little = lam * total_ms(b) / 1000.0      # should equal b
+    print(f&quot;  {b:&gt;5} {step_ms(b):&gt;8.2f} {ttft_ms(b):&gt;8.2f} &quot;
+          f&quot;{total_ms(b) / 1000:&gt;8.3f} {decode_tok_s(b):&gt;8.1f} &quot;
+          f&quot;{lam:&gt;7.3f} {little:&gt;8.2f}&quot;)
+print(&quot;  lam x W = concurrency = batch, every row: Little&#x27;s&quot;)
+print(&quot;  law holds exactly, because it is bookkeeping, not luck.&quot;)
+
+# ---------- Part 3: the operating point ----------
+print(f&quot;Part 3 - the operating point (SLO: TPOT &lt;= &quot;
+      f&quot;{TPOT_BUDGET_MS:.0f} ms)&quot;)
+ok = [b for b in range(1, 65) if step_ms(b) &lt;= TPOT_BUDGET_MS]
+best = max(ok)
+over = best + 16
+gain = decode_tok_s(over) / decode_tok_s(best) - 1.0
+print(f&quot;  largest batch inside budget: {best} &quot;
+      f&quot;(TPOT {step_ms(best):.2f} ms, &quot;
+      f&quot;{decode_tok_s(best):.1f} tok/s decode, &quot;
+      f&quot;{req_per_s(best) * OUTPUT_TOKENS:.1f} tok/s end-to-end)&quot;)
+print(f&quot;  batch {over}: TPOT {step_ms(over):.2f} ms breaks the SLO &quot;
+      f&quot;for only +{gain * 100:.1f}% throughput - a bad trade&quot;)
+for b in (1, best):
+    e2e = req_per_s(b) * OUTPUT_TOKENS
+    cost = GPU_USD_PER_HOUR / (e2e * 3600.0) * 1_000_000
+    print(f&quot;  cost sketch @ ${GPU_USD_PER_HOUR:.0f}/GPU-hr, batch &quot;
+          f&quot;{b:&gt;2}: ${cost:.2f} per 1M tokens&quot;)
+print(&quot;  verdict: you cannot cheat Little&#x27;s law - concurrency =&quot;)
+print(&quot;  throughput x latency. You can only CHOOSE the point on&quot;)
+print(&quot;  the curve: the largest batch the latency SLO allows.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one request, two clocks (800-token prompt, 200-token answer)
+  batch  1: TTFT  20.75 ms (once)   TPOT  4.75 ms x 199 tokens   total 0.966 s   user sees 210.5 tok/s
+  batch 48: TTFT  56.00 ms (once)   TPOT 40.00 ms x 199 tokens   total 8.016 s   user sees 25.0 tok/s
+  TTFT is paid once and is prefill-bound; TPOT is paid
+  per token and is step-bound. Different clocks,
+  different bottlenecks, different fixes.
+Part 2 - the sweep: batch trades TPOT for throughput
+  batch  TPOT ms  TTFT ms  total s    tok/s   req/s  lam x W
+      1     4.75    20.75    0.966    210.5   1.035     1.00
+      2     5.50    21.50    1.116    363.6   1.792     2.00
+      4     7.00    23.00    1.416    571.4   2.825     4.00
+      8    10.00    26.00    2.016    800.0   3.968     8.00
+     16    16.00    32.00    3.216   1000.0   4.975    16.00
+     32    28.00    44.00    5.616   1142.9   5.698    32.00
+     48    40.00    56.00    8.016   1200.0   5.988    48.00
+     64    52.00    68.00   10.416   1230.8   6.144    64.00
+  lam x W = concurrency = batch, every row: Little&#x27;s
+  law holds exactly, because it is bookkeeping, not luck.
+Part 3 - the operating point (SLO: TPOT &lt;= 40 ms)
+  largest batch inside budget: 48 (TPOT 40.00 ms, 1200.0 tok/s decode, 1197.6 tok/s end-to-end)
+  batch 64: TPOT 52.00 ms breaks the SLO for only +2.6% throughput - a bad trade
+  cost sketch @ $2/GPU-hr, batch  1: $2.68 per 1M tokens
+  cost sketch @ $2/GPU-hr, batch 48: $0.46 per 1M tokens
+  verdict: you cannot cheat Little&#x27;s law - concurrency =
+  throughput x latency. You can only CHOOSE the point on
+  the curve: the largest batch the latency SLO allows.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your sweep shows: <code>&lambda; &times; W</code> returning the batch exactly on all eight rows (Little&rsquo;s law, verified not asserted); throughput flattening (1142.9 &rarr; 1200.0 &rarr; 1230.8 tok/s across batches 32/48/64) while TPOT marches linearly (28 &rarr; 40 &rarr; 52 ms); and Part 3 naming <strong>batch 48</strong> as the operating point &mdash; TPOT exactly 40.00 ms, 1200.0 tok/s decode, $0.46 per 1M tokens vs $2.68 at batch 1. The keeper sentence, no notes: <em>batching trades TPOT for throughput along a fixed curve, Little&rsquo;s law forbids cheating it, so the latency SLO picks the batch.</em></p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study the diagram until you can sketch both curves and the SLO cut from memory. Then run only Part 2 and Part 3 of the code and say the verdict out loud: why 48 and not 64. If you can explain why &lambda; &times; W <em>must</em> equal the batch, you have the lesson &mdash; Part 1 is the warm-up lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: you&rsquo;ll be making serving decisions like this weekly &mdash; so we set up the notebook every experiment, sweep, and regression gets logged in, before the wins evaporate into scrollback.</p>
+  </div>
+
+  <div class="footer">Streak: 66 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
