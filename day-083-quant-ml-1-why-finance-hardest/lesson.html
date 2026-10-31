@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quant ML 1: Why Finance Is the Hardest ML Domain — Day 83 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 83 of 100</span>
+  <h1>Quant ML 1: Why Finance Is the Hardest ML Domain</h1>
+  <p class="outcome">Tonight you'll be able to: name the four ways finance breaks the assumptions every earlier phase quietly relied on &mdash; vanishing signal-to-noise, non-stationarity, tiny effective samples, adversarial decay &mdash; and compute, for any strategy, how many <em>days</em> of track record it takes before its results are even tellable from luck.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase G points the whole machine &mdash; fit, grade, ship &mdash; at the domain you care about most. But finance is not &ldquo;ML, but with stock data.&rdquo; It is the domain where the assumptions Phases A&ndash;F quietly relied on are at their weakest. You know markets; tonight is about what markets do to <em>models</em>. Four pieces of failure physics.</p>
+<p><strong>1. Signal-to-noise is brutal (the big one).</strong> A genuinely good strategy might expect <strong>+0.04% per day</strong> while daily prices swing <strong>&plusmn;1%</strong> &mdash; a per-day Sharpe of 0.04, inside the 0.05&ndash;0.15 band real edges live in after costs. The signal is 1/25th of the noise, so a single day tells you almost nothing; only averaging squeezes the noise down (it shrinks like &sigma;/&radic;n) while the mean stays put. Proving an edge is therefore a <em>sample-size purchase</em> at a brutal exchange rate: days needed grows with (&sigma;/&mu;)<sup>2</sup>. Part 1 prices it exactly &mdash; a real +0.04%/day edge needs on the order of <strong>2,500 days, a decade</strong>, to certify at the usual t&nbsp;=&nbsp;2 bar. A year of great returns is a hypothesis, not a result.</p>
+<p><strong>2. Non-stationarity: the target moves.</strong> Day 70&rsquo;s drift warning becomes the whole climate. The process generating returns changes &mdash; rate regimes, volatility regimes, liquidity, who else is trading. A model right about 2015&ndash;2020 can be wrong about everything after, not because it was badly fit but because the world it was fit to <em>ended</em>. Cats stay cats; markets rewire themselves. Part 3 runs the extreme case: an edge that flips sign halfway makes the pooled ten-year fit worse than useless &mdash; it confidently learns a world that never existed.</p>
+<p><strong>3. Tiny effective samples.</strong> Ten years of daily bars is 2,520 rows &mdash; before you notice that a 20-day feature computed on consecutive days shares 19 of its days with yesterday&rsquo;s copy, so the <em>independent</em> observation count is far lower than the row count. And there is exactly <strong>one history</strong>: you cannot re-run the 2010s with a different seed. Image models train on millions of independent examples; you get one path of one market, regimes and all.</p>
+<p><strong>4. The dataset fights back.</strong> In every other domain the data sits still while you model it. Here, an edge that gets published &mdash; or merely crowded &mdash; gets traded against and arbitraged away; other participants are optimizing over the same patterns, against you. Edges decay <em>because</em> they were found. That is the world&rsquo;s half of the problem; tomorrow (Day 84) covers the self-inflicted half. Tonight&rsquo;s stance, the one the whole capstone runs on: in finance, ML is mostly a <strong>measurement discipline</strong> &mdash; small edges, honest validation, regime awareness &mdash; and the wins come from not fooling yourself.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It&rsquo;s an A/B test on a noisy system &mdash; your home turf. Detecting a real edge in markets is like detecting a <strong>0.04% latency improvement</strong> in a service whose p99 swings &plusmn;25&times; that from hour to hour. You would never ship on an hour of metrics: you&rsquo;d demand weeks of traffic, and you&rsquo;d still argue about seasonality shifting the baseline mid-experiment. Markets are that experiment, except the seasonality (regimes) never repeats on schedule, the traffic is one unrepeatable stream, and the moment you publish the optimization, every other team copies it and the win evaporates &mdash; the benchmark itself is adversarial.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">A real edge vs pure luck: same vol, ten years</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">edge mu = +0.04%/day, noise mu = 0, both sigma = 1%/day - seed 83, the same run as the code</text>
+<text x="46" y="66" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - EQUITY CURVES (CUMULATIVE SUM OF DAILY RETURNS)</text>
+<rect x="46" y="84" width="61.8" height="142" fill="#fff3d6"/>
+<rect x="46" y="84" width="618" height="142" fill="none" stroke="#cccccc"/>
+<line x1="46" y1="208.3" x2="664" y2="208.3" stroke="#bbbbbb" stroke-dasharray="4 3"/>
+<polyline points="46.2,208.1 51.4,204.7 56.5,205.6 61.7,207.3 66.8,201.3 72.0,203.5 77.1,200.8 82.3,195.6 87.4,200.4 92.6,206.8 97.7,209.0 102.9,208.6 108.0,204.7 113.2,204.6 118.3,204.1 123.5,201.1 128.6,188.5 133.8,192.3 138.9,196.5 144.1,193.4 149.2,192.6 154.4,188.3 159.5,186.8 164.7,190.3 169.8,189.3 175.0,182.4 180.1,182.9 185.3,178.9 190.4,177.6 195.6,171.6 200.7,179.8 205.9,186.1 211.0,184.6 216.2,184.7 221.3,191.5 226.5,188.4 231.6,177.7 236.8,176.1 241.9,173.4 247.1,166.1 252.2,172.7 257.4,171.1 262.5,178.9 267.7,181.4 272.8,184.9 278.0,183.3 283.1,186.2 288.3,180.6 293.4,181.9 298.6,179.6 303.7,184.5 308.9,175.2 314.0,174.2 319.2,172.5 324.3,171.4 329.5,168.5 334.6,167.5 339.8,172.2 344.9,165.6 350.1,166.7 355.2,167.7 360.4,173.4 365.5,166.2 370.7,166.9 375.8,166.3 381.0,159.8 386.1,163.3 391.3,168.8 396.4,166.4 401.6,168.5 406.7,172.4 411.9,175.8 417.0,179.0 422.2,179.4 427.3,183.3 432.5,183.0 437.6,185.2 442.8,188.1 447.9,187.2 453.1,181.7 458.2,179.9 463.4,177.7 468.5,178.3 473.7,178.7 478.8,180.5 484.0,186.5 489.1,194.4 494.3,193.8 499.4,191.8 504.6,188.7 509.7,197.2 514.9,196.7 520.0,189.9 525.2,185.8 530.3,190.6 535.5,192.9 540.6,184.4 545.8,183.7 550.9,182.1 556.1,182.2 561.2,183.9 566.4,186.1 571.5,185.1 576.7,190.7 581.8,195.3 587.0,192.4 592.1,189.4 597.3,183.9 602.4,186.9 607.6,185.7 612.7,181.3 617.9,181.7 623.0,184.1 628.2,186.7 633.3,177.6 638.5,171.0 643.6,161.9 648.8,162.8 653.9,159.5 659.1,157.8 664.0,159.1" fill="none" stroke="#8a8a8e" stroke-width="1.6" stroke-linejoin="round"/>
+<polyline points="46.2,209.6 51.4,208.4 56.5,208.7 61.7,205.0 66.8,208.7 72.0,206.2 77.1,205.1 82.3,208.1 87.4,205.7 92.6,204.7 97.7,207.5 102.9,210.5 108.0,199.2 113.2,194.5 118.3,194.2 123.5,189.6 128.6,187.3 133.8,186.5 138.9,192.8 144.1,189.7 149.2,189.7 154.4,192.6 159.5,186.9 164.7,187.4 169.8,183.7 175.0,176.0 180.1,170.7 185.3,167.9 190.4,168.2 195.6,166.1 200.7,162.1 205.9,159.7 211.0,161.0 216.2,162.8 221.3,166.9 226.5,170.8 231.6,178.8 236.8,176.5 241.9,172.2 247.1,169.4 252.2,172.4 257.4,173.3 262.5,175.3 267.7,171.3 272.8,164.6 278.0,161.8 283.1,164.3 288.3,162.9 293.4,158.7 298.6,156.6 303.7,159.6 308.9,166.8 314.0,165.3 319.2,165.7 324.3,166.3 329.5,168.7 334.6,171.6 339.8,162.5 344.9,156.4 350.1,149.9 355.2,144.4 360.4,143.0 365.5,137.5 370.7,133.9 375.8,141.2 381.0,139.3 386.1,142.7 391.3,140.8 396.4,139.0 401.6,136.1 406.7,134.1 411.9,133.3 417.0,128.9 422.2,141.3 427.3,140.7 432.5,129.7 437.6,130.3 442.8,123.5 447.9,123.6 453.1,116.3 458.2,116.8 463.4,111.9 468.5,111.9 473.7,104.0 478.8,102.9 484.0,99.6 489.1,100.0 494.3,105.9 499.4,108.2 504.6,108.7 509.7,106.5 514.9,112.3 520.0,108.7 525.2,113.3 530.3,119.4 535.5,119.6 540.6,120.0 545.8,117.8 550.9,114.9 556.1,120.0 561.2,113.5 566.4,114.4 571.5,116.9 576.7,119.8 581.8,118.6 587.0,112.2 592.1,111.2 597.3,110.1 602.4,113.9 607.6,112.4 612.7,107.3 617.9,109.4 623.0,108.3 628.2,107.0 633.3,104.6 638.5,105.5 643.6,103.5 648.8,103.0 653.9,103.2 659.1,104.1 664.0,107.0" fill="none" stroke="#22a355" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="103.8" y="98" text-anchor="end" font-size="8.5" fill="#9a6b00">year 1</text>
+<text x="658" y="99.0" text-anchor="end" font-size="9.5" fill="#22a355" font-weight="bold">real edge: +1.16</text>
+<text x="658" y="175.1" text-anchor="end" font-size="9.5" fill="#8a8a8e" font-weight="bold">pure noise: +0.56</text>
+<text x="46.2" y="242" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<text x="107.8" y="242" text-anchor="middle" font-size="8.5" fill="#666666">1y</text>
+<text x="355.0" y="242" text-anchor="middle" font-size="8.5" fill="#666666">5y</text>
+<text x="664.0" y="242" text-anchor="middle" font-size="8.5" fill="#666666">10y</text>
+<text x="46" y="258" font-size="9" fill="#555555">Shaded: the first year - the two curves are twins. The gap you see at year 10 was invisible at every earlier checkpoint.</text>
+<text x="46" y="298" text-anchor="start" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - RUNNING t-STATISTIC OF THE MEAN (t = 2 IS THE USUAL &#x27;REAL&#x27; BAR)</text>
+<rect x="46" y="316" width="618" height="132" fill="none" stroke="#cccccc"/>
+<line x1="46" y1="392.6" x2="664" y2="392.6" stroke="#bbbbbb"/>
+<line x1="46" y1="350.1" x2="664" y2="350.1" stroke="#d64541" stroke-dasharray="5 3"/>
+<text x="660" y="345.1" text-anchor="end" font-size="9" fill="#d64541">t = 2</text>
+<polyline points="46.2,nan 51.4,372.2 56.5,382.5 61.7,389.7 66.8,375.8 72.0,382.4 77.1,377.6 82.3,368.8 87.4,378.9 92.6,390.2 97.7,393.7 102.9,393.1 108.0,387.3 113.2,387.3 118.3,386.8 123.5,383.1 128.6,367.6 133.8,373.2 138.9,378.5 144.1,375.3 149.2,374.8 154.4,370.6 159.5,369.4 164.7,373.6 169.8,372.9 175.0,366.3 180.1,367.0 185.3,363.5 190.4,362.5 195.6,357.1 200.7,365.5 205.9,371.8 211.0,370.7 216.2,371.0 221.3,377.4 226.5,374.9 231.6,365.8 236.8,364.6 241.9,362.7 247.1,357.0 252.2,363.1 257.4,362.1 262.5,368.8 267.7,371.0 272.8,374.2 278.0,373.1 283.1,375.5 288.3,371.5 293.4,372.6 298.6,371.0 303.7,374.9 308.9,368.3 314.0,367.7 319.2,366.7 324.3,366.1 329.5,364.3 334.6,364.0 339.8,367.4 344.9,363.1 350.1,364.1 355.2,365.0 360.4,369.0 365.5,364.5 370.7,365.2 375.8,365.1 381.0,361.1 386.1,363.5 391.3,367.2 396.4,365.8 401.6,367.5 406.7,370.2 411.9,372.5 417.0,374.6 422.2,375.0 427.3,377.4 432.5,377.3 437.6,378.8 442.8,380.6 447.9,380.1 453.1,377.0 458.2,376.0 463.4,374.9 468.5,375.3 473.7,375.6 478.8,376.7 484.0,380.3 489.1,384.8 494.3,384.5 499.4,383.4 504.6,381.7 509.7,386.5 514.9,386.2 520.0,382.6 525.2,380.4 530.3,383.0 535.5,384.3 540.6,379.8 545.8,379.5 550.9,378.8 556.1,378.9 561.2,379.8 566.4,381.0 571.5,380.5 576.7,383.5 581.8,385.9 587.0,384.4 592.1,382.9 597.3,380.2 602.4,381.8 607.6,381.2 612.7,379.1 617.9,379.3 623.0,380.6 628.2,381.9 633.3,377.5 638.5,374.3 643.6,369.9 648.8,370.4 653.9,368.9 659.1,368.1 664.0,368.9" fill="none" stroke="#8a8a8e" stroke-width="1.6" stroke-linejoin="round"/>
+<polyline points="46.2,nan 51.4,393.0 56.5,394.1 61.7,381.6 66.8,393.6 72.0,387.4 77.1,385.7 82.3,392.1 87.4,387.7 92.6,386.0 97.7,391.2 102.9,396.2 108.0,378.5 113.2,371.9 118.3,372.3 123.5,366.1 128.6,363.9 133.8,363.6 138.9,372.4 144.1,368.9 149.2,369.6 154.4,373.7 159.5,367.4 164.7,368.4 169.8,364.6 175.0,356.9 180.1,352.1 185.3,349.7 190.4,350.8 195.6,349.3 200.7,345.9 205.9,344.2 211.0,346.6 216.2,349.1 221.3,353.9 226.5,357.9 231.6,365.7 236.8,364.0 241.9,360.7 247.1,358.5 252.2,361.5 257.4,362.7 262.5,364.9 267.7,362.1 272.8,356.9 278.0,355.0 283.1,357.4 288.3,357.0 293.4,353.9 298.6,352.6 303.7,355.6 308.9,361.4 314.0,361.0 319.2,361.5 324.3,362.1 329.5,364.2 334.6,366.5 339.8,360.4 344.9,356.4 350.1,352.2 355.2,348.6 360.4,348.0 365.5,344.5 370.7,342.4 375.8,347.6 381.0,346.7 386.1,349.3 391.3,348.2 396.4,347.3 401.6,345.8 406.7,344.7 411.9,344.7 417.0,342.3 422.2,350.6 427.3,350.6 432.5,344.0 437.6,344.7 442.8,340.8 447.9,341.1 453.1,337.0 458.2,337.8 463.4,335.2 468.5,335.5 473.7,331.1 478.8,330.9 484.0,329.2 489.1,329.7 494.3,333.5 499.4,335.1 504.6,335.6 509.7,334.7 514.9,338.3 520.0,336.6 525.2,339.5 530.3,343.2 535.5,343.5 540.6,344.0 545.8,343.0 550.9,341.6 556.1,344.6 561.2,341.3 566.4,341.9 571.5,343.5 576.7,345.2 581.8,344.8 587.0,341.6 592.1,341.2 597.3,341.0 602.4,343.1 607.6,342.7 612.7,340.2 617.9,341.6 623.0,341.3 628.2,340.8 633.3,339.6 638.5,340.3 643.6,339.5 648.8,339.4 653.9,339.7 659.1,340.4 664.0,342.1" fill="none" stroke="#22a355" stroke-width="1.6" stroke-linejoin="round"/>
+<circle cx="183.8" cy="349.2" r="3.5" fill="#22a355"/>
+<text x="191.8" y="341.2" font-size="9" fill="#22a355">first touch: day 562</text>
+<circle cx="355.0" cy="348.5" r="3" fill="#22a355"/>
+<text x="349.0" y="339.5" text-anchor="end" font-size="9" fill="#22a355">5y: t = 2.07</text>
+<circle cx="664.0" cy="342.1" r="3" fill="#22a355"/>
+<text x="658.0" y="334.1" text-anchor="end" font-size="9" fill="#22a355" font-weight="bold">10y: t = 2.37</text>
+<text x="46" y="466" font-size="9" fill="#555555">The gray noise line itself peaks at t = 1.72 along the way - with no edge at all.</text>
+<text x="340" y="492" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">In finance, a year of great results is a hypothesis, not a result.</text>
+</svg>
+    <div class="caption">Top: ten years of two strategies with identical volatility &mdash; one carrying a real +0.04%/day edge, one carrying nothing. For the first year (shaded) they are twins, and after a decade the <em>noise</em> strategy is still up +0.56 on luck alone. Bottom: the evidence meter &mdash; the edge strategy&rsquo;s running t-statistic needs about five years to touch t&nbsp;=&nbsp;2 and the full decade to hold it, while the edgeless gray line itself peaks at 1.72 along the way. Same run as the code (seed 83).</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, all <strong>simulated</strong> &mdash; on purpose. With real market data you never know the true edge, so you could never check whether the statistics were right; in simulation the ground truth is printed on the label. <strong>Part 1</strong> races a real edge against pure noise and reads the t-statistic (standard-error score for &ldquo;is this mean distinguishable from zero?&rdquo;) at a quarter, a year, five years, ten. <strong>Part 2</strong> runs the luck factory: 100 edgeless strategies, one year each, and counts the fake track records. <strong>Part 3</strong> flips one strategy&rsquo;s edge at year 5 and pools the decade. numpy only, seed fixed at 83 &mdash; change the seed and the wiggles change; double <code>MU</code> and the theory line drops to 625 days, which is the physics talking.</p>
+  <pre><code>"""Day 83 - Quant ML 1: Why Finance Is the Hardest ML Domain.
+
+Phase G opener. Days 1-82 built the general machine:
+fit f_theta, grade it on held-out data, ship it. Finance
+keeps the machine and breaks its assumptions. Four
+pieces of failure physics, one per paragraph of the
+lesson:
+
+  1. Signal-to-noise. A GOOD strategy's true edge is
+     ~0.04% per day against ~1% daily noise - a per-day
+     Sharpe of 0.04. The signal is a rounding error on
+     the noise, every single day.
+  2. Non-stationarity. The process generating the data
+     moves: regimes flip, and yesterday's edge can
+     become tomorrow's drag. Cats stay cats; markets
+     rewire themselves.
+  3. Tiny effective samples. One market, one history.
+     Overlapping windows are not independent samples,
+     so "10 years of data" is far fewer real observations
+     than it looks - and they all share the same regimes.
+  4. Adversarial decay. A published or crowded edge gets
+     traded against and arbitraged away. The dataset
+     fights back.
+
+Tonight's code makes (1) and (2) measurable:
+
+  Part 1  Two simulated strategies, same vol. One has
+          the real edge above, one is pure noise. Watch
+          the t-statistic of the mean - the standard
+          "is this distinguishable from zero?" score -
+          at one quarter, one year, five years, ten.
+          Theory says the AVERAGE edge strategy needs
+          (2*sigma/mu)^2 = 2,500 days to reach t = 2.
+  Part 2  The luck factory: 100 pure-noise strategies,
+          one year each. Count how many print t &gt; 2 -
+          a "proven" track record manufactured by chance
+          alone, ready to be sold as skill.
+  Part 3  Non-stationarity, one run: the strategy's
+          edge is +0.08%/day for five years, then flips
+          to -0.08%/day for five. The pooled 10-year
+          backtest averages the two regimes into a lie.
+
+Everything is simulated: no market data, no downloads,
+no APIs. numpy only, one fixed seed (83) - the seed is
+part of the lesson, because the exact wiggle of any one
+run is luck; the SIZES are the physics. Runs in the
+~/ai-lab venv on CPU in about a second.
+
+Expected output:
+
+  Part 1 - the edge is real, and invisible for years
+    true edge: mu = +0.04%/day, sigma = 1.00%/day  (per-day Sharpe 0.04)
+    theory: days for the average edge run to reach t = 2: (2*sigma/mu)^2 = 2500 days = 9.9 years
+    one simulated pair, same seed, 10 years:
+      after    63 days (one quarter): edge t = +0.66   noise t = +0.05
+      after   252 days (one year   ): edge t = +0.57   noise t = +0.24
+      after  1260 days (five years ): edge t = +2.07   noise t = +1.33
+      after  2520 days (ten years  ): edge t = +2.37   noise t = +1.11
+    this edge run first touches t = 2 on day 562 - and a touch is not a hold
+    the edge strategy's realized Sharpe over the decade: 0.75 annualized - a good strategy
+    verdict: at one year, the REAL edge is statistically indistinguishable from luck
+  Part 2 - the luck factory: 100 strategies with NO edge, 1 year each
+    pure-noise strategies printing t &gt; 2 after 252 days: 5 of 100
+    the best of them: t = +2.80 - at exactly one year, t IS the annualized Sharpe
+    chance alone predicts ~2-3 of 100 (a one-sided t &gt; 2 is a ~2.3% event)
+    verdict: a great one-year track record is what luck looks like at scale
+  Part 3 - the target moves: one strategy, regime flip at year 5
+    years 1-5  (edge +0.08%/day): t = +1.93, cumulative +0.680
+    years 6-10 (edge -0.08%/day): t = -3.73, cumulative -1.301
+    all 10 years pooled:          t = -1.25 -&gt; reads as 'no edge'
+    verdict: pooled, the backtest learns a world that never existed
+"""
+import numpy as np
+
+MU, SIGMA = 0.0004, 0.01      # true edge: +0.04%/day; daily vol: 1%
+DAYS = 2520                   # 10 years x 252 trading days
+
+
+def t_stat(r):
+    """t-statistic of the mean: how many standard errors
+    the average daily return sits from zero."""
+    return r.mean() / (r.std(ddof=1) / np.sqrt(len(r)))
+
+
+def running_t(r):
+    """t-statistic of every prefix of r, vectorized via
+    cumulative sums (used to find the first t = 2 touch)."""
+    n = np.arange(1, len(r) + 1)
+    mean = np.cumsum(r) / n
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # n = 1 has no sample std; we only ever read n &gt;= 30.
+        var = (np.cumsum(r ** 2) / n - mean ** 2) * n / (n - 1)
+        return mean / (np.sqrt(var) / np.sqrt(n))
+
+
+rng = np.random.default_rng(83)
+edge = rng.normal(MU, SIGMA, DAYS)     # real edge, buried in noise
+noise = rng.normal(0.0, SIGMA, DAYS)   # no edge at all, same vol
+
+# ---------- Part 1: how long until real is tellable from lucky? ----
+print("Part 1 - the edge is real, and invisible for years")
+print(f"  true edge: mu = +{MU * 100:.2f}%/day, sigma = {SIGMA * 100:.2f}%/day"
+      f"  (per-day Sharpe {MU / SIGMA:.2f})")
+need = (2.0 * SIGMA / MU) ** 2
+print(f"  theory: days for the average edge run to reach t = 2:"
+      f" (2*sigma/mu)^2 = {need:.0f} days = {need / 252:.1f} years")
+print("  one simulated pair, same seed, 10 years:")
+for n, label in ((63, "one quarter"), (252, "one year"),
+                 (1260, "five years"), (2520, "ten years")):
+    print(f"    after {n:&gt;5} days ({label:&lt;11}): "
+          f"edge t = {t_stat(edge[:n]):+.2f}   noise t = {t_stat(noise[:n]):+.2f}")
+cross = int(np.argmax(running_t(edge)[29:] &gt;= 2.0)) + 30
+print(f"  this edge run first touches t = 2 on day {cross}"
+      " - and a touch is not a hold")
+sharpe = edge.mean() / edge.std(ddof=1) * np.sqrt(252)
+print(f"  the edge strategy's realized Sharpe over the decade:"
+      f" {sharpe:.2f} annualized - a good strategy")
+print("  verdict: at one year, the REAL edge is statistically"
+      " indistinguishable from luck")
+
+# ---------- Part 2: the luck factory ----------
+print("Part 2 - the luck factory: 100 strategies with NO edge, 1 year each")
+crowd = rng.normal(0.0, SIGMA, (100, 252))
+cts = crowd.mean(axis=1) / (crowd.std(axis=1, ddof=1) / np.sqrt(252))
+lucky = int((cts &gt; 2.0).sum())
+print(f"  pure-noise strategies printing t &gt; 2 after 252 days: {lucky} of 100")
+print(f"  the best of them: t = {cts.max():+.2f} - at exactly one year,"
+      " t IS the annualized Sharpe")
+print("  chance alone predicts ~2-3 of 100 (a one-sided t &gt; 2 is a ~2.3% event)")
+print("  verdict: a great one-year track record is what luck looks like at scale")
+
+# ---------- Part 3: the target moves ----------
+print("Part 3 - the target moves: one strategy, regime flip at year 5")
+flip = rng.normal(0.0, SIGMA, DAYS)
+flip[:1260] += 0.0008          # regime 1: the edge is real, +0.08%/day
+flip[1260:] -= 0.0008          # regime 2: the same edge, inverted
+print(f"  years 1-5  (edge +0.08%/day): t = {t_stat(flip[:1260]):+.2f},"
+      f" cumulative {flip[:1260].sum():+.3f}")
+print(f"  years 6-10 (edge -0.08%/day): t = {t_stat(flip[1260:]):+.2f},"
+      f" cumulative {flip[1260:].sum():+.3f}")
+print(f"  all 10 years pooled:          t = {t_stat(flip):+.2f}"
+      " -&gt; reads as 'no edge'")
+print("  verdict: pooled, the backtest learns a world that never existed")</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the edge is real, and invisible for years
+  true edge: mu = +0.04%/day, sigma = 1.00%/day  (per-day Sharpe 0.04)
+  theory: days for the average edge run to reach t = 2: (2*sigma/mu)^2 = 2500 days = 9.9 years
+  one simulated pair, same seed, 10 years:
+    after    63 days (one quarter): edge t = +0.66   noise t = +0.05
+    after   252 days (one year   ): edge t = +0.57   noise t = +0.24
+    after  1260 days (five years ): edge t = +2.07   noise t = +1.33
+    after  2520 days (ten years  ): edge t = +2.37   noise t = +1.11
+  this edge run first touches t = 2 on day 562 - and a touch is not a hold
+  the edge strategy's realized Sharpe over the decade: 0.75 annualized - a good strategy
+  verdict: at one year, the REAL edge is statistically indistinguishable from luck
+Part 2 - the luck factory: 100 strategies with NO edge, 1 year each
+  pure-noise strategies printing t &gt; 2 after 252 days: 5 of 100
+  the best of them: t = +2.80 - at exactly one year, t IS the annualized Sharpe
+  chance alone predicts ~2-3 of 100 (a one-sided t &gt; 2 is a ~2.3% event)
+  verdict: a great one-year track record is what luck looks like at scale
+Part 3 - the target moves: one strategy, regime flip at year 5
+  years 1-5  (edge +0.08%/day): t = +1.93, cumulative +0.680
+  years 6-10 (edge -0.08%/day): t = -3.73, cumulative -1.301
+  all 10 years pooled:          t = -1.25 -&gt; reads as 'no edge'
+  verdict: pooled, the backtest learns a world that never existed</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches the expected output: the edge&rsquo;s t crawling <code>+0.66 &rarr; +0.57 &rarr; +2.07 &rarr; +2.37</code> while the edgeless run sits at <code>+0.24</code> after a full year; <strong>5 of 100</strong> pure-noise strategies faking t&nbsp;&gt;&nbsp;2 (best: a &ldquo;Sharpe 2.80&rdquo; manufactured from nothing); and Part 3&rsquo;s pooled <code>t = &minus;1.25</code> plastered over two strong, opposite regimes. The keeper skill, no notes allowed: for any strategy someone shows you, you can now ask the only question that matters first &mdash; <em>how many days, and what&rsquo;s the daily Sharpe?</em> &mdash; because days-to-proof &asymp; (2&nbsp;/&nbsp;daily Sharpe)<sup>2</sup>. Even an excellent annual-Sharpe-1.0 strategy needs roughly four years to prove itself.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, then stare at the diagram&rsquo;s bottom panel until the shape sinks in: evidence grows like &radic;days, so proof is bought in years, not months. Run the code and read only the three verdict lines. The four failure modes plus one number &mdash; <strong>2,500 days to certify a real 0.04%-per-day edge</strong> &mdash; are tonight&rsquo;s whole payload.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the enemy moves indoors &mdash; how backtests manufacture fake edges out of pure noise even when the market holds perfectly still, and the arithmetic of how many strategies you tried before this one &ldquo;worked.&rdquo;</p>
+  </div>
+
+  <div class="footer">Streak: 83 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
