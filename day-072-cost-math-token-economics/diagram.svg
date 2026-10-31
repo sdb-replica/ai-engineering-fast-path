@@ -1,0 +1,41 @@
+<svg viewBox="0 0 680 472" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="472" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Self-host vs API: cost per 1M tokens vs monthly volume</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">One H100 at $2.00/hr (ASSUMPTION) = $1,460/mo fixed, at Day 66's operating point (batch 48, 1,200 tok/s)</text>
+<line x1="90" y1="70" x2="90" y2="380" stroke="#cccccc" stroke-width="1"/>
+<line x1="90" y1="380" x2="650" y2="380" stroke="#cccccc" stroke-width="1"/>
+<text x="82" y="383" text-anchor="end" font-size="9" fill="#555555">$0</text>
+<text x="82" y="321" text-anchor="end" font-size="9" fill="#555555">$2</text>
+<text x="82" y="259" text-anchor="end" font-size="9" fill="#555555">$4</text>
+<text x="82" y="197" text-anchor="end" font-size="9" fill="#555555">$6</text>
+<text x="82" y="135" text-anchor="end" font-size="9" fill="#555555">$8</text>
+<text x="82" y="73" text-anchor="end" font-size="9" fill="#555555">$10</text>
+<line x1="90" y1="318" x2="650" y2="318" stroke="#eeeeee" stroke-width="1"/>
+<line x1="90" y1="256" x2="650" y2="256" stroke="#eeeeee" stroke-width="1"/>
+<line x1="90" y1="194" x2="650" y2="194" stroke="#eeeeee" stroke-width="1"/>
+<line x1="90" y1="132" x2="650" y2="132" stroke="#eeeeee" stroke-width="1"/>
+<line x1="357.0" y1="244.4" x2="357.0" y2="380" stroke="#d99a00" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="90" y1="244.4" x2="650" y2="244.4" stroke="#0a7aff" stroke-width="1.8"/>
+<path d="M 210.0 78.3 L 214.0 88.0 L 218.0 97.1 L 222.0 105.7 L 226.0 113.8 L 230.0 121.4 L 234.0 128.6 L 238.0 135.4 L 242.0 141.8 L 246.0 147.9 L 250.0 153.7 L 254.0 159.2 L 258.0 164.5 L 262.0 169.5 L 266.0 174.3 L 270.0 178.8 L 274.0 183.2 L 278.0 187.4 L 282.0 191.4 L 286.0 195.3 L 290.0 199.0 L 294.0 202.5 L 298.0 205.9 L 302.0 209.2 L 306.0 212.4 L 310.0 215.4 L 314.0 218.4 L 318.0 221.2 L 322.0 223.9 L 326.0 226.6 L 330.0 229.1 L 334.0 231.6 L 338.0 234.0 L 342.0 236.3 L 346.0 238.6 L 350.0 240.7 L 354.0 242.8 L 358.0 244.9 L 362.0 246.9 L 366.0 248.8 L 370.0 250.7 L 374.0 252.5 L 378.0 254.3 L 382.0 256.0 L 386.0 257.7 L 390.0 259.3 L 394.0 260.9 L 398.0 262.4 L 402.0 263.9 L 406.0 265.4 L 410.0 266.9 L 414.0 268.2 L 418.0 269.6 L 422.0 270.9 L 426.0 272.2 L 430.0 273.5 L 434.0 274.7 L 438.0 276.0 L 442.0 277.1 L 446.0 278.3 L 450.0 279.4 L 454.0 280.5 L 458.0 281.6 L 462.0 282.7 L 466.0 283.7 L 470.0 284.7 L 474.0 285.7 L 478.0 286.7 L 482.0 287.6 L 486.0 288.6 L 490.0 289.5 L 494.0 290.4 L 498.0 291.3 L 502.0 292.1 L 506.0 293.0 L 510.0 293.8 L 514.0 294.6 L 518.0 295.4 L 522.0 296.2 L 526.0 297.0 L 530.0 297.7 L 534.0 298.5 L 538.0 299.2 L 542.0 299.9 L 546.0 300.6 L 550.0 301.3 L 554.0 302.0 L 558.0 302.6 L 562.0 303.3 L 566.0 303.9 L 570.0 304.6 L 574.0 305.2 L 578.0 305.8 L 582.0 306.4 L 586.0 307.0 L 590.0 307.6 L 594.0 308.2 L 598.0 308.7 L 602.0 309.3 L 606.0 309.8 L 610.0 310.4 L 614.0 310.9 L 618.0 311.4 L 622.0 311.9 L 626.0 312.4 L 630.0 312.9 L 634.0 313.4 L 638.0 313.9 L 642.0 314.4 L 646.0 314.9 L 650.0 315.3" fill="none" stroke="#22a355" stroke-width="2.2"/>
+<circle cx="357.0" cy="244.4" r="5" fill="#d99a00" stroke="#ffffff" stroke-width="1.5"/>
+<text x="150" y="276" text-anchor="middle" font-size="10" fill="#0a54c2" font-weight="bold">API wins: GPU mostly idle</text>
+<text x="520" y="208" text-anchor="middle" font-size="10" fill="#177245" font-weight="bold">Self-host wins: volume pays the rent</text>
+<text x="645" y="236" text-anchor="end" font-size="9.5" fill="#0a54c2">API: flat $4.38/1M (ASSUMPTION prices, 3:1 mix)</text>
+<text x="645" y="334" text-anchor="end" font-size="9.5" fill="#177245">Self-host: $1,460/mo fixed / volume</text>
+<text x="430" y="86" font-size="9.5" fill="#555555">self-host $/1M = 1460 / V (V in millions of tokens)</text>
+<text x="357.0" y="262" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">break-even</text>
+<text x="357.0" y="277" text-anchor="middle" font-size="9.5" fill="#1c1c1e">~334M tokens/mo</text>
+<text x="357.0" y="398" text-anchor="middle" font-size="9" fill="#555555">334M</text>
+<text x="90" y="398" text-anchor="middle" font-size="9" fill="#555555">0</text>
+<text x="170" y="398" text-anchor="middle" font-size="9" fill="#555555">100M</text>
+<text x="250" y="398" text-anchor="middle" font-size="9" fill="#555555">200M</text>
+<text x="330" y="398" text-anchor="middle" font-size="9" fill="#555555">300M</text>
+<text x="410" y="398" text-anchor="middle" font-size="9" fill="#555555">400M</text>
+<text x="490" y="398" text-anchor="middle" font-size="9" fill="#555555">500M</text>
+<text x="570" y="398" text-anchor="middle" font-size="9" fill="#555555">600M</text>
+<text x="650" y="398" text-anchor="middle" font-size="9" fill="#555555">700M</text>
+<text x="370" y="415" text-anchor="middle" font-size="9" fill="#666666">monthly volume, tokens served (chart zooms on the decision zone; one GPU tops out ~3.15B/mo)</text>
+<rect x="12" y="424" width="656" height="38" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340.0" y="440" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Brochure: peak + 100% util = $0.43/1M   |   Yours: at-SLO + 50% util = $0.93/1M   |   gap 2.2x</text>
+<text x="340.0" y="455" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Break-even ~334M tokens/mo = ~11,124 req/day = 10.6% of one GPU. Below: rent the API. Above: rent the GPU.</text>
+</svg>
