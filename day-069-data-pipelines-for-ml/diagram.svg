@@ -1,0 +1,43 @@
+<svg viewBox="0 0 680 466" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="466" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Training-serving skew: two paths, one definition - or two copies</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666" font-weight="normal">feature = mean of last 5 closes BEFORE t - a feature for time t may only use events with ts &lt; t</text>
+<rect x="12" y="54" width="656" height="200" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE FIX - BOTH PATHS CONVERGE ON ONE SHARED DEFINITION</text>
+<rect x="28" y="90" width="176" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="110" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">BATCH TRAINING</text>
+<text x="110" y="130" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">offline - full history</text>
+<rect x="476" y="90" width="176" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="564" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ONLINE SERVING</text>
+<text x="564" y="130" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">live request - partial data</text>
+<rect x="232" y="86" width="216" height="60" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="106" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ONE SHARED DEFINITION</text>
+<text x="340" y="122" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">mean_last5_before(events, t)</text>
+<text x="340" y="138" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">last 5 closes - ts &lt; t only</text>
+<line x1="204" y1="116" x2="228" y2="116" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="230,116 223,112 223,120" fill="#0a7aff"/>
+<line x1="476" y1="116" x2="454" y2="116" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="452,116 459,112 459,120" fill="#0a7aff"/>
+<line x1="340" y1="146" x2="340" y2="166" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,168 336,161 344,161" fill="#22a355"/>
+<rect x="170" y="170" width="340" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="190" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">MODEL</text>
+<text x="340" y="206" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">train feature == serving feature</text>
+<text x="340" y="238" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="normal">point-in-time assert inside the shared fn - freshness + quality checks on the log - max diff 0.0000</text>
+<rect x="12" y="268" width="656" height="184" rx="8" fill="#ffffff" stroke="#c0392b" stroke-width="1.2"/>
+<text x="340" y="290" text-anchor="middle" font-size="10.5" fill="#a93226" font-weight="bold">THE BUG - THE DIVERGENT SHORTCUT: EACH PATH KEEPS ITS OWN COPY</text>
+<rect x="28" y="304" width="250" height="52" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="153" y="326" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">TRAINING COPY</text>
+<text x="153" y="344" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">centered window t-2..t+2 - peeks ahead</text>
+<rect x="402" y="304" width="250" height="52" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="527" y="326" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SERVING COPY</text>
+<text x="527" y="344" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">last 3 closes - a different feature</text>
+<text x="340" y="382" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">t = 8:  train 111.4000  vs  serve 109.0000  -  skew 2.4000, and no error is raised</text>
+<line x1="153" y1="356" x2="253" y2="392" stroke="#c0392b" stroke-width="1.6" stroke-dasharray="5,4"/>
+<polygon points="255,394 251,387 259,387" fill="#c0392b"/>
+<line x1="527" y1="356" x2="427" y2="392" stroke="#c0392b" stroke-width="1.6" stroke-dasharray="5,4"/>
+<polygon points="425,394 421,387 429,387" fill="#c0392b"/>
+<rect x="190" y="396" width="300" height="44" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="340" y="416" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">SAME MODEL - SAME FEATURE NAME</text>
+<text x="340" y="432" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">different numbers in - quiet damage out</text>
+</svg>

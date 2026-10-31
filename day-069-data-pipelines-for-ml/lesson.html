@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Pipelines for ML: What 'MLOps' Actually Means Day-to-Day — Day 69 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 69 of 100</span>
+  <h1>Data Pipelines for ML: What 'MLOps' Actually Means Day-to-Day</h1>
+  <p class="outcome">Tonight you'll be able to: spot training-serving skew in the wild, state the point-in-time law that prevents its worst form, and enforce both with one shared feature definition that the training path and the serving path both import.</p>
+
+  <h2>The one idea</h2>
+  <p>Strip the vendor keynotes away and <strong>MLOps day-to-day is plumbing</strong>: getting data from where it is produced to where a model trains and serves, in the right shape, at the right time, with ongoing proof it is still right. For a systems engineer this is familiar ground &mdash; pipelines, schemas, freshness, checks. There is exactly one new failure mode, and it has no real analogue in ordinary software: <strong>when the data is wrong, the model does not crash. It just gets quietly worse.</strong></p>
+<p>The name for it is <strong>training-serving skew</strong>. A <em>feature</em> is a number computed from raw data that the model consumes &mdash; tonight&rsquo;s example is &ldquo;mean of last 5 closes before t.&rdquo; Training computes features <strong>offline</strong>: a batch job over the full historical table, run once. Serving computes the &ldquo;same&rdquo; feature <strong>online</strong>: a live job over whatever data has arrived so far, per request. Two codebases, possibly two authors, two moments in time &mdash; and no compiler anywhere forcing them to agree. A window quietly differs, a filter changes, a boundary lands one tick off, and the model&rsquo;s production inputs drift away from the inputs it was validated on. The offline metrics were honest. Production is simply a different distribution than the one in the report.</p>
+<p>The nastiest subspecies is the <strong>point-in-time violation</strong>. The offline job has the entire future sitting in its table, one <code>WHERE</code> clause away. If the feature for a prediction at time t is computed using any event with ts &ge; t, training has peeked. That is Day 32&rsquo;s no-peeking rule &mdash; fit your window on data that existed, standardize with train stats only &mdash; promoted from a notebook habit to a systems law:</p>
+<p style="text-align:center"><strong>A feature for a prediction at time t may only use data that existed at t (ts &lt; t).</strong></p>
+<p>Violate it and the training metrics are fiction: the model &ldquo;learned&rdquo; from information it can never possess live, so the backtest glows and production bleeds. Respect it in a hand-run notebook and you are one engineer being careful; the production fix has to be structural.</p>
+<p><strong>The fix is a contract, not a tool.</strong> (1) <strong>One feature definition in one place</strong> &mdash; a single function or module that both paths import; copy-paste is where skew is born. (2) <strong>Point-in-time correctness enforced inside that definition</strong>, asserted in code, not hoped for in review. (3) <strong>Freshness checks</strong> &mdash; how old is the newest data this feature just read? A silently stalled upstream feed should page a human, not propagate into predictions. (4) <strong>Quality checks</strong> &mdash; null rates, value ranges, and row counts inside expected bands, the data version of a health endpoint. (5) <strong>Version the definition like an API schema</strong> &mdash; change it, and both paths change together, under a new version.</p>
+<p>The tooling around that contract is interchangeable plumbing: Airflow or Dagster schedules the batch path, Kafka carries the stream, dbt shapes the tables, Feast/Tecton-style feature stores exist precisely to serve one definition to both paths, and Great Expectations-style checks guard quality. Learn the contract and every one of those tools is a weekend read. Learn a tool without the contract and you have bought a faster way to skew.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Two replicas of the same derived state, maintained by different code &mdash; your storage brain already knows this story. If the write path maintains a view one way and the repair job rebuilds it with slightly different logic, the replicas diverge with <em>no error anywhere</em>; every operator just sees two plausible-looking copies. The fix was never &ldquo;be more careful&rdquo; &mdash; it is one shared implementation, plus checksums that fail loudly when copies disagree. Skew is that bug wearing an ML costume, and the shared feature definition plus the point-in-time assert is the same cure.</p><p>Trading version, one line: your backtest&rsquo;s indicator computed with the day&rsquo;s <em>final</em> close vs the live indicator at 10am &mdash; same name, different number, and the backtest always looks smarter.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 466" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="466" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Training-serving skew: two paths, one definition - or two copies</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666" font-weight="normal">feature = mean of last 5 closes BEFORE t - a feature for time t may only use events with ts &lt; t</text>
+<rect x="12" y="54" width="656" height="200" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE FIX - BOTH PATHS CONVERGE ON ONE SHARED DEFINITION</text>
+<rect x="28" y="90" width="176" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="110" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">BATCH TRAINING</text>
+<text x="110" y="130" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">offline - full history</text>
+<rect x="476" y="90" width="176" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="564" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ONLINE SERVING</text>
+<text x="564" y="130" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">live request - partial data</text>
+<rect x="232" y="86" width="216" height="60" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="106" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ONE SHARED DEFINITION</text>
+<text x="340" y="122" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">mean_last5_before(events, t)</text>
+<text x="340" y="138" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">last 5 closes - ts &lt; t only</text>
+<line x1="204" y1="116" x2="228" y2="116" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="230,116 223,112 223,120" fill="#0a7aff"/>
+<line x1="476" y1="116" x2="454" y2="116" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="452,116 459,112 459,120" fill="#0a7aff"/>
+<line x1="340" y1="146" x2="340" y2="166" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,168 336,161 344,161" fill="#22a355"/>
+<rect x="170" y="170" width="340" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="190" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">MODEL</text>
+<text x="340" y="206" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">train feature == serving feature</text>
+<text x="340" y="238" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="normal">point-in-time assert inside the shared fn - freshness + quality checks on the log - max diff 0.0000</text>
+<rect x="12" y="268" width="656" height="184" rx="8" fill="#ffffff" stroke="#c0392b" stroke-width="1.2"/>
+<text x="340" y="290" text-anchor="middle" font-size="10.5" fill="#a93226" font-weight="bold">THE BUG - THE DIVERGENT SHORTCUT: EACH PATH KEEPS ITS OWN COPY</text>
+<rect x="28" y="304" width="250" height="52" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="153" y="326" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">TRAINING COPY</text>
+<text x="153" y="344" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">centered window t-2..t+2 - peeks ahead</text>
+<rect x="402" y="304" width="250" height="52" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="527" y="326" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SERVING COPY</text>
+<text x="527" y="344" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">last 3 closes - a different feature</text>
+<text x="340" y="382" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="normal">t = 8:  train 111.4000  vs  serve 109.0000  -  skew 2.4000, and no error is raised</text>
+<line x1="153" y1="356" x2="253" y2="392" stroke="#c0392b" stroke-width="1.6" stroke-dasharray="5,4"/>
+<polygon points="255,394 251,387 259,387" fill="#c0392b"/>
+<line x1="527" y1="356" x2="427" y2="392" stroke="#c0392b" stroke-width="1.6" stroke-dasharray="5,4"/>
+<polygon points="425,394 421,387 429,387" fill="#c0392b"/>
+<rect x="190" y="396" width="300" height="44" rx="8" fill="#fdeeee" stroke="#c0392b" stroke-width="1.2"/>
+<text x="340" y="416" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">SAME MODEL - SAME FEATURE NAME</text>
+<text x="340" y="432" text-anchor="middle" font-size="8.5" fill="#555555" font-weight="normal">different numbers in - quiet damage out</text>
+</svg>
+    <div class="caption">Top: the fix &mdash; batch training and online serving are different jobs reading different data, but both arrows converge on ONE shared feature definition, so agreement is structural, not coincidental. Bottom: the bug, drawn as the divergent shortcut &mdash; each path keeps a private copy that bypasses the shared box (the training copy even peeks into the future), and the model receives different numbers under the same feature name, with no error raised.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, <strong>standard library only</strong> &mdash; tonight is a data-path lesson, no torch. A 12-tick event log stands in for the production table or topic. <strong>Part 1</strong> implements the spec and the two buggy private copies (training peeks with a centered window; serving quietly uses 3 closes) and prints the skew table. <strong>Part 2</strong> replaces both copies with one shared function that both paths import, and re-measures. <strong>Part 3</strong> feeds that function&rsquo;s guard a poisoned window and watches it fail loudly.</p>
+  <pre><code>&quot;&quot;&quot;Day 69 - Data Pipelines for ML: What &quot;MLOps&quot; Actually Means Day-to-Day.
+
+Phase E. Strip the buzzword and MLOps day-to-day is mostly
+plumbing around the model - and the #1 production ML failure
+is not the model at all. It is the data path, specifically:
+
+    TRAINING-SERVING SKEW - the feature computed one way in
+    training (offline batch job, full history on disk) and
+    another way at serving (online job, partial live data),
+    so the two silently disagree. The model was validated on
+    one set of numbers and is fed a different set in prod.
+    No exception, no crash - just quiet degradation.
+
+The nastiest subspecies is a point-in-time violation: the
+offline job computes a feature for a prediction at time t
+using data that did not exist at t. That is Day 32&#x27;s
+no-peeking rule promoted from a notebook habit to a systems
+law: a feature for time t may only use events with ts &lt; t.
+
+The fix is a contract, not a tool: ONE feature definition in
+ONE place, imported by both paths, with the point-in-time
+rule asserted inside it - plus freshness and quality checks
+on the log it reads. Feature stores, schedulers and stream
+processors are interchangeable brands of plumbing; the
+contract is the part that cannot be bought.
+
+  Part 1  The bug. One event log of price ticks, one spec
+          (&quot;mean of last 5 closes BEFORE t&quot;), and two buggy
+          copies: the training job uses a centered window
+          that peeks at ticks after t; the serving job uses
+          the last 3 closes. Print the skew table - the two
+          paths disagree by whole points, silently.
+  Part 2  The fix. Both paths import the SAME function.
+          Features come out identical (max diff 0.0), and a
+          freshness check reports how stale the newest
+          usable event is.
+  Part 3  The guard. The shared function asserts
+          point-in-time correctness. Feed it a poisoned
+          window with the tick AT t smuggled in and it fails
+          loudly - the exact failure Part 1 let through.
+
+Pure standard library - no torch needed tonight, this is a
+data-path lesson. Runs in the ~/ai-lab venv on the MacBook:
+no CUDA, no paid APIs, no downloads, fully deterministic.
+
+Expected output:
+
+  Part 1 - two copies of &quot;the same&quot; feature: the skew
+    spec: mean of last 5 closes BEFORE t
+      t      spec     train     serve     skew
+      6  103.8000  108.0000  105.3333   2.6667
+      8  107.0000  111.4000  109.0000   2.4000
+      9  108.0000  113.6000  109.6667   3.9333
+    max skew 3.9333 - and note train != spec either: the peek inflated it
+    no exception, no log line - the model just eats different numbers in prod
+  Part 2 - ONE shared definition, imported by both paths
+      t     train     serve     diff
+      6  103.8000  103.8000   0.0000
+      8  107.0000  107.0000   0.0000
+      9  108.0000  108.0000   0.0000
+    max diff 0.0000 - same code, same window, same numbers, by construction
+    freshness check: newest event usable at t=9 is ts=8 (1 tick old) - OK
+  Part 3 - the point-in-time guard fails loudly
+    a poisoned window for t=8 smuggles in the tick AT ts=8 (the one being predicted)
+    AssertionError: point-in-time violation: event ts=8 is not &lt; t=8
+    in Part 1&#x27;s training job that same event passed silently - the silence is the bug class
+    verdict: one definition, shared by both paths, point-in-time asserted - that IS the MLOps job
+&quot;&quot;&quot;
+
+# One source of truth: an append-only event log of price ticks.
+# (ts, close) - in prod this is your Kafka topic / S3 partition;
+# the shape is identical: timestamped facts, arriving in order.
+EVENTS = [
+    (0, 100.0), (1, 102.0), (2, 101.0), (3, 105.0),
+    (4, 103.0), (5, 108.0), (6, 107.0), (7, 112.0),
+    (8, 110.0), (9, 115.0), (10, 113.0), (11, 118.0),
+]
+
+# The spec, in one sentence: for a prediction at time t, the
+# feature is the mean of the last 5 closes that existed BEFORE
+# t. Everything below is either obeying this or violating it.
+
+
+# ---------- Part 1: two private copies of the feature ----------
+def buggy_train_feature(events, t):
+    &quot;&quot;&quot;Offline batch job. The engineer had the whole table, so
+    they grabbed a &#x27;centered&#x27; window around t - which peeks at
+    ticks at t+1 and t+2 that did not exist at prediction time.&quot;&quot;&quot;
+    window = [c for ts, c in events if t - 2 &lt;= ts &lt;= t + 2]
+    return sum(window) / len(window)
+
+
+def buggy_serve_feature(events, t):
+    &quot;&quot;&quot;Online job. Someone &#x27;optimized&#x27; it to the last 3 closes
+    before t. Point-in-time legal - but it is a DIFFERENT
+    feature wearing the same name.&quot;&quot;&quot;
+    window = [c for ts, c in events if ts &lt; t][-3:]
+    return sum(window) / len(window)
+
+
+def spec_feature(events, t):
+    &quot;&quot;&quot;What the spec actually says - ground truth for the table.&quot;&quot;&quot;
+    window = [c for ts, c in events if ts &lt; t][-5:]
+    return sum(window) / len(window)
+
+
+print(&#x27;Part 1 - two copies of &quot;the same&quot; feature: the skew&#x27;)
+print(&quot;  spec: mean of last 5 closes BEFORE t&quot;)
+print(f&quot;  {&#x27;t&#x27;:&gt;3} {&#x27;spec&#x27;:&gt;9} {&#x27;train&#x27;:&gt;9} {&#x27;serve&#x27;:&gt;9} {&#x27;skew&#x27;:&gt;8}&quot;)
+max_skew = 0.0
+for t in (6, 8, 9):
+    spec = spec_feature(EVENTS, t)
+    tr = buggy_train_feature(EVENTS, t)
+    sv = buggy_serve_feature(EVENTS, t)
+    skew = abs(tr - sv)
+    max_skew = max(max_skew, skew)
+    print(f&quot;  {t:&gt;3} {spec:&gt;9.4f} {tr:&gt;9.4f} {sv:&gt;9.4f} {skew:&gt;8.4f}&quot;)
+print(f&quot;  max skew {max_skew:.4f} - and note train != spec either: &quot;
+      &quot;the peek inflated it&quot;)
+print(&quot;  no exception, no log line - the model just eats &quot;
+      &quot;different numbers in prod&quot;)
+
+# ---------- Part 2: one shared definition, both paths ----------
+def assert_point_in_time(window_events, t):
+    &quot;&quot;&quot;The systems law, enforced: every event a feature uses
+    must have existed strictly before the prediction time.&quot;&quot;&quot;
+    for ts, _ in window_events:
+        assert ts &lt; t, (f&quot;point-in-time violation: event ts={ts} &quot;
+                        f&quot;is not &lt; t={t}&quot;)
+
+
+def mean_last5_before(events, t):
+    &quot;&quot;&quot;THE feature definition - the only one. The training job
+    and the serving job both import this exact function.&quot;&quot;&quot;
+    window = [(ts, c) for ts, c in events if ts &lt; t][-5:]
+    assert_point_in_time(window, t)
+    return sum(c for _, c in window) / len(window)
+
+
+print(&quot;Part 2 - ONE shared definition, imported by both paths&quot;)
+print(f&quot;  {&#x27;t&#x27;:&gt;3} {&#x27;train&#x27;:&gt;9} {&#x27;serve&#x27;:&gt;9} {&#x27;diff&#x27;:&gt;8}&quot;)
+max_diff = 0.0
+for t in (6, 8, 9):
+    tr = mean_last5_before(EVENTS, t)   # training path calls it
+    sv = mean_last5_before(EVENTS, t)   # serving path calls it
+    max_diff = max(max_diff, abs(tr - sv))
+    print(f&quot;  {t:&gt;3} {tr:&gt;9.4f} {sv:&gt;9.4f} {abs(tr - sv):&gt;8.4f}&quot;)
+print(f&quot;  max diff {max_diff:.4f} - same code, same window, &quot;
+      &quot;same numbers, by construction&quot;)
+newest = max(ts for ts, _ in EVENTS if ts &lt; 9)
+print(f&quot;  freshness check: newest event usable at t=9 is ts={newest} &quot;
+      f&quot;({9 - newest} tick old) - OK&quot;)
+
+# ---------- Part 3: the guard fails loudly ----------
+print(&quot;Part 3 - the point-in-time guard fails loudly&quot;)
+poisoned = [(ts, c) for ts, c in EVENTS if ts &lt; 8][-4:] + [(8, 110.0)]
+print(&quot;  a poisoned window for t=8 smuggles in the tick AT ts=8 &quot;
+      &quot;(the one being predicted)&quot;)
+try:
+    assert_point_in_time(poisoned, 8)
+    print(&quot;  NOT REACHED - the guard let a future event through&quot;)
+except AssertionError as e:
+    print(f&quot;  AssertionError: {e}&quot;)
+print(&quot;  in Part 1&#x27;s training job that same event passed silently - &quot;
+      &quot;the silence is the bug class&quot;)
+print(&quot;  verdict: one definition, shared by both paths, point-in-time &quot;
+      &quot;asserted - that IS the MLOps job&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - two copies of &quot;the same&quot; feature: the skew
+  spec: mean of last 5 closes BEFORE t
+    t      spec     train     serve     skew
+    6  103.8000  108.0000  105.3333   2.6667
+    8  107.0000  111.4000  109.0000   2.4000
+    9  108.0000  113.6000  109.6667   3.9333
+  max skew 3.9333 - and note train != spec either: the peek inflated it
+  no exception, no log line - the model just eats different numbers in prod
+Part 2 - ONE shared definition, imported by both paths
+    t     train     serve     diff
+    6  103.8000  103.8000   0.0000
+    8  107.0000  107.0000   0.0000
+    9  108.0000  108.0000   0.0000
+  max diff 0.0000 - same code, same window, same numbers, by construction
+  freshness check: newest event usable at t=9 is ts=8 (1 tick old) - OK
+Part 3 - the point-in-time guard fails loudly
+  a poisoned window for t=8 smuggles in the tick AT ts=8 (the one being predicted)
+  AssertionError: point-in-time violation: event ts=8 is not &lt; t=8
+  in Part 1&#x27;s training job that same event passed silently - the silence is the bug class
+  verdict: one definition, shared by both paths, point-in-time asserted - that IS the MLOps job</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three: Part 1&rsquo;s skew table with <strong>max skew 3.9333</strong> (and the training copy inflated to <strong>113.6000</strong> at t=9 by peeking); Part 2&rsquo;s <strong>max diff 0.0000</strong> from one imported definition, with the freshness check passing; and Part 3&rsquo;s <strong>AssertionError</strong> naming the violating event (<code>ts=8 is not &lt; t=8</code>). The keeper test, no notes allowed: someone shows you any ML system and you ask, &ldquo;Where does the feature definition live, and do both paths import it?&rdquo; If the answer is &ldquo;two places,&rdquo; you have found the bug before it ships.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea,&rdquo; study the diagram, then run the code and stare at exactly two lines: Part 1&rsquo;s <strong>max skew 3.9333</strong> and Part 2&rsquo;s <strong>max diff 0.0000</strong>. If you can explain why the first number is silent and the second is structural &mdash; not careful, structural &mdash; you have the day.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the model is live and the features finally agree &mdash; and then the world starts changing underneath it. How would you even know?</p>
+  </div>
+
+  <div class="footer">Streak: 69 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
