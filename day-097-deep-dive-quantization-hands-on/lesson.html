@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Dive: Quantization Hands-On — Day 97 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 97 of 100</span>
+  <h1>Deep Dive: Quantization Hands-On</h1>
+  <p class="outcome">Tonight you'll be able to: train a small classifier yourself, quantize its real trained weights four ways — int8 and int4, one shared scale vs one scale per row — and read <em>both</em> error reports: what happened to the weights, and what happened to the answers.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 65 gave you the mechanism — store a small integer code plus one
+scale, <code>w ≈ scale × q</code> — and priced it on a formula-built
+matrix. Two things were missing, and both were load-bearing: the weights
+were fake, and the error bill stopped at the weights. Nobody checked
+what the rounding did to the model's <em>answers</em>. Today you train
+a real (small) network and quantize <em>its</em> weights, four ways.</p>
+
+<p><strong>Real weights have ranges with opinions.</strong> In Day 65's
+matrix the outlier was planted by hand. In a trained layer the spread
+is earned: each row of the first weight matrix is one hidden unit's
+incoming weights, and different units learn different jobs. Today's
+data rigs the spread so you can see where it comes from — half the
+features are <em>loud</em> (large scale) and half are <em>quiet</em>
+(10× smaller), and two pairs of classes share the same loud pattern,
+so the only way to tell class 0 from class 1 is to listen to the quiet
+features. A unit that listens quietly has to turn its weights up.
+The trained <code>W1</code> comes out with a 3.0× spread between its
+smallest and largest row ranges — no planting required.</p>
+
+<p><strong>Two error reports, and they are not the same report.</strong>
+Day 65's bill — max and RMS error on the matrix — is <em>weight
+error</em>. The new one is <em>behavior error</em>: run the same 2,000
+test samples through the fp32 model and through a copy whose weights
+were rounded to the grid and back, then compare the outputs —
+accuracy, mean <strong>logit drift</strong> (average absolute change
+in the output scores), and how many predictions <em>flip</em>. The two
+reports routinely disagree, for a reason you already own: a neuron's
+output is a sum of hundreds of products (Day 12), and independent
+rounding errors partly cancel in the sum. A confident prediction has
+margin to burn; only borderline samples flip. Watch Part 3: at int8
+the drift is real on both schemes, yet accuracy cannot tell them
+apart — drift is the finer instrument, which is Day 57's evals
+discipline applied to serving.</p>
+
+<p><strong>Per-tensor vs per-channel.</strong> Day 65 used one scale
+per row. The cheaper scheme — one scale for the <em>whole matrix</em>
+(<strong>per-tensor</strong>) — lets the largest row dictate everyone's
+step size. A small row's weights then land on a grid built for someone
+else: with a shared int4 step of 0.1662, a weight of 0.05 is nearer to
+code 0 than to any other code — it is simply erased. <strong>Per-channel</strong>
+gives each row (each output channel) its own scale, so every row's
+grid fits its own range. Note what does <em>not</em> improve in Part 2:
+max error barely moves, because the biggest row sets it under both
+schemes. The win is in RMS — the <em>typical</em> weight's error — and
+in everything Part 3 measures. The price of the extra scales is
+Part 4's punchline: 36 extra floats in this model, and on a
+4096×4096 layer all 4,096 scales together are 16 KB against 8.39 MB
+of int4 codes.</p>
+
+<p><strong>Calibration: choosing the range from data, not from the
+weight file.</strong> Every scale above came from the weights alone
+(<code>max|w| / qmax</code>). Calibration instead runs a few hundred
+real inputs through the fp32 model and records the ranges each
+channel's <em>activations</em> actually use, then sets — or deliberately
+clips — the grids to cover what happens in production rather than what
+the file's extremes allow; a large weight fed by a near-zero activation
+is harmless, and activation-aware methods (AWQ is the name to
+recognize) spend their precision budget exactly there. Two shipping
+routes, one line each: <strong>PTQ</strong> (post-training quantization)
+quantizes the finished model with no retraining — everything you do
+today is PTQ. <strong>QAT</strong> (quantization-aware training) puts
+fake quantization inside the training loop so gradient descent adapts
+the weights to the grid — better int4, at the price of a training
+run.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Mark-to-model vs mark-to-market.</strong> Weight error is a
+mark-to-model number: it says how far the internals moved from the
+reference file. Behavior error is mark-to-market: it says what the
+model actually <em>does</em> differently. Your desk settles accounts
+on fills, not on how far a pricing model's parameters drifted — and a
+serving team ships or blocks a quantized model on the same basis.
+Per-tensor vs per-channel is the same lesson one level down: one
+shared scale is running the whole book off a single stale reference
+price; a scale per row is every name quoted on its own tape.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 492" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="492" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Quantization on real weights: two error reports</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">same bits per weight in every bar - the only difference is where the grid spends its resolution</text>
+<rect x="12" y="56" width="322" height="196" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="173.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - WEIGHT ERROR: RMS error on W1</text>
+<text x="120" y="105" text-anchor="end" font-size="9.5" fill="#1c1c1e">int8  per-tensor</text>
+<rect x="128" y="92" width="9.6" height="17" rx="3" fill="#b0b0b0"/>
+<text x="144.6" y="105" font-size="9.5" fill="#1c1c1e">0.0027</text>
+<text x="120" y="139" text-anchor="end" font-size="9.5" fill="#1c1c1e">int8  per-channel</text>
+<rect x="128" y="126" width="5.9" height="17" rx="3" fill="#22a355"/>
+<text x="140.9" y="139" font-size="9.5" fill="#1c1c1e">0.0016</text>
+<text x="120" y="173" text-anchor="end" font-size="9.5" fill="#1c1c1e">int4  per-tensor</text>
+<rect x="128" y="160" width="178.0" height="17" rx="3" fill="#b0b0b0"/>
+<text x="313.0" y="173" font-size="9.5" fill="#1c1c1e">0.0493</text>
+<text x="120" y="207" text-anchor="end" font-size="9.5" fill="#1c1c1e">int4  per-channel</text>
+<rect x="128" y="194" width="106.9" height="17" rx="3" fill="#22a355"/>
+<text x="241.9" y="207" font-size="9.5" fill="#1c1c1e">0.0296</text>
+<text x="173" y="240" text-anchor="middle" font-size="9.0" fill="#555555">per-channel cuts the TYPICAL weight's error ~40% at int4</text>
+<rect x="346" y="56" width="322" height="196" rx="8" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="507.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - BEHAVIOR ERROR: mean |logit drift|</text>
+<text x="454" y="105" text-anchor="end" font-size="9.5" fill="#1c1c1e">int8  per-tensor</text>
+<rect x="462" y="92" width="11.7" height="17" rx="3" fill="#b0b0b0"/>
+<text x="480.7" y="105" font-size="9.5" fill="#1c1c1e">0.0293</text>
+<text x="462" y="121" font-size="8.5" fill="#666666">acc 0.9755 - 2 flips</text>
+<text x="454" y="139" text-anchor="end" font-size="9.5" fill="#1c1c1e">int8  per-channel</text>
+<rect x="462" y="126" width="6.8" height="17" rx="3" fill="#22a355"/>
+<text x="475.8" y="139" font-size="9.5" fill="#1c1c1e">0.0170</text>
+<text x="462" y="155" font-size="8.5" fill="#666666">acc 0.9750 - 1 flip</text>
+<text x="454" y="173" text-anchor="end" font-size="9.5" fill="#1c1c1e">int4  per-tensor</text>
+<rect x="462" y="160" width="158.0" height="17" rx="3" fill="#b0b0b0"/>
+<text x="627.0" y="173" font-size="9.5" fill="#1c1c1e">0.3966</text>
+<text x="462" y="189" font-size="8.5" fill="#666666">acc 0.9080 - 158 flips</text>
+<text x="454" y="207" text-anchor="end" font-size="9.5" fill="#1c1c1e">int4  per-channel</text>
+<rect x="462" y="194" width="116.5" height="17" rx="3" fill="#22a355"/>
+<text x="585.5" y="207" font-size="9.5" fill="#1c1c1e">0.2924</text>
+<text x="462" y="223" font-size="8.5" fill="#666666">acc 0.9710 - 37 flips</text>
+<text x="507" y="240" text-anchor="middle" font-size="9.0" fill="#555555">weight error is mark-to-model - this panel is mark-to-market</text>
+<rect x="12" y="266" width="656" height="164" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="286" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - WHY IT WORKS: every row its own int4 scale (first 8 rows of W1)</text>
+<text x="142" y="309.0" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 0</text>
+<rect x="150" y="300.0" width="184.8" height="9" rx="2" fill="#22a355"/>
+<text x="340.8" y="309.0" font-size="8.5" fill="#177245">0.0840</text>
+<text x="142" y="323.5" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 1</text>
+<rect x="150" y="314.5" width="291.3" height="9" rx="2" fill="#22a355"/>
+<text x="447.3" y="323.5" font-size="8.5" fill="#177245">0.1324</text>
+<text x="142" y="338.0" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 2</text>
+<rect x="150" y="329.0" width="284.2" height="9" rx="2" fill="#22a355"/>
+<text x="440.2" y="338.0" font-size="8.5" fill="#177245">0.1292</text>
+<text x="142" y="352.5" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 3</text>
+<rect x="150" y="343.5" width="168.1" height="9" rx="2" fill="#22a355"/>
+<text x="324.1" y="352.5" font-size="8.5" fill="#177245">0.0764</text>
+<text x="142" y="367.0" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 4</text>
+<rect x="150" y="358.0" width="163.2" height="9" rx="2" fill="#22a355"/>
+<text x="319.2" y="367.0" font-size="8.5" fill="#177245">0.0742</text>
+<text x="142" y="381.5" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 5</text>
+<rect x="150" y="372.5" width="194.3" height="9" rx="2" fill="#22a355"/>
+<text x="350.3" y="381.5" font-size="8.5" fill="#177245">0.0883</text>
+<text x="142" y="396.0" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 6</text>
+<rect x="150" y="387.0" width="265.8" height="9" rx="2" fill="#22a355"/>
+<text x="421.8" y="396.0" font-size="8.5" fill="#177245">0.1208</text>
+<text x="142" y="410.5" text-anchor="end" font-size="9.0" fill="#1c1c1e">row 7</text>
+<rect x="150" y="401.5" width="306.5" height="9" rx="2" fill="#22a355"/>
+<text x="462.5" y="410.5" font-size="8.5" fill="#177245">0.1393</text>
+<line x1="515.6" y1="296" x2="515.6" y2="416" stroke="#d43a2f" stroke-width="1.4" stroke-dasharray="5 3"/>
+<text x="523.6" y="312" font-size="9.0" fill="#d43a2f" font-weight="bold">one shared per-tensor</text>
+<text x="523.6" y="326" font-size="9.0" fill="#d43a2f" font-weight="bold">scale: 0.1662</text>
+<text x="523.6" y="344" font-size="8.5" fill="#666666">every row's own scale is finer -</text>
+<text x="523.6" y="357" font-size="8.5" fill="#666666">small rows stop paying for the</text>
+<text x="523.6" y="370" font-size="8.5" fill="#666666">biggest row's range</text>
+<text x="340" y="452" text-anchor="middle" font-size="9.5" fill="#1c1c1e">int4, per-tensor to per-channel: weight RMS 0.0493 to 0.0296 - logit drift 0.3966 to 0.2924 - accuracy 0.9080 to 0.9710</text>
+<text x="340" y="470" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">the bits never changed - the grid did</text>
+</svg>
+    <div class="caption">Left: Day 65's report on real weights — RMS error on the matrix. Right: the report that decides whether the model still works — how far its answers move on 2,000 test samples. Bottom: the mechanism — each row's own int4 scale against the one shared scale (dashed) that small rows would otherwise be stuck with.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, numpy only, four parts. <strong>Part 1</strong> trains the
+20 → 32 → 4 MLP by hand — real gradient descent, so the weights are
+genuinely learned. <strong>Part 2</strong> reruns Day 65's weight-error
+bill on the trained <code>W1</code>, per-tensor vs per-channel.
+<strong>Part 3</strong> is the new instrument: both layers swapped for
+their dequantized versions, same 2,000 test samples, behavior compared
+against the fp32 reference. <strong>Part 4</strong> counts bytes with
+the scales included, here and at production layer size. One seeded
+generator and full-batch training — your run reproduces every digit.
+Runs in your <code>~/ai-lab</code> venv on CPU; numpy only, nothing to
+download.</p>
+  <pre><code>&quot;&quot;&quot;Day 97 - Deep Dive: Quantization Hands-On.
+
+Day 65 quantized a formula-built matrix and printed an
+error bill for the WEIGHTS. Two things were missing: the
+weights were fake, and nobody checked what the error did
+to the model&#x27;s ANSWERS. Today both gaps close.
+
+  Part 1  Train a real (small) classifier in numpy: a
+          20 -&gt; 32 -&gt; 4 MLP on synthetic 4-class data,
+          hand-rolled backprop, full-batch gradient
+          descent. The data has a trap built in (below),
+          and the trained first layer comes out with a
+          3.0x spread in row ranges - rows are not
+          interchangeable, because each hidden unit
+          learned a different job.
+  Part 2  Day 65&#x27;s weight-error report, rerun on the
+          trained W1 - but now per-TENSOR (one scale for
+          all 640 weights) vs per-CHANNEL (one scale per
+          row, 32 scales), at int8 and int4.
+  Part 3  The report Day 65 never printed: BEHAVIOR.
+          Swap BOTH layers for their dequantized versions
+          (the way a real deployment ships) and re-run the
+          test set: accuracy, mean |logit drift| against
+          the fp32 model, and how many predictions flip.
+          Weight error is mark-to-model; this is
+          mark-to-market.
+  Part 4  Bytes for the whole model, scales included,
+          then the same math on one 4096x4096 layer -
+          where the 32 extra scale numbers stop mattering.
+
+The data&#x27;s trap: features 0-9 are LOUD (centers at scale
+2.0, noise 1.0) and features 10-19 are QUIET (scale 0.20,
+noise 0.1). Classes 0 and 1 share the SAME loud center,
+as do 2 and 3 - so telling 0 from 1 is impossible without
+listening to the quiet features, and a hidden unit that
+listens quietly has to turn its weights up. That spread
+of row ranges is exactly what per-channel scales exploit
+and per-tensor scales waste.
+
+Quantization is Day 65&#x27;s symmetric scheme (one scale,
+w ~= scale * q, codes round(w / scale) clipped to
+[-qmax, qmax]; numpy rounds half-to-even, same as torch).
+
+Runs in the ~/ai-lab venv: numpy only, no torch needed,
+no CUDA, no paid APIs, no downloads. Deterministic:
+one seeded generator, full-batch training, no shuffling.
+
+Expected output:
+
+  Part 1 - a real trained model (numpy, hand-rolled backprop)
+    architecture 20 -&gt; 32 (relu) -&gt; 4; 200 epochs, full-batch GD
+    fp32 test accuracy: 0.9755 on 2000 samples
+    W1 is 32x20 = 640 weights (largest layer); W2 is 4x32 = 128; total 768
+    W1 row ranges: smallest row max|w| 0.389, largest 1.163 - a 3.0x spread
+    (each row is one hidden unit&#x27;s incoming weights - different
+     units, different jobs, different ranges. Remember this spread.)
+  Part 2 - weight error on W1: per-tensor vs per-channel
+    int8 per-tensor:   max err 0.004573  rms err 0.002659
+    int8 per-channel:  max err 0.004540  rms err 0.001633
+    int4 per-tensor:   max err 0.082995  rms err 0.049261
+    int4 per-channel:  max err 0.082600  rms err 0.029594
+    int4 scales, first 8 rows of W1 (per-channel): 0.0840, 0.1324, 0.1292, 0.0764, 0.0742, 0.0883, 0.1208, 0.1393
+    the single per-tensor int4 scale for all 640 weights: 0.1662
+    read: max error barely moves (the biggest row sets it under
+    both schemes) - the win is in RMS, the typical weight&#x27;s error.
+  Part 3 - behavior: both layers dequantized, same 2000 test samples
+    fp32 (reference)   acc 0.9755  mean |dlogit| 0.0000  flips 0
+    int8 per-tensor:   acc 0.9755  mean |dlogit| 0.0293  flips 2
+    int8 per-channel:  acc 0.9750  mean |dlogit| 0.0170  flips 1
+    int4 per-tensor:   acc 0.9080  mean |dlogit| 0.3966  flips 158
+    int4 per-channel:  acc 0.9710  mean |dlogit| 0.2924  flips 37
+    verdict: int8 is free either way. At int4 the shared scale
+    costs ~7 accuracy points; one scale per row buys nearly all
+    of it back - same 4 bits per weight, spent where rows differ.
+  Part 4 - bytes: the whole model, then one production-size layer
+    this net (768 weights, biases kept fp32):
+      fp32:           3216 B
+      int8 + scales:  1056 B
+      int4 + scales:  672 B
+    one 4096x4096 layer (16.78M weights), per-channel:
+      fp32: 67.11 MB | int8: 16.78 MB | int4: 8.39 MB
+      all 4096 row scales together: 16384 B - rounding error in the budget, not a line item.
+&quot;&quot;&quot;
+import numpy as np
+
+rng = np.random.default_rng(97)
+D_IN, D_HID, D_OUT = 20, 32, 4
+HALF = D_IN // 2
+N_TR, N_TE = 1200, 2000
+
+# ---------- the data: loud half, quiet half, paired classes ----------
+pairA = rng.normal(0.0, 2.0, size=HALF)
+pairB = rng.normal(0.0, 2.0, size=HALF)
+centers = np.empty((D_OUT, D_IN))
+centers[0, :HALF] = pairA
+centers[1, :HALF] = pairA          # class 1: same loud center as 0
+centers[2, :HALF] = pairB
+centers[3, :HALF] = pairB          # class 3: same loud center as 2
+centers[:, HALF:] = rng.normal(0.0, 0.20, size=(D_OUT, HALF))
+noise = np.concatenate([np.full(HALF, 1.0), np.full(HALF, 0.1)])
+
+
+def make(n):
+    y = rng.integers(0, D_OUT, n)
+    X = centers[y] + rng.normal(0.0, 1.0, size=(n, D_IN)) * noise
+    return X, y
+
+
+Xtr, ytr = make(N_TR)
+Xte, yte = make(N_TE)
+
+# ---------- Part 1: train a real little model ----------
+W1 = rng.normal(0.0, np.sqrt(2.0 / D_IN), size=(D_HID, D_IN))
+b1 = np.zeros(D_HID)
+W2 = rng.normal(0.0, np.sqrt(2.0 / D_HID), size=(D_OUT, D_HID))
+b2 = np.zeros(D_OUT)
+
+
+def forward(X, w1, w2):
+    H = np.maximum(0.0, X @ w1.T + b1)
+    return H @ w2.T + b2, H
+
+
+def softmax(z):
+    z = z - z.max(axis=1, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=1, keepdims=True)
+
+
+LR, EPOCHS = 0.05, 200
+for _ in range(EPOCHS):
+    logits, H = forward(Xtr, W1, W2)
+    P = softmax(logits)
+    P[np.arange(N_TR), ytr] -= 1.0
+    g = P / N_TR                              # d(loss)/d(logits)
+    gW2, gb2 = g.T @ H, g.sum(0)
+    gH = g @ W2
+    gH[H &lt;= 0] = 0.0                          # relu gate
+    gW1, gb1 = gH.T @ Xtr, gH.sum(0)
+    W1 -= LR * gW1
+    b1 -= LR * gb1
+    W2 -= LR * gW2
+    b2 -= LR * gb2
+
+print(&quot;Part 1 - a real trained model (numpy, hand-rolled backprop)&quot;)
+logits_ref, _ = forward(Xte, W1, W2)
+pred_ref = logits_ref.argmax(1)
+acc_ref = (pred_ref == yte).mean()
+row_max = np.abs(W1).max(axis=1)
+print(f&quot;  architecture 20 -&gt; 32 (relu) -&gt; 4; {EPOCHS} epochs, full-batch GD&quot;)
+print(f&quot;  fp32 test accuracy: {acc_ref:.4f} on {N_TE} samples&quot;)
+print(f&quot;  W1 is {D_HID}x{D_IN} = {W1.size} weights (largest layer); &quot;
+      f&quot;W2 is {D_OUT}x{D_HID} = {W2.size}; total {W1.size + W2.size}&quot;)
+print(f&quot;  W1 row ranges: smallest row max|w| {row_max.min():.3f}, &quot;
+      f&quot;largest {row_max.max():.3f} - a &quot;
+      f&quot;{row_max.max() / row_max.min():.1f}x spread&quot;)
+print(&quot;  (each row is one hidden unit&#x27;s incoming weights - different&quot;)
+print(&quot;   units, different jobs, different ranges. Remember this spread.)&quot;)
+
+
+# ---------- the quantizers (Day 65&#x27;s scheme, two granularities) ----------
+def q_tensor(W, qmax):
+    &quot;&quot;&quot;ONE scale for the whole matrix. Returns (dequantized, scale).&quot;&quot;&quot;
+    s = np.abs(W).max() / qmax
+    codes = np.clip(np.round(W / s), -qmax, qmax)
+    return codes * s, s
+
+
+def q_channel(W, qmax):
+    &quot;&quot;&quot;One scale PER ROW (per output channel). Returns (dequant, scales).&quot;&quot;&quot;
+    s = np.abs(W).max(axis=1, keepdims=True) / qmax
+    codes = np.clip(np.round(W / s), -qmax, qmax)
+    return codes * s, s.ravel()
+
+
+def werr(deq):
+    err = deq - W1
+    return np.abs(err).max(), np.sqrt((err ** 2).mean())
+
+
+# ---------- Part 2: the weight-error report, on real weights ----------
+print(&quot;Part 2 - weight error on W1: per-tensor vs per-channel&quot;)
+variants = {}
+for bits, qmax in ((8, 127), (4, 7)):
+    for name, fn in ((&quot;per-tensor&quot;, q_tensor), (&quot;per-channel&quot;, q_channel)):
+        deq, _ = fn(W1, qmax)
+        variants[(bits, name)] = deq
+        mx, rms = werr(deq)
+        print(f&quot;  int{bits} {name + &#x27;:&#x27;:&lt;13} max err {mx:.6f}  &quot;
+              f&quot;rms err {rms:.6f}&quot;)
+_, scales4 = q_channel(W1, 7)
+_, ts4 = q_tensor(W1, 7)
+print(&quot;  int4 scales, first 8 rows of W1 (per-channel): &quot;
+      + &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in scales4[:8]))
+print(f&quot;  the single per-tensor int4 scale for all 640 weights: {ts4:.4f}&quot;)
+print(&quot;  read: max error barely moves (the biggest row sets it under&quot;)
+print(&quot;  both schemes) - the win is in RMS, the typical weight&#x27;s error.&quot;)
+
+# ---------- Part 3: the behavior report ----------
+print(&quot;Part 3 - behavior: both layers dequantized, same 2000 test samples&quot;)
+print(f&quot;  {&#x27;fp32 (reference)&#x27;:&lt;18} acc {acc_ref:.4f}  &quot;
+      f&quot;mean |dlogit| 0.0000  flips 0&quot;)
+for bits, qmax in ((8, 127), (4, 7)):
+    for name, fn in ((&quot;per-tensor&quot;, q_tensor), (&quot;per-channel&quot;, q_channel)):
+        d1, _ = fn(W1, qmax)
+        d2, _ = fn(W2, qmax)
+        logits_q, _ = forward(Xte, d1, d2)
+        drift = np.abs(logits_q - logits_ref).mean()
+        flips = int((logits_q.argmax(1) != pred_ref).sum())
+        acc_q = (logits_q.argmax(1) == yte).mean()
+        print(f&quot;  int{bits} {name + &#x27;:&#x27;:&lt;13} acc {acc_q:.4f}  &quot;
+              f&quot;mean |dlogit| {drift:.4f}  flips {flips}&quot;)
+print(&quot;  verdict: int8 is free either way. At int4 the shared scale&quot;)
+print(&quot;  costs ~7 accuracy points; one scale per row buys nearly all&quot;)
+print(&quot;  of it back - same 4 bits per weight, spent where rows differ.&quot;)
+
+# ---------- Part 4: bytes, scales included ----------
+print(&quot;Part 4 - bytes: the whole model, then one production-size layer&quot;)
+n_w = W1.size + W2.size
+n_scales = D_HID + D_OUT                     # per-channel: rows of W1 + W2
+bias_bytes = (b1.size + b2.size) * 4         # biases stay fp32
+print(f&quot;  this net ({n_w} weights, biases kept fp32):&quot;)
+print(f&quot;    fp32:           {n_w * 4 + bias_bytes} B&quot;)
+print(f&quot;    int8 + scales:  {n_w + n_scales * 4 + bias_bytes} B&quot;)
+print(f&quot;    int4 + scales:  {n_w // 2 + n_scales * 4 + bias_bytes} B&quot;)
+big = 4096 * 4096
+print(f&quot;  one 4096x4096 layer ({big / 1e6:.2f}M weights), per-channel:&quot;)
+print(f&quot;    fp32: {big * 4 / 1e6:.2f} MB | int8: {big / 1e6:.2f} MB &quot;
+      f&quot;| int4: {big / 2 / 1e6:.2f} MB&quot;)
+print(f&quot;    all 4096 row scales together: {4096 * 4} B - rounding &quot;
+      &quot;error in the budget, not a line item.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - a real trained model (numpy, hand-rolled backprop)
+  architecture 20 -&gt; 32 (relu) -&gt; 4; 200 epochs, full-batch GD
+  fp32 test accuracy: 0.9755 on 2000 samples
+  W1 is 32x20 = 640 weights (largest layer); W2 is 4x32 = 128; total 768
+  W1 row ranges: smallest row max|w| 0.389, largest 1.163 - a 3.0x spread
+  (each row is one hidden unit&#x27;s incoming weights - different
+   units, different jobs, different ranges. Remember this spread.)
+Part 2 - weight error on W1: per-tensor vs per-channel
+  int8 per-tensor:   max err 0.004573  rms err 0.002659
+  int8 per-channel:  max err 0.004540  rms err 0.001633
+  int4 per-tensor:   max err 0.082995  rms err 0.049261
+  int4 per-channel:  max err 0.082600  rms err 0.029594
+  int4 scales, first 8 rows of W1 (per-channel): 0.0840, 0.1324, 0.1292, 0.0764, 0.0742, 0.0883, 0.1208, 0.1393
+  the single per-tensor int4 scale for all 640 weights: 0.1662
+  read: max error barely moves (the biggest row sets it under
+  both schemes) - the win is in RMS, the typical weight&#x27;s error.
+Part 3 - behavior: both layers dequantized, same 2000 test samples
+  fp32 (reference)   acc 0.9755  mean |dlogit| 0.0000  flips 0
+  int8 per-tensor:   acc 0.9755  mean |dlogit| 0.0293  flips 2
+  int8 per-channel:  acc 0.9750  mean |dlogit| 0.0170  flips 1
+  int4 per-tensor:   acc 0.9080  mean |dlogit| 0.3966  flips 158
+  int4 per-channel:  acc 0.9710  mean |dlogit| 0.2924  flips 37
+  verdict: int8 is free either way. At int4 the shared scale
+  costs ~7 accuracy points; one scale per row buys nearly all
+  of it back - same 4 bits per weight, spent where rows differ.
+Part 4 - bytes: the whole model, then one production-size layer
+  this net (768 weights, biases kept fp32):
+    fp32:           3216 B
+    int8 + scales:  1056 B
+    int4 + scales:  672 B
+  one 4096x4096 layer (16.78M weights), per-channel:
+    fp32: 67.11 MB | int8: 16.78 MB | int4: 8.39 MB
+    all 4096 row scales together: 16384 B - rounding error in the budget, not a line item.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches the lesson's digits: fp32 accuracy
+<code>0.9755</code>; int4 per-tensor falls to <code>0.9080</code> with
+<code>158</code> flipped predictions; int4 per-channel holds
+<code>0.9710</code> with <code>37</code> flips — and the first-8-rows
+scale strip shows every per-channel scale finer than the shared
+<code>0.1662</code>. The keeper test, no notes: given any trained
+layer, you can say which scale granularity it needs, predict whether
+the damage will show up in max error, RMS error, or behavior first,
+and name the two error reports you'd demand before shipping it.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea", then study panel C of the diagram until you can
+explain why the dashed line is every small row's problem. Run the code
+and read only Parts 2 and 3. If you can explain why max weight error
+barely moved while accuracy swung by seven points — and why drift
+sees an int8 difference that accuracy can't — you have the day;
+Part 4 is arithmetic you can redo any time.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Day 74's all-reduce leaves the whiteboard — real processes
+passing real gradients around a ring on the machine under your desk.
+No cluster required.</p>
+  </div>
+
+  <div class="footer">Streak: 97 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
