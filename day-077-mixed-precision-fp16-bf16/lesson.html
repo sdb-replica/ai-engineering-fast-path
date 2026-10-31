@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mixed Precision: FP16/BF16, and Why It (Mostly) Just Works — Day 77 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 77 of 100</span>
+  <h1>Mixed Precision: FP16/BF16, and Why It (Mostly) Just Works</h1>
+  <p class="outcome">Tonight you'll be able to: read any floating-point format as a bit budget &#8212; sign, exponent, mantissa &#8212; and predict its two failure modes before they bite: fp16 gradients underflowing to zero (fixed by loss scaling) and low-precision weights swallowing small updates (fixed by the fp32 master copy you priced on Day 73).</p>
+
+  <h2>The one idea</h2>
+  <p>Day 73 priced the mixed-precision recipe &#8212; bf16 compute copy, fp32 master, 16 bytes a parameter &#8212; without ever opening the formats up. Tonight is the missing picture, and it&rsquo;s a single idea: <strong>a floating-point number is a bit budget.</strong> Every float is stored as <code>sign &times; 2<sup>exponent</sup> &times; 1.mantissa</code>. The <strong>exponent</strong> bits pick the scale, how big or small the number can be: that&rsquo;s <em>range</em>. The <strong>mantissa</strong> bits say how many distinct values exist inside each scale band &#8212; how far apart neighboring representable numbers sit: that&rsquo;s <em>precision</em>. The total is fixed, so every format is just a decision about the split:</p>
+<ul>
+<li><strong>fp32</strong> &#8212; 1 sign / 8 exponent / 23 mantissa. Range &#8776;1.2e-38 &#8230; 3.4e38; neighbors at 1.0 sit 2<sup>-23</sup> apart.</li>
+<li><strong>fp16</strong> &#8212; 1 / 5 / 10. Finer steps than bf16 near 1.0 (2<sup>-10</sup>), but only 5 exponent bits: max 65504, smallest normal &#8776;6.1e-5, smallest step of any kind 2<sup>-24</sup> &#8776; 6e-8.</li>
+<li><strong>bf16</strong> &#8212; 1 / 8 / 7. Literally fp32 with the mantissa chopped from 23 bits to 7: <em>same exponent, same range</em>, values just get coarser &#8212; neighbors at 1.0 sit 2<sup>-7</sup> apart.</li>
+</ul>
+<p><strong>Why halving the bits works at all:</strong> the matmuls from Day 13 don&rsquo;t care. Weights and activations live in a modest band, 16-bit tensor-core math runs roughly twice as fast at half the memory, and SGD (Day 18) is noisy enough that rounding noise disappears into it. The failures live at the edges, and there are exactly two.</p>
+<p><strong>Failure 1 &#8212; underflow (fp16&rsquo;s disease).</strong> Gradients are products of many small numbers; late in training plenty sit at 1e-6 to 1e-8. In fp16, anything below half of 2<sup>-24</sup> rounds to <em>exactly 0.0</em> &#8212; not small, gone. That weight silently stops learning and nothing crashes; the loss just gets a little worse (Day 31&rsquo;s flatline, one weight at a time). bf16 is immune: its floor is fp32&rsquo;s floor. The fp16 fix is <strong>loss scaling</strong>: multiply the loss by a constant S (say 1024) before <code>backward()</code>. The chain rule (Day 23) multiplies every gradient by the same S, lifting the tiny ones into fp16&rsquo;s representable band; divide by S again right before the optimizer step, so the actual update is unchanged. PyTorch&rsquo;s <code>GradScaler</code> is exactly this, with S auto-adjusted when it spots an inf.</p>
+<p><strong>Failure 2 &#8212; swamping (both formats).</strong> The update rule is <code>w &#8722;= lr &times; g</code>: tiny edits to a biggish weight. At w = 1.0 the representable gap is 2<sup>-10</sup> in fp16 and 2<sup>-7</sup> in bf16, so a typical 1e-4 update falls <em>inside</em> the gap and rounds straight back to w &#8212; every step, deterministically. The fix is Day 73&rsquo;s fp32 master copy: updates accumulate in fp32, and a fresh 16-bit copy is cast for compute each step. Note the direction of the trade: bf16&rsquo;s gap is <em>wider</em>, so swamping is worse there &#8212; bf16 bought range, not precision, and the master copy is what pays the precision bill.</p>
+<p>So &ldquo;we train in bf16&rdquo; unpacks to: compute in a format that can&rsquo;t overflow or underflow, remember in a format that can&rsquo;t swallow updates. Two formats, each covering the other&rsquo;s failure &#8212; that&rsquo;s the whole recipe.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>A float is a ruler printed for one decade at a time. The exponent chooses which decade the ruler covers (10<sup>-38</sup> up to 10<sup>38</sup>); the mantissa is how many tick marks get printed in that decade &#8212; always the same count, so the ticks spread wider as numbers grow. fp16 prints 1,024 ticks per decade but only stocks the middle decades; bf16 prints a measly 128 ticks per decade but stocks every decade fp32 does. Loss scaling is the stopwatch trick: if your clock only shows whole seconds, time the race in milliseconds &#8212; same durations, shifted into the band where the ticks exist. And swamping is the metrics-counter bug every systems engineer has met: add 0.0001 to a float counter sitting at 1.0 a hundred times and it never moves, because each increment falls between the ticks. The fp32 master copy is simply refusing to keep the counter in the lossy format.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 312" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="312" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">One budget, three splits: sign / exponent (range) / mantissa (precision)</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">drawn to scale: one square = one bit; dashed outline = the full 32-bit width</text>
+<rect x="110" y="54" width="11" height="11" fill="#6b7280"/>
+<text x="126" y="63" font-size="9.5" fill="#1c1c1e">sign (1 bit, every format)</text>
+<rect x="330" y="54" width="11" height="11" fill="#0a7aff"/>
+<text x="346" y="63" font-size="9.5" fill="#1c1c1e">exponent = RANGE</text>
+<rect x="492" y="54" width="11" height="11" fill="#22a355"/>
+<text x="508" y="63" font-size="9.5" fill="#1c1c1e">mantissa = PRECISION</text>
+<text x="100" y="102" text-anchor="end" font-size="11.5" fill="#1c1c1e" font-weight="bold">fp32</text>
+<rect x="110" y="82" width="16" height="30" fill="#6b7280"/>
+<rect x="126" y="82" width="128" height="30" fill="#0a7aff"/>
+<rect x="254" y="82" width="368" height="30" fill="#22a355"/>
+<text x="118" y="101" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">1</text>
+<text x="190" y="101" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">8</text>
+<text x="438" y="101" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">23</text>
+<text x="110" y="128" font-size="9" fill="#555555">range &#8776; 1.2e-38 &#8230; 3.4e38 &#183; step at 1.0 = 2^-23 &#183; the reference: 4 bytes per parameter</text>
+<text x="100" y="172" text-anchor="end" font-size="11.5" fill="#1c1c1e" font-weight="bold">fp16</text>
+<rect x="110" y="152" width="512" height="30" fill="none" stroke="#bbbbbb" stroke-width="1.0" stroke-dasharray="4 3"/>
+<rect x="110" y="152" width="16" height="30" fill="#6b7280"/>
+<rect x="126" y="152" width="80" height="30" fill="#0a7aff"/>
+<rect x="206" y="152" width="160" height="30" fill="#22a355"/>
+<text x="118" y="171" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">1</text>
+<text x="166" y="171" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">5</text>
+<text x="286" y="171" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">10</text>
+<text x="110" y="198" font-size="9" fill="#555555">range &#8776; 6.1e-05 &#8230; 65504 &#183; step at 1.0 = 2^-10 &#183; fine steps, tiny range &#8594; gradients underflow</text>
+<text x="100" y="242" text-anchor="end" font-size="11.5" fill="#1c1c1e" font-weight="bold">bf16</text>
+<rect x="110" y="222" width="512" height="30" fill="none" stroke="#bbbbbb" stroke-width="1.0" stroke-dasharray="4 3"/>
+<rect x="110" y="222" width="16" height="30" fill="#6b7280"/>
+<rect x="126" y="222" width="128" height="30" fill="#0a7aff"/>
+<rect x="254" y="222" width="112" height="30" fill="#22a355"/>
+<text x="118" y="241" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">1</text>
+<text x="190" y="241" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">8</text>
+<text x="310" y="241" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">7</text>
+<text x="110" y="268" font-size="9" fill="#555555">range &#8776; 1.2e-38 &#8230; 3.4e38 (fp32&#8217;s range) &#183; step at 1.0 = 2^-7 &#183; coarse steps, nothing underflows</text>
+<text x="340.0" y="296" text-anchor="middle" font-size="9.5" fill="#0a54c2" font-weight="bold">Same 16 bits, two philosophies: fp16 buys precision, bf16 buys range &#8212; training chose range, plus an fp32 master</text>
+</svg>
+    <div class="caption">Three floats drawn to scale, one square per bit. fp32 (top) is the reference budget: 1/8/23. fp16 spends its 16 bits on mantissa &#8212; finer ticks, but the exponent shrinks to 5 bits and the range collapses. bf16 keeps fp32&rsquo;s 8 exponent bits and pays with mantissa &#8212; same range, coarser ticks. The dashed outline is the full 32-bit width, for scale.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>numpy tonight: it ships real <code>float16</code>, and bf16 is emulated honestly &#8212; a one-line function that chops an fp32&rsquo;s mantissa to its top 7 bits (on your Mac, <code>torch.bfloat16</code> is the genuine dtype; real hardware rounds instead of chopping, so a value can differ by one last-bit step &#8212; the grid of representable values is identical). <strong>Part 1</strong> casts everyday values and prints what survives. <strong>Part 2</strong> kills a gradient in fp16, then rescues it with loss scaling. <strong>Part 3</strong> is the money shot: 100 updates that never happen in fp16, and all land in the fp32 master.</p>
+  <pre><code>&quot;&quot;&quot;Day 77 - Mixed Precision: FP16/BF16, and Why It (Mostly) Just Works.
+
+Day 73 priced the mixed-precision recipe at 16 bytes per
+parameter without ever saying what the formats ARE. Tonight
+is the missing bit-level picture, and it is one idea:
+
+    A float is a BIT BUDGET split between RANGE (exponent
+    bits: how big/small a number can be) and PRECISION
+    (mantissa bits: how finely it can be told apart from
+    its neighbors). fp32 = 1/8/23, fp16 = 1/5/10,
+    bf16 = 1/8/7 (sign / exponent / mantissa).
+
+bf16 keeps fp32&#x27;s 8 exponent bits - the same range, roughly
+1e-38 to 3e38 - and pays with precision: only 7 mantissa
+bits. fp16 spends 5 bits on exponent and 10 on mantissa:
+finer steps, but the range collapses to about 6e-5..65504
+for normal numbers. That single trade explains everything
+that follows:
+
+  Part 1  Representability probes. Cast everyday values
+          into fp16 and bf16 and print what survives. Both
+          formats mangle pi and a $1000.10 price; only fp16
+          dies at 70000 (overflow to inf). bf16 is coarser
+          everywhere - precision is what it sold.
+  Part 2  Underflow, and the loss-scaling rescue. Real
+          gradients are tiny: 1e-8 in fp16 rounds to EXACTLY
+          0.0 - the update silently never happens. bf16&#x27;s
+          range lets 1e-8 survive unscaled. For fp16,
+          multiply the loss by S=1024 before backward and
+          every gradient comes out 1024x bigger; divide by
+          S before the step. The gradient lands back, alive.
+  Part 3  Swamping - why the master copy stays fp32.
+          w = 1.0, update = 1e-4, 100 steps. In fp16 the
+          update is 10x smaller than the gap between
+          representable neighbors (2^-10), so w + u rounds
+          back to w EVERY time: 100 updates, zero movement.
+          The fp32 master copy absorbs all 100. bf16 is
+          even coarser near 1.0 (gap 2^-7), so the master
+          copy is not optional in either format - bf16
+          fixes range, NOT precision.
+
+Runs on the ~/ai-lab venv: numpy only (free), no CUDA, no
+paid APIs, no downloads. numpy has float16 built in but NO
+bfloat16, so bf16 is emulated here by chopping an fp32&#x27;s
+mantissa to its top 7 bits - real hardware rounds instead
+of chopping, so a value can differ by one last-bit step,
+but the grid of representable values is identical. On the
+Mac, torch has the real thing: torch.tensor(x,
+dtype=torch.bfloat16). Every input is a fixed literal -
+no RNG anywhere, every digit exact.
+
+Expected output:
+
+  Part 1 - the bit budget: fp32 1/8/23, fp16 1/5/10, bf16 1/8/7
+    (sign / exponent = RANGE / mantissa = PRECISION)
+             0.1  fp16 -&gt;     0.099976   bf16 -&gt;     0.099609
+             1.1  fp16 -&gt;     1.099609   bf16 -&gt;     1.093750
+      3.14159265  fp16 -&gt;     3.140625   bf16 -&gt;     3.140625
+          1000.1  fp16 -&gt;  1000.000000   bf16 -&gt;  1000.000000
+         70000.0  fp16 -&gt;          inf   bf16 -&gt; 69632.000000
+    both mangle 0.1, pi, and the $1000.10 price; only fp16
+    overflows at 70000 (its max is 65504) - bf16 kept fp32&#x27;s range
+  Part 2 - tiny gradients: fp16 underflow vs loss scaling (S=1024)
+    true grad   fp16 direct   fp16 via scale   bf16 direct
+        1e-03    1.0004e-03       1.0004e-03    9.9945e-04
+        1e-05    1.0014e-05       9.9987e-06    9.9540e-06
+        1e-07    1.1921e-07       1.0000e-07    9.9652e-08
+        1e-08    0.0000e+00       1.0012e-08    9.9535e-09
+    fp16&#x27;s smallest step is 2^-24 = 5.96e-08, so 1e-8 rounds to 0.0
+    scaled by 1024 it casts safely, then /1024 brings it back alive
+    bf16 needs no scaling here: its range reaches down to ~1e-38
+  Part 3 - swamping: w = 1.0, update = 1e-4, applied 100 times
+    after   1 updates:  fp16 w = 1.0000000   fp32 master = 1.0001000
+    after  10 updates:  fp16 w = 1.0000000   fp32 master = 1.0010002
+    after 100 updates:  fp16 w = 1.0000000   fp32 master = 1.0100017
+    total movement: fp16 0.0000000   fp32 0.0100017   (true: 0.0100000)
+    fp32&#x27;s extra 0.0000017 is its own rounding dust - every update
+    LANDED; in fp16 the 100 updates never existed at all
+    near 1.0 the representable gap is 2^-10 (fp16) / 2^-7 (bf16) /
+    2^-23 (fp32): a 1e-4 update falls inside fp16&#x27;s gap and rounds
+    away every single step - the fp32 master is where updates live
+    verdict: low precision computes, fp32 remembers - that is the
+    whole recipe, and Day 73&#x27;s 16 bytes/param is its price tag
+&quot;&quot;&quot;
+import warnings
+
+import numpy as np
+
+warnings.filterwarnings(&quot;ignore&quot;)   # fp16 overflow prints inf on purpose
+
+
+def to_bf16(x):
+    &quot;&quot;&quot;Emulate bfloat16: keep fp32&#x27;s sign + 8 exponent bits,
+    truncate the mantissa to its top 7 bits. (numpy has no
+    bf16 dtype; torch does - see the docstring.)&quot;&quot;&quot;
+    bits = np.float32(x).view(np.uint32)
+    return (bits &amp; np.uint32(0xFFFF0000)).view(np.float32)
+
+
+# ---------- Part 1: the bit budget - what survives the cast ----------
+print(&quot;Part 1 - the bit budget: fp32 1/8/23, fp16 1/5/10, bf16 1/8/7&quot;)
+print(&quot;  (sign / exponent = RANGE / mantissa = PRECISION)&quot;)
+probes = [0.1, 1.1, 3.14159265, 1000.1, 70000.0]
+for v in probes:
+    f16 = float(np.float16(v))
+    bf = float(to_bf16(v))
+    print(f&quot;  {v:&gt;12}  fp16 -&gt; {f16:&gt;12.6f}   bf16 -&gt; {bf:&gt;12.6f}&quot;)
+print(&quot;  both mangle 0.1, pi, and the $1000.10 price; only fp16&quot;)
+print(&quot;  overflows at 70000 (its max is 65504) - bf16 kept fp32&#x27;s range&quot;)
+
+# ---------- Part 2: underflow, and the loss-scaling rescue ----------
+print(&quot;Part 2 - tiny gradients: fp16 underflow vs loss scaling (S=1024)&quot;)
+S = 1024.0
+grads = [1e-3, 1e-5, 1e-7, 1e-8]
+print(&quot;  true grad   fp16 direct   fp16 via scale   bf16 direct&quot;)
+for g in grads:
+    direct = float(np.float16(g))
+    rescued = float(np.float16(g * S)) / S   # scale up, cast, scale back
+    bf = float(to_bf16(g))
+    print(f&quot;  {g:&gt;9.0e}   {direct:&gt;11.4e}   {rescued:&gt;14.4e}   {bf:&gt;11.4e}&quot;)
+print(&quot;  fp16&#x27;s smallest step is 2^-24 = 5.96e-08, so 1e-8 rounds to 0.0&quot;)
+print(&quot;  scaled by 1024 it casts safely, then /1024 brings it back alive&quot;)
+print(&quot;  bf16 needs no scaling here: its range reaches down to ~1e-38&quot;)
+
+# ---------- Part 3: swamping - why the master copy stays fp32 ----------
+print(&quot;Part 3 - swamping: w = 1.0, update = 1e-4, applied 100 times&quot;)
+w16, w32 = np.float16(1.0), np.float32(1.0)
+u16, u32 = np.float16(1e-4), np.float32(1e-4)
+marks = {}
+for step in range(1, 101):
+    w16 = np.float16(w16 + u16)      # pure fp16 weight: update + store
+    w32 = np.float32(w32 + u32)      # fp32 master copy
+    if step in (1, 10, 100):
+        marks[step] = (float(w16), float(w32))
+for step, (a, b) in marks.items():
+    print(f&quot;  after {step:&gt;3} updates:  fp16 w = {a:.7f}   fp32 master = {b:.7f}&quot;)
+moved16 = float(w16) - 1.0
+moved32 = float(w32) - 1.0
+print(f&quot;  total movement: fp16 {moved16:.7f}   fp32 {moved32:.7f}&quot;
+      &quot;   (true: 0.0100000)&quot;)
+print(&quot;  fp32&#x27;s extra 0.0000017 is its own rounding dust - every update&quot;)
+print(&quot;  LANDED; in fp16 the 100 updates never existed at all&quot;)
+print(&quot;  near 1.0 the representable gap is 2^-10 (fp16) / 2^-7 (bf16) /&quot;)
+print(&quot;  2^-23 (fp32): a 1e-4 update falls inside fp16&#x27;s gap and rounds&quot;)
+print(&quot;  away every single step - the fp32 master is where updates live&quot;)
+print(&quot;  verdict: low precision computes, fp32 remembers - that is the&quot;)
+print(&quot;  whole recipe, and Day 73&#x27;s 16 bytes/param is its price tag&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the bit budget: fp32 1/8/23, fp16 1/5/10, bf16 1/8/7
+  (sign / exponent = RANGE / mantissa = PRECISION)
+           0.1  fp16 -&gt;     0.099976   bf16 -&gt;     0.099609
+           1.1  fp16 -&gt;     1.099609   bf16 -&gt;     1.093750
+    3.14159265  fp16 -&gt;     3.140625   bf16 -&gt;     3.140625
+        1000.1  fp16 -&gt;  1000.000000   bf16 -&gt;  1000.000000
+       70000.0  fp16 -&gt;          inf   bf16 -&gt; 69632.000000
+  both mangle 0.1, pi, and the $1000.10 price; only fp16
+  overflows at 70000 (its max is 65504) - bf16 kept fp32&#x27;s range
+Part 2 - tiny gradients: fp16 underflow vs loss scaling (S=1024)
+  true grad   fp16 direct   fp16 via scale   bf16 direct
+      1e-03    1.0004e-03       1.0004e-03    9.9945e-04
+      1e-05    1.0014e-05       9.9987e-06    9.9540e-06
+      1e-07    1.1921e-07       1.0000e-07    9.9652e-08
+      1e-08    0.0000e+00       1.0012e-08    9.9535e-09
+  fp16&#x27;s smallest step is 2^-24 = 5.96e-08, so 1e-8 rounds to 0.0
+  scaled by 1024 it casts safely, then /1024 brings it back alive
+  bf16 needs no scaling here: its range reaches down to ~1e-38
+Part 3 - swamping: w = 1.0, update = 1e-4, applied 100 times
+  after   1 updates:  fp16 w = 1.0000000   fp32 master = 1.0001000
+  after  10 updates:  fp16 w = 1.0000000   fp32 master = 1.0010002
+  after 100 updates:  fp16 w = 1.0000000   fp32 master = 1.0100017
+  total movement: fp16 0.0000000   fp32 0.0100017   (true: 0.0100000)
+  fp32&#x27;s extra 0.0000017 is its own rounding dust - every update
+  LANDED; in fp16 the 100 updates never existed at all
+  near 1.0 the representable gap is 2^-10 (fp16) / 2^-7 (bf16) /
+  2^-23 (fp32): a 1e-4 update falls inside fp16&#x27;s gap and rounds
+  away every single step - the fp32 master is where updates live
+  verdict: low precision computes, fp32 remembers - that is the
+  whole recipe, and Day 73&#x27;s 16 bytes/param is its price tag</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three signatures: Part 1&rsquo;s <code>70000.0</code> casting to <code>inf</code> in fp16 but <code>69632.000000</code> in bf16; Part 2&rsquo;s 1e-8 gradient reading <code>0.0000e+00</code> fp16-direct, <code>1.0012e-08</code> via loss scaling, <code>9.9535e-09</code> in bf16; and Part 3&rsquo;s fp16 weight frozen at <code>1.0000000</code> after 100 updates while the fp32 master lands at <code>1.0100017</code>. Keeper test, no notes: someone hands you a format spec &#8212; sign/exponent/mantissa &#8212; and you state its range, its gap at 1.0, and which of the two failures to expect first.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the bit-budget diagram until you can sketch the three bars from memory, then run Part 3 only &#8212; a weight that takes 100 updates and never moves is the whole lesson in one line of output. Parts 1 and 2 are the receipts for why the fixes are what they are.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: real runs span hundreds of GPUs for weeks at a time &#8212; so what happens when one machine dies on day 19 of 20? A training run has to be built to survive its own hardware.</p>
+  </div>
+
+  <div class="footer">Streak: 77 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
