@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recap: The ML Systems Map — Where Your Infra Career Plugs In — Day 82 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 82 of 100</span>
+  <h1>Recap: The ML Systems Map — Where Your Infra Career Plugs In</h1>
+  <p class="outcome">Tonight you'll be able to: compress all of Phase F (Days 73–81) into one sentence you can carry into any AI-infra interview — <em>every Phase F problem is a distributed-systems problem in new clothes: state too big for one node, work sharded across many, state checksummed and repaired, traffic shaped at the edge</em> — and back it with a translation table: nine ML-systems ideas, each with its infra-world name, the evidence already on your record, and the one honest gap.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 20 compressed Phase A into a sentence, Day 34 did Phase B, Day 50 Phase C, Day 63 Phase D. Phase F gets the same treatment tonight — and this one is personal, because Phase F was never really a new subject:</p>
+<p><strong>Every Phase F problem is a distributed-systems problem in new clothes — state too big for one node, work sharded across many, state checksummed and repaired, traffic shaped at the edge — and the scarcest seats in AI sit where that machinery meets the model.</strong></p>
+<p><strong>State too big for one node (Days 73, 76, 77).</strong> The memory wall (Day 73) is capacity planning: the working set — weights, gradients, optimizer states, activations — exceeds one GPU the way a dataset exceeds one disk. FSDP and DeepSpeed (Day 76) answer it with <em>consistent sharding of state</em>: no worker holds the whole model, shards are gathered on demand — the placement problem you have designed for years. Mixed precision (Day 77) shrinks the state with tiered copies: a full-precision master, a bf16 working tier — a hot/cold split your DynamoDB Tiered Storage launch would recognize.</p>
+<p><strong>Work sharded across many (Days 74, 75).</strong> Data parallelism (Day 74) shards the <em>data</em> and synchronizes with all-reduce — a gossip aggregation. Tensor and pipeline parallelism (Day 75) shard the <em>model itself</em>: striping one job across nodes. The second is the newest idea of the phase for you; the first is sharded workers keeping replicas in step — home ground conceptually, even if you haven't run the GPU version yet.</p>
+<p><strong>State checksummed, repaired, and watched (Days 78, 81).</strong> Checkpointing at scale (Day 78) is backup, restore, and repair pointed at weights: durable snapshots in object storage, integrity checks, a dead worker rebuilt from the last good state instead of restarting a month-long run. You authored the Data Reliability Service on Conveyor — this row of the table is not a translation, it's a citation. Profiling a training step (Day 81) is the same observability instinct: find the bottleneck, don't guess.</p>
+<p><strong>Traffic shaped at the edge (Day 80).</strong> Inference at scale splits prefill from decode the way systems split write paths from read paths, and shapes request traffic for a fleet — the team you've been on since August 2026 does the infra version of this daily.</p>
+<p><strong>Where the translation runs out (Day 79).</strong> One row is honestly new: the GPU itself. SMs, warps, the memory hierarchy — a new machine architecture, where you have the mental model and not yet the depth. The recap names it instead of bluffing it, because the whole point of this map is that it's <em>credible</em>: nine rows, two home turf, four strong transfers, three honestly new — and every gap is "machinery not yet operated," never "systems thinking."</p>
+<p><strong>Why this is the scarcest seat.</strong> Frontier labs can hire modeling talent faster than they can hire people who keep training data flowing, checkpoints durable, KV caches hot, and a ten-thousand-GPU fleet alive. Training data pipelines, checkpoint storage, cache infrastructure, reliability at GPU scale — that layer is your decade, renamed. You're not entering AI from outside. You're translating.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It's a <strong>port of a system you designed to a new platform</strong>. The architecture review would be short — state placement, sharding, repair, load shaping are decisions you've defended for ten years. What's new is platform knowledge: the GPU's memory hierarchy instead of the disk hierarchy, bf16 range instead of byte ranges, NCCL instead of your RPC stack. Ports fail when engineers mistake new vocabulary for new ideas, or old confidence for platform skill. This map avoids both: it says exactly which rows are the same architecture (most of them) and exactly which rows are platform depth you still owe (CUDA, numerics, real clusters). That's how you'd write the port plan at work. It's also how you answer "why you, for AI infra?" in an interview.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 470" width="680" height="470" role="img" aria-label="Two-column map: Phase F ML systems concepts on the left, their infra-world equivalents on the right">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+  </defs>
+  <text x="137" y="22" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#555">PHASE F — ML VOCABULARY</text>
+  <text x="340" y="22" text-anchor="middle" font-size="11" fill="#999">— same idea —</text>
+  <text x="542" y="22" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#555">YOUR WORLD — INFRA VOCABULARY</text>
+
+  <!-- Day 73 -->
+  <rect x="10" y="36" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <rect x="415" y="36" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <line x1="268" y1="55" x2="410" y2="55" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="59" font-size="12" fill="#1c1c1e">73 · The memory wall</text>
+  <text x="427" y="59" font-size="12" fill="#1c1c1e">capacity planning</text>
+
+  <!-- Day 74 -->
+  <rect x="10" y="80" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <rect x="415" y="80" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <line x1="268" y1="99" x2="410" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="103" font-size="12" fill="#1c1c1e">74 · Data parallelism</text>
+  <text x="427" y="103" font-size="12" fill="#1c1c1e">sharded workers + gossip</text>
+
+  <!-- Day 75 -->
+  <rect x="10" y="124" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <rect x="415" y="124" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <line x1="268" y1="143" x2="410" y2="143" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="147" font-size="12" fill="#1c1c1e">75 · Tensor + pipeline parallel</text>
+  <text x="427" y="147" font-size="12" fill="#1c1c1e">striping one job across nodes</text>
+
+  <!-- Day 76 -->
+  <rect x="10" y="168" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <rect x="415" y="168" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <line x1="268" y1="187" x2="410" y2="187" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="191" font-size="12" fill="#1c1c1e">76 · FSDP / DeepSpeed</text>
+  <text x="427" y="191" font-size="12" fill="#1c1c1e">consistent sharding of state</text>
+
+  <!-- Day 77 -->
+  <rect x="10" y="212" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <rect x="415" y="212" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <line x1="268" y1="231" x2="410" y2="231" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="235" font-size="12" fill="#1c1c1e">77 · Mixed precision (bf16)</text>
+  <text x="427" y="235" font-size="12" fill="#1c1c1e">tiered copies of the data</text>
+
+  <!-- Day 78 — HOME TURF -->
+  <rect x="10" y="256" width="255" height="38" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+  <rect x="415" y="256" width="255" height="38" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+  <line x1="268" y1="275" x2="410" y2="275" stroke="#22a355" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="279" font-size="12" font-weight="700" fill="#1c1c1e">78 · Checkpointing + repair</text>
+  <text x="427" y="279" font-size="12" font-weight="700" fill="#1c1c1e">backup, restore, repair (DRS) ★</text>
+
+  <!-- Day 79 -->
+  <rect x="10" y="300" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <rect x="415" y="300" width="255" height="38" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <line x1="268" y1="319" x2="410" y2="319" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="323" font-size="12" fill="#1c1c1e">79 · GPU / CUDA mental model</text>
+  <text x="427" y="323" font-size="12" fill="#1c1c1e">a new machine architecture</text>
+
+  <!-- Day 80 -->
+  <rect x="10" y="344" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <rect x="415" y="344" width="255" height="38" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <line x1="268" y1="363" x2="410" y2="363" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="367" font-size="12" fill="#1c1c1e">80 · Inference at scale</text>
+  <text x="427" y="367" font-size="12" fill="#1c1c1e">split paths, shaped traffic</text>
+
+  <!-- Day 81 — HOME TURF -->
+  <rect x="10" y="388" width="255" height="38" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+  <rect x="415" y="388" width="255" height="38" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2"/>
+  <line x1="268" y1="407" x2="410" y2="407" stroke="#22a355" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="22" y="411" font-size="12" font-weight="700" fill="#1c1c1e">81 · Profile a training step</text>
+  <text x="427" y="411" font-size="12" font-weight="700" fill="#1c1c1e">observability, as always ★</text>
+
+  <!-- Legend -->
+  <rect x="10" y="440" width="12" height="12" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="28" y="450" font-size="10.5" fill="#555">HOME TURF — shipped it</text>
+  <rect x="210" y="440" width="12" height="12" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="228" y="450" font-size="10.5" fill="#555">STRONG TRANSFER — concepts yours, machinery new</text>
+  <rect x="508" y="440" width="12" height="12" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="526" y="450" font-size="10.5" fill="#555">NEW GROUND — honestly new</text>
+</svg>
+    <div class="caption">The one page to keep from Phase F. Left: the nine days in ML vocabulary. Right: the same nine ideas in the vocabulary you've used for a decade. Green rows (78, 81) are home turf — checkpointing/repair and observability are the reliability rows, and they're yours. Blue rows transfer strongly: the concepts are yours, the machinery is new. Amber rows are honestly new ground — model parallelism mechanics, numerics, and the GPU itself.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three views of the map, in pure stdlib — tonight the artifact <em>is</em> the interview prep. The program is a <strong>translation table + readiness inventory</strong>. <strong>Part 1</strong> prints the map: every Phase F day, its infra-world name, and a verdict — HOME TURF, STRONG TRANSFER, or NEW GROUND. <strong>Part 2</strong> prints the inventory: for each row, the evidence already on the record (Conveyor + DRS, S3 core, DynamoDB team lead and the Tiered Storage launch, traffic shaping since Aug 2026 — nothing beyond that record is claimed) and the one honest gap. <strong>Part 3</strong> totals the verdicts, prints the sentence, and asserts the map's shape: nine rows, Days 73–81 exactly once, and the home-turf rows are the reliability rows (78, 81).</p>
+  <pre><code>&quot;&quot;&quot;Day 82 - Recap: The ML Systems Map - Where Your
+Infra Career Plugs In.
+
+Phase F recap, same treatment as Days 20, 34, 50 and
+63: one carry sentence, a slot map of every day in
+the phase, and a small artifact that makes the map
+executable. Phase F (Days 73-81) was the systems
+phase: the memory wall, the ways training gets split
+across GPUs, mixed precision, checkpointing, the GPU
+itself, inference at scale, and profiling. The
+sentence:
+
+    Every Phase F problem is a distributed-systems
+    problem in new clothes - state too big for one
+    node, work sharded across many, state checksummed
+    and repaired, traffic shaped at the edge - and
+    the scarcest seats in AI sit where that machinery
+    meets the model.
+
+Tonight the map becomes a TRANSLATION TABLE plus a
+READINESS INVENTORY:
+
+  Part 1  The map: each Phase F day, the name the
+          same idea already has in your infra world,
+          and a verdict - HOME TURF (you have shipped
+          this), STRONG TRANSFER (the concepts are
+          yours, the machinery is new), or NEW GROUND
+          (honestly new: name it, never bluff it).
+  Part 2  The inventory: for every row, the evidence
+          already on the record, and the one honest
+          gap. The record, and nothing beyond it:
+          Staff SWE on Conveyor, Tesla&#x27;s exabyte-scale
+          Rust object store for AI training, and
+          author of its Data Reliability Service;
+          AWS S3 core and DynamoDB team lead (Tiered
+          Storage launch); traffic shaping team since
+          Aug 2026. Invented claims die in interviews;
+          these nine rows don&#x27;t need any.
+  Part 3  The totals and the sentence: how the nine
+          days sort, and the one line to carry into
+          the interview loop.
+
+Pure stdlib, deterministic - no RNG, no torch, no
+APIs, no downloads. Runs as-is in the ~/ai-lab venv
+on the MacBook.
+
+Expected output:
+
+  Part 1 - the translation table (Days 73-81)
+    day  Phase F                      in your world                verdict
+     73  The memory wall              capacity planning            STRONG TRANSFER
+     74  Data parallelism             sharded workers + gossip     STRONG TRANSFER
+     75  Tensor + pipeline parallel   striping one job             NEW GROUND
+     76  FSDP / DeepSpeed             consistent sharding of state STRONG TRANSFER
+     77  Mixed precision (bf16)       tiered copies of the data    NEW GROUND
+     78  Checkpointing + repair       backup, restore, repair      HOME TURF
+     79  GPU / CUDA mental model      a new machine architecture   NEW GROUND
+     80  Inference at scale           split paths, shaped traffic  STRONG TRANSFER
+     81  Profile a training step      observability, as always     HOME TURF
+    every row is the same idea wearing two vocabularies:
+    the left column is what the ML team calls it, the
+    middle column is what you have been calling it.
+  Part 2 - readiness inventory: evidence + the honest gap
+    Day 73  The memory wall
+      evidence: capacity math at exabyte scale (Conveyor storage)
+      gap:      training-job budgets (activations, optimizer states) are new
+      arithmetic
+    Day 74  Data parallelism
+      evidence: sharded data systems at S3 / DynamoDB scale
+      gap:      no multi-GPU training job run yet - all-reduce met in simulation
+      (Day 74)
+    Day 75  Tensor + pipeline parallel
+      evidence: striping / pipelining intuition from storage data paths
+      gap:      no hands-on model splitting (Megatron-style) yet
+    Day 76  FSDP / DeepSpeed
+      evidence: placement + sharding design (DynamoDB partitions, Conveyor)
+      gap:      FSDP / DeepSpeed not yet operated on a real cluster
+    Day 77  Mixed precision (bf16)
+      evidence: tiering instinct: led the DynamoDB Tiered Storage launch
+      gap:      numerics judgement (bf16 range, loss scaling) is new
+    Day 78  Checkpointing + repair
+      evidence: authored the Data Reliability Service on Conveyor
+      gap:      training-checkpoint tooling (async, distributed) not yet operated
+    Day 79  GPU / CUDA mental model
+      evidence: deep systems fundamentals - no GPU claims made
+      gap:      CUDA depth: mental model only, no kernels written - the big honest
+      gap
+    Day 80  Inference at scale
+      evidence: traffic shaping team since Aug 2026: routing, load, edges
+      gap:      no production inference fleet operated yet
+    Day 81  Profile a training step
+      evidence: reliability + observability work on Conveyor / DRS
+      gap:      GPU profilers (Nsight) and training-loop ownership still ahead
+    the gaps are all of one kind - machinery not yet
+    operated - and none of them is &#x27;systems thinking&#x27;.
+    That is the strongest sentence in the inventory.
+  Part 3 - the totals
+    HOME TURF:       2 of 9 - checkpointing/repair, profiling
+    STRONG TRANSFER: 4 of 9 - memory wall, data parallelism, FSDP, inference at scale
+    NEW GROUND:      3 of 9 - model parallelism, mixed precision, the GPU itself
+    the sentence:
+      Every Phase F problem is a distributed-systems problem in new
+      clothes - state too big for one node, work sharded across many,
+      state checksummed and repaired, traffic shaped at the edge - and
+      the scarcest seats in AI sit where that machinery meets the model.
+    checks: 9 rows, Days 73-81 each exactly once - verdicts sum to 9 - home-turf rows are the reliability rows (78, 81)
+  verdict: you are not entering AI from outside - you are translating a decade of systems work into its vocabulary, gaps named out loud.
+&quot;&quot;&quot;
+import textwrap
+
+# The map: day, Phase F concept, the infra-world name
+# for the same idea, and the honest verdict.
+MAP = [
+    (73, &quot;The memory wall&quot;, &quot;capacity planning&quot;,
+     &quot;STRONG TRANSFER&quot;),
+    (74, &quot;Data parallelism&quot;, &quot;sharded workers + gossip&quot;,
+     &quot;STRONG TRANSFER&quot;),
+    (75, &quot;Tensor + pipeline parallel&quot;, &quot;striping one job&quot;,
+     &quot;NEW GROUND&quot;),
+    (76, &quot;FSDP / DeepSpeed&quot;, &quot;consistent sharding of state&quot;,
+     &quot;STRONG TRANSFER&quot;),
+    (77, &quot;Mixed precision (bf16)&quot;, &quot;tiered copies of the data&quot;,
+     &quot;NEW GROUND&quot;),
+    (78, &quot;Checkpointing + repair&quot;, &quot;backup, restore, repair&quot;,
+     &quot;HOME TURF&quot;),
+    (79, &quot;GPU / CUDA mental model&quot;, &quot;a new machine architecture&quot;,
+     &quot;NEW GROUND&quot;),
+    (80, &quot;Inference at scale&quot;, &quot;split paths, shaped traffic&quot;,
+     &quot;STRONG TRANSFER&quot;),
+    (81, &quot;Profile a training step&quot;, &quot;observability, as always&quot;,
+     &quot;HOME TURF&quot;),
+]
+
+# The inventory: evidence strictly from the record,
+# plus the one honest gap per row.
+INVENTORY = [
+    (73, &quot;capacity math at exabyte scale (Conveyor storage)&quot;,
+     &quot;training-job budgets (activations, optimizer states) &quot;
+     &quot;are new arithmetic&quot;),
+    (74, &quot;sharded data systems at S3 / DynamoDB scale&quot;,
+     &quot;no multi-GPU training job run yet - all-reduce met &quot;
+     &quot;in simulation (Day 74)&quot;),
+    (75, &quot;striping / pipelining intuition from storage &quot;
+     &quot;data paths&quot;,
+     &quot;no hands-on model splitting (Megatron-style) yet&quot;),
+    (76, &quot;placement + sharding design (DynamoDB &quot;
+     &quot;partitions, Conveyor)&quot;,
+     &quot;FSDP / DeepSpeed not yet operated on a real cluster&quot;),
+    (77, &quot;tiering instinct: led the DynamoDB Tiered &quot;
+     &quot;Storage launch&quot;,
+     &quot;numerics judgement (bf16 range, loss scaling) is new&quot;),
+    (78, &quot;authored the Data Reliability Service on Conveyor&quot;,
+     &quot;training-checkpoint tooling (async, distributed) &quot;
+     &quot;not yet operated&quot;),
+    (79, &quot;deep systems fundamentals - no GPU claims made&quot;,
+     &quot;CUDA depth: mental model only, no kernels written - &quot;
+     &quot;the big honest gap&quot;),
+    (80, &quot;traffic shaping team since Aug 2026: routing, &quot;
+     &quot;load, edges&quot;,
+     &quot;no production inference fleet operated yet&quot;),
+    (81, &quot;reliability + observability work on Conveyor / DRS&quot;,
+     &quot;GPU profilers (Nsight) and training-loop ownership &quot;
+     &quot;still ahead&quot;),
+]
+
+NAMES = {day: concept for day, concept, _, _ in MAP}
+
+# ---------- Part 1: the translation table ----------
+print(&quot;Part 1 - the translation table (Days 73-81)&quot;)
+print(f&quot;  {&#x27;day&#x27;:&gt;3}  {&#x27;Phase F&#x27;:&lt;28} {&#x27;in your world&#x27;:&lt;28} verdict&quot;)
+for day, concept, infra, verdict in MAP:
+    print(f&quot;  {day:&gt;3}  {concept:&lt;28} {infra:&lt;28} {verdict}&quot;)
+print(&quot;  every row is the same idea wearing two vocabularies:&quot;)
+print(&quot;  the left column is what the ML team calls it, the&quot;)
+print(&quot;  middle column is what you have been calling it.&quot;)
+
+# ---------- Part 2: readiness inventory ----------
+print(&quot;Part 2 - readiness inventory: evidence + the honest gap&quot;)
+for day, evidence, gap in INVENTORY:
+    print(f&quot;  Day {day}  {NAMES[day]}&quot;)
+    for line in textwrap.wrap(&quot;evidence: &quot; + evidence, 76):
+        print(f&quot;    {line}&quot;)
+    for line in textwrap.wrap(&quot;gap:      &quot; + gap, 76):
+        print(f&quot;    {line}&quot;)
+print(&quot;  the gaps are all of one kind - machinery not yet&quot;)
+print(&quot;  operated - and none of them is &#x27;systems thinking&#x27;.&quot;)
+print(&quot;  That is the strongest sentence in the inventory.&quot;)
+
+# ---------- Part 3: totals + the sentence ----------
+print(&quot;Part 3 - the totals&quot;)
+counts = {}
+for *_, verdict in MAP:
+    counts[verdict] = counts.get(verdict, 0) + 1
+home = [d for d, _, _, v in MAP if v == &quot;HOME TURF&quot;]
+print(f&quot;  HOME TURF:       {counts[&#x27;HOME TURF&#x27;]} of 9 - &quot;
+      &quot;checkpointing/repair, profiling&quot;)
+print(f&quot;  STRONG TRANSFER: {counts[&#x27;STRONG TRANSFER&#x27;]} of 9 - &quot;
+      &quot;memory wall, data parallelism, FSDP, inference at scale&quot;)
+print(f&quot;  NEW GROUND:      {counts[&#x27;NEW GROUND&#x27;]} of 9 - &quot;
+      &quot;model parallelism, mixed precision, the GPU itself&quot;)
+SENTENCE = (&quot;Every Phase F problem is a distributed-systems &quot;
+            &quot;problem in new clothes - state too big for one &quot;
+            &quot;node, work sharded across many, state checksummed &quot;
+            &quot;and repaired, traffic shaped at the edge - and &quot;
+            &quot;the scarcest seats in AI sit where that machinery &quot;
+            &quot;meets the model.&quot;)
+print(&quot;  the sentence:&quot;)
+for line in textwrap.wrap(SENTENCE, 66):
+    print(f&quot;    {line}&quot;)
+days = [d for d, *_ in MAP]
+assert days == list(range(73, 82))
+assert sum(counts.values()) == 9
+assert home == [78, 81]
+print(f&quot;  checks: 9 rows, Days 73-81 each exactly once - &quot;
+      f&quot;verdicts sum to 9 - home-turf rows are the &quot;
+      f&quot;reliability rows ({&#x27;, &#x27;.join(map(str, home))})&quot;)
+print(&quot;verdict: you are not entering AI from outside - you are &quot;
+      &quot;translating a decade of systems work into its vocabulary, &quot;
+      &quot;gaps named out loud.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the translation table (Days 73-81)
+  day  Phase F                      in your world                verdict
+   73  The memory wall              capacity planning            STRONG TRANSFER
+   74  Data parallelism             sharded workers + gossip     STRONG TRANSFER
+   75  Tensor + pipeline parallel   striping one job             NEW GROUND
+   76  FSDP / DeepSpeed             consistent sharding of state STRONG TRANSFER
+   77  Mixed precision (bf16)       tiered copies of the data    NEW GROUND
+   78  Checkpointing + repair       backup, restore, repair      HOME TURF
+   79  GPU / CUDA mental model      a new machine architecture   NEW GROUND
+   80  Inference at scale           split paths, shaped traffic  STRONG TRANSFER
+   81  Profile a training step      observability, as always     HOME TURF
+  every row is the same idea wearing two vocabularies:
+  the left column is what the ML team calls it, the
+  middle column is what you have been calling it.
+Part 2 - readiness inventory: evidence + the honest gap
+  Day 73  The memory wall
+    evidence: capacity math at exabyte scale (Conveyor storage)
+    gap:      training-job budgets (activations, optimizer states) are new
+    arithmetic
+  Day 74  Data parallelism
+    evidence: sharded data systems at S3 / DynamoDB scale
+    gap:      no multi-GPU training job run yet - all-reduce met in simulation
+    (Day 74)
+  Day 75  Tensor + pipeline parallel
+    evidence: striping / pipelining intuition from storage data paths
+    gap:      no hands-on model splitting (Megatron-style) yet
+  Day 76  FSDP / DeepSpeed
+    evidence: placement + sharding design (DynamoDB partitions, Conveyor)
+    gap:      FSDP / DeepSpeed not yet operated on a real cluster
+  Day 77  Mixed precision (bf16)
+    evidence: tiering instinct: led the DynamoDB Tiered Storage launch
+    gap:      numerics judgement (bf16 range, loss scaling) is new
+  Day 78  Checkpointing + repair
+    evidence: authored the Data Reliability Service on Conveyor
+    gap:      training-checkpoint tooling (async, distributed) not yet operated
+  Day 79  GPU / CUDA mental model
+    evidence: deep systems fundamentals - no GPU claims made
+    gap:      CUDA depth: mental model only, no kernels written - the big honest
+    gap
+  Day 80  Inference at scale
+    evidence: traffic shaping team since Aug 2026: routing, load, edges
+    gap:      no production inference fleet operated yet
+  Day 81  Profile a training step
+    evidence: reliability + observability work on Conveyor / DRS
+    gap:      GPU profilers (Nsight) and training-loop ownership still ahead
+  the gaps are all of one kind - machinery not yet
+  operated - and none of them is &#x27;systems thinking&#x27;.
+  That is the strongest sentence in the inventory.
+Part 3 - the totals
+  HOME TURF:       2 of 9 - checkpointing/repair, profiling
+  STRONG TRANSFER: 4 of 9 - memory wall, data parallelism, FSDP, inference at scale
+  NEW GROUND:      3 of 9 - model parallelism, mixed precision, the GPU itself
+  the sentence:
+    Every Phase F problem is a distributed-systems problem in new
+    clothes - state too big for one node, work sharded across many,
+    state checksummed and repaired, traffic shaped at the edge - and
+    the scarcest seats in AI sit where that machinery meets the model.
+  checks: 9 rows, Days 73-81 each exactly once - verdicts sum to 9 - home-turf rows are the reliability rows (78, 81)
+verdict: you are not entering AI from outside - you are translating a decade of systems work into its vocabulary, gaps named out loud.
+</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints the whole map: Part 1's nine-row translation table, Part 2's inventory with a named gap beside every piece of evidence, and Part 3's totals — <strong>2 home turf, 4 strong transfer, 3 new ground</strong> — with the checks line confirming the home-turf rows are 78 and 81. The keeper test, no notes allowed: someone names any Phase F term — "FSDP," "checkpointing," "disaggregated decode" — and you give its infra name, your evidence, and your gap in one breath. That's not a party trick; that's the interview answer, rehearsed.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea" and study the diagram until you can redraw it: nine rows, two columns, green where you're already strong. Then run the code and read only Part 3 — the totals and the sentence. If you can say the sentence and explain why Day 79 is amber while Day 78 is green, you have the recap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase G opens — the capstone. We leave the cluster and turn to your other world, the market, and ask why it's the hardest place in all of ML to be right.</p>
+  </div>
+
+  <div class="footer">Streak: 82 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
