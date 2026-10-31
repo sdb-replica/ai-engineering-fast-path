@@ -1,0 +1,66 @@
+<svg viewBox="0 0 680 484" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="484" fill="#ffffff"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The context window is a cost curve, not a spec</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">One model throughout: L=32 layers, d=4096, h=32 heads, fp16 KV cache - log scales on both panels</text>
+<rect x="12" y="52" width="656" height="216" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - COMPUTE PER FORWARD PASS: ATTENTION (T^2) vs MLP (T)</text>
+<line x1="70.0" y1="216.0" x2="650.0" y2="216.0" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="219.0" text-anchor="end" font-size="8.5" fill="#777777">1T</text>
+<line x1="70.0" y1="172.0" x2="650.0" y2="172.0" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="175.0" text-anchor="end" font-size="8.5" fill="#777777">100T</text>
+<line x1="70.0" y1="128.0" x2="650.0" y2="128.0" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="131.0" text-anchor="end" font-size="8.5" fill="#777777">10P</text>
+<line x1="70.0" y1="84.0" x2="650.0" y2="84.0" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="87.0" text-anchor="end" font-size="8.5" fill="#777777">1000P</text>
+<polyline points="70.0,221.7 244.0,182.0 302.0,168.7 360.0,155.5 476.0,129.0 650.0,89.3" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="70.0" cy="221.7" r="3.0" fill="#0a7aff"/>
+<circle cx="244.0" cy="182.0" r="3.0" fill="#0a7aff"/>
+<circle cx="302.0" cy="168.7" r="3.0" fill="#0a7aff"/>
+<circle cx="360.0" cy="155.5" r="3.0" fill="#0a7aff"/>
+<circle cx="476.0" cy="129.0" r="3.0" fill="#0a7aff"/>
+<circle cx="650.0" cy="89.3" r="3.0" fill="#0a7aff"/>
+<polyline points="70.0,195.2 244.0,175.4 302.0,168.7 360.0,162.1 476.0,148.9 650.0,129.0" fill="none" stroke="#22a355" stroke-width="2.2"/>
+<circle cx="70.0" cy="195.2" r="3.0" fill="#22a355"/>
+<circle cx="244.0" cy="175.4" r="3.0" fill="#22a355"/>
+<circle cx="302.0" cy="168.7" r="3.0" fill="#22a355"/>
+<circle cx="360.0" cy="162.1" r="3.0" fill="#22a355"/>
+<circle cx="476.0" cy="148.9" r="3.0" fill="#22a355"/>
+<circle cx="650.0" cy="129.0" r="3.0" fill="#22a355"/>
+<circle cx="302.0" cy="168.7" r="6.0" fill="none" stroke="#d43a2f" stroke-width="2.0"/>
+<text x="272" y="138" text-anchor="middle" font-size="9.5" fill="#d43a2f" font-weight="bold">CROSSOVER  T = 16,384</text>
+<text x="272" y="152" text-anchor="middle" font-size="9.0" fill="#d43a2f">attention = MLP</text>
+<text x="650" y="80" text-anchor="end" font-size="9.5" fill="#0a54c2" font-weight="bold">ATTENTION  4*T^2*d*L</text>
+<text x="486" y="170" text-anchor="start" font-size="9.5" fill="#177245" font-weight="bold">MLP  16*T*d^2*L</text>
+<text x="70.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">1K</text>
+<text x="244.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">8K</text>
+<text x="302.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">16K</text>
+<text x="360.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">32K</text>
+<text x="476.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">128K</text>
+<text x="650.0" y="254" text-anchor="middle" font-size="8.5" fill="#777777">1M</text>
+<rect x="12" y="284" width="656" height="184" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="304" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - KV CACHE IN GiB: LINEAR IN T, BUT 0.5 MiB PER TOKEN</text>
+<line x1="70.0" y1="427.6" x2="650.0" y2="427.6" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="430.6" text-anchor="end" font-size="8.5" fill="#777777">1</text>
+<line x1="70.0" y1="390.4" x2="650.0" y2="390.4" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="393.4" text-anchor="end" font-size="8.5" fill="#777777">8</text>
+<line x1="70.0" y1="353.2" x2="650.0" y2="353.2" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="356.2" text-anchor="end" font-size="8.5" fill="#777777">64</text>
+<line x1="70.0" y1="316.0" x2="650.0" y2="316.0" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="64" y="319.0" text-anchor="end" font-size="8.5" fill="#777777">512</text>
+<polyline points="70.0,440.0 244.0,402.8 360.0,378.0 476.0,353.2 650.0,316.0" fill="none" stroke="#7a5cff" stroke-width="2.2"/>
+<circle cx="70.0" cy="440.0" r="3.0" fill="#7a5cff"/>
+<circle cx="244.0" cy="402.8" r="3.0" fill="#7a5cff"/>
+<circle cx="360.0" cy="378.0" r="3.0" fill="#7a5cff"/>
+<circle cx="476.0" cy="353.2" r="3.0" fill="#7a5cff"/>
+<circle cx="650.0" cy="316.0" r="3.0" fill="#7a5cff"/>
+<line x1="70.0" y1="349.2" x2="650.0" y2="349.2" stroke="#d43a2f" stroke-width="1.4" stroke-dasharray="6,4"/>
+<text x="76" y="340" text-anchor="start" font-size="9.0" fill="#d43a2f" font-weight="bold">80 GiB - one big GPU, all of it cache</text>
+<circle cx="494.7" cy="349.2" r="5.0" fill="none" stroke="#d43a2f" stroke-width="2.0"/>
+<text x="640" y="368" text-anchor="end" font-size="9.0" fill="#d43a2f">cache passes 80 GiB at T ~ 164K</text>
+<text x="486" y="300" text-anchor="middle" font-size="9.0" fill="#1c1c1e"></text>
+<text x="70.0" y="460" text-anchor="middle" font-size="8.5" fill="#777777">1K</text>
+<text x="244.0" y="460" text-anchor="middle" font-size="8.5" fill="#777777">8K</text>
+<text x="360.0" y="460" text-anchor="middle" font-size="8.5" fill="#777777">32K</text>
+<text x="476.0" y="460" text-anchor="middle" font-size="8.5" fill="#777777">128K</text>
+<text x="650.0" y="460" text-anchor="middle" font-size="8.5" fill="#777777">1M</text>
+</svg>
