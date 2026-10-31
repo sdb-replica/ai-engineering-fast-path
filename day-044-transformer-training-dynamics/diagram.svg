@@ -1,0 +1,63 @@
+<svg viewBox="0 0 680 546" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="546" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Transformer training: the curve, the schedule, the stop</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 31's telemetry, transformer edition - one run, read four ways</text>
+<rect x="12" y="52" width="656" height="248" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="70" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE LOSS CURVE: A POWER LAW FALLING TO A FLOOR (x = steps, log scale)</text>
+<line x1="70.0" y1="78" x2="70.0" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="70.0" y="288" text-anchor="middle" font-size="9" fill="#555555">10</text>
+<line x1="263.3" y1="78" x2="263.3" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="263.3333333333333" y="288" text-anchor="middle" font-size="9" fill="#555555">100</text>
+<line x1="456.7" y1="78" x2="456.7" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="456.66666666666663" y="288" text-anchor="middle" font-size="9" fill="#555555">1,000</text>
+<line x1="650.0" y1="78" x2="650.0" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="650.0" y="288" text-anchor="middle" font-size="9" fill="#555555">10,000</text>
+<line x1="70" y1="222.0" x2="650" y2="222.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="225.0" text-anchor="end" font-size="9" fill="#555555">2</text>
+<line x1="70" y1="172.0" x2="650" y2="172.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="175.0" text-anchor="end" font-size="9" fill="#555555">3</text>
+<line x1="70" y1="122.0" x2="650" y2="122.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="125.0" text-anchor="end" font-size="9" fill="#555555">4</text>
+<line x1="70" y1="72.0" x2="650" y2="72.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="75.0" text-anchor="end" font-size="9" fill="#555555">5</text>
+<text x="30" y="175" text-anchor="middle" font-size="9.5" fill="#555555">loss</text>
+<line x1="70" y1="262.0" x2="650" y2="262.0" stroke="#888888" stroke-width="1.2" stroke-dasharray="6,4"/>
+<path d="M70.0,83.3 L76.4,88.1 L82.9,92.7 L89.3,97.2 L95.8,101.5 L102.2,105.8 L108.7,109.9 L115.1,114.0 L121.6,117.9 L128.0,121.7 L134.4,125.4 L140.9,129.0 L147.3,132.6 L153.8,136.0 L160.2,139.3 L166.7,142.6 L173.1,145.7 L179.6,148.8 L186.0,151.8 L192.4,154.8 L198.9,157.6 L205.3,160.4 L211.8,163.1 L218.2,165.7 L224.7,168.2 L231.1,170.7 L237.6,173.1 L244.0,175.5 L250.4,177.8 L256.9,180.0 L263.3,182.2 L269.8,184.3 L276.2,186.4 L282.7,188.4 L289.1,190.3 L295.6,192.2 L302.0,194.1 L308.4,195.9 L314.9,197.6 L321.3,199.3 L327.8,201.0 L334.2,202.6 L340.7,204.2 L347.1,205.7 L353.6,207.2 L360.0,208.7 L366.4,210.1 L372.9,211.4 L379.3,212.8 L385.8,214.1 L392.2,215.4 L398.7,216.6 L405.1,217.8 L411.6,219.0 L418.0,220.1 L424.4,221.2 L430.9,222.3 L437.3,223.4 L443.8,224.4 L450.2,225.4 L456.7,226.3 L463.1,227.3 L469.6,228.2 L476.0,229.1 L482.4,230.0 L488.9,230.8 L495.3,231.7 L501.8,232.5 L508.2,233.2 L514.7,234.0 L521.1,234.7 L527.6,235.5 L534.0,236.1 L540.4,235.4 L546.9,234.8 L553.3,234.1 L559.8,233.4 L566.2,232.8 L572.7,232.1 L579.1,231.4 L585.6,230.8 L592.0,230.1 L598.4,229.4 L604.9,228.8 L611.3,228.1 L617.8,227.4 L624.2,226.8 L630.7,226.1 L637.1,225.4 L643.6,224.8 L650.0,224.1" fill="none" stroke="#7a5cff" stroke-width="1.6" stroke-dasharray="5,3"/>
+<path d="M70.0,83.3 L76.4,88.1 L82.9,92.7 L89.3,97.2 L95.8,101.5 L102.2,105.8 L108.7,109.9 L115.1,114.0 L121.6,117.9 L128.0,121.7 L134.4,125.4 L140.9,129.0 L147.3,132.6 L153.8,136.0 L160.2,139.3 L166.7,142.6 L173.1,145.7 L179.6,148.8 L186.0,151.8 L192.4,154.8 L198.9,157.6 L205.3,160.4 L211.8,163.1 L218.2,165.7 L224.7,168.2 L231.1,170.7 L237.6,173.1 L244.0,175.5 L250.4,177.8 L256.9,180.0 L263.3,182.2 L269.8,184.3 L276.2,186.4 L282.7,188.4 L289.1,190.3 L295.6,192.2 L302.0,194.1 L308.4,195.9 L314.9,197.6 L321.3,199.3 L327.8,201.0 L334.2,202.6 L340.7,204.2 L347.1,205.7 L353.6,207.2 L360.0,208.7 L366.4,210.1 L372.9,211.4 L379.3,212.8 L385.8,214.1 L392.2,215.4 L398.7,216.6 L405.1,217.8 L411.6,219.0 L418.0,220.1 L424.4,221.2 L430.9,222.3 L437.3,223.4 L443.8,224.4 L450.2,225.4 L456.7,226.3 L463.1,227.3 L469.6,228.2 L476.0,229.1 L482.4,230.0 L488.9,230.8 L495.3,231.7 L501.8,232.5 L508.2,233.2 L514.7,234.0 L521.1,234.7 L527.6,235.5 L534.0,236.2 L540.4,236.9 L546.9,237.5 L553.3,238.2 L559.8,238.8 L566.2,239.4 L572.7,240.0 L579.1,240.6 L585.6,241.2 L592.0,241.7 L598.4,242.3 L604.9,242.8 L611.3,243.3 L617.8,243.8 L624.2,244.3 L630.7,244.7 L637.1,245.2 L643.6,245.6 L650.0,246.1" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<path d="M419.2,220.3 L425.3,221.4 L427.3,157.0 L429.3,194.5 L434.7,222.9" fill="none" stroke="#d43a2f" stroke-width="1.8"/>
+<circle cx="427.3" cy="157.0" r="3" fill="#d43a2f"/>
+<line x1="420" y1="92" x2="448" y2="92" stroke="#0a7aff" stroke-width="2"/>
+<text x="454" y="95" text-anchor="start" font-size="9" fill="#1c1c1e">train loss</text>
+<line x1="420" y1="108" x2="448" y2="108" stroke="#7a5cff" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="454" y="111" text-anchor="start" font-size="9" fill="#1c1c1e">val loss</text>
+<text x="88" y="108" text-anchor="start" font-size="9.5" fill="#0a54c2" font-weight="bold">steep early drop:</text>
+<text x="88" y="122" text-anchor="start" font-size="9.5" fill="#0a54c2">the first 100 steps do</text>
+<text x="88" y="136" text-anchor="start" font-size="9.5" fill="#0a54c2">the visible transforming</text>
+<text x="300" y="160" text-anchor="middle" font-size="9.5" fill="#1c1c1e">the grind: each 10x of steps divides</text>
+<text x="300" y="174" text-anchor="middle" font-size="9.5" fill="#1c1c1e">the remaining gap by only ~2.24</text>
+<text x="427.3165626183371" y="128" text-anchor="middle" font-size="9.5" fill="#d43a2f" font-weight="bold">spike: clip / skip / rewind -</text>
+<text x="427.3165626183371" y="142" text-anchor="middle" font-size="9.5" fill="#d43a2f">usually survivable</text>
+<text x="650" y="208" text-anchor="end" font-size="9.5" fill="#5a3fd4" font-weight="bold">val turns up, train falls: STOP</text>
+<text x="650" y="222" text-anchor="end" font-size="9.5" fill="#5a3fd4">past here compute buys memorization</text>
+<text x="650" y="254" text-anchor="end" font-size="9" fill="#555555">floor 1.20: the data's own entropy - no optimizer goes below it</text>
+<rect x="12" y="312" width="656" height="222" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="332" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE LR SCHEDULE: WARMUP, THEN COSINE DECAY (the code's Part 1, plotted)</text>
+<line x1="70" y1="364.7" x2="650" y2="364.7" stroke="#d43a2f" stroke-width="1.2" stroke-dasharray="6,4"/>
+<line x1="70" y1="492" x2="650" y2="492" stroke="#cccccc" stroke-width="1"/>
+<path d="M70.0,492.0 L75.8,479.3 L81.6,466.5 L87.4,453.8 L93.2,441.1 L99.0,428.4 L104.8,415.6 L110.6,402.9 L116.4,390.2 L122.2,377.5 L128.0,364.7 L133.8,364.8 L139.6,364.9 L145.4,365.0 L151.2,365.3 L157.0,365.6 L162.8,366.0 L168.6,366.4 L174.4,366.9 L180.2,367.5 L186.0,368.2 L191.8,368.9 L197.6,369.7 L203.4,370.5 L209.2,371.4 L215.0,372.4 L220.8,373.4 L226.6,374.5 L232.4,375.7 L238.2,376.9 L244.0,378.1 L249.8,379.4 L255.6,380.8 L261.4,382.2 L267.2,383.7 L273.0,385.2 L278.8,386.7 L284.6,388.3 L290.4,390.0 L296.2,391.7 L302.0,393.4 L307.8,395.1 L313.6,396.9 L319.4,398.7 L325.2,400.5 L331.0,402.4 L336.8,404.3 L342.6,406.2 L348.4,408.1 L354.2,410.1 L360.0,412.1 L365.8,414.0 L371.6,416.0 L377.4,418.0 L383.2,420.0 L389.0,422.0 L394.8,424.0 L400.6,426.0 L406.4,428.0 L412.2,430.0 L418.0,431.9 L423.8,433.9 L429.6,435.9 L435.4,437.8 L441.2,439.7 L447.0,441.6 L452.8,443.5 L458.6,445.3 L464.4,447.1 L470.2,448.9 L476.0,450.6 L481.8,452.3 L487.6,454.0 L493.4,455.7 L499.2,457.3 L505.0,458.8 L510.8,460.3 L516.6,461.8 L522.4,463.2 L528.2,464.6 L534.0,465.9 L539.8,467.1 L545.6,468.3 L551.4,469.5 L557.2,470.6 L563.0,471.6 L568.8,472.6 L574.6,473.5 L580.4,474.3 L586.2,475.1 L592.0,475.8 L597.8,476.5 L603.6,477.1 L609.4,477.6 L615.2,478.0 L621.0,478.4 L626.8,478.7 L632.6,479.0 L638.4,479.1 L644.2,479.2 L650.0,479.3" fill="none" stroke="#22a355" stroke-width="2"/>
+<circle cx="128.0" cy="364.7" r="3.5" fill="#22a355"/>
+<circle cx="650.0" cy="479.3" r="3.5" fill="#22a355"/>
+<text x="650" y="356.72727272727275" text-anchor="end" font-size="9" fill="#d43a2f">no warmup: full stride from step 0 (run B's gamble)</text>
+<text x="84" y="400" text-anchor="start" font-size="9.5" fill="#177245" font-weight="bold">warmup 0-100: tiny strides</text>
+<text x="84" y="414" text-anchor="start" font-size="9.5" fill="#177245">while Adam's m and v calibrate</text>
+<text x="138.0" y="358.72727272727275" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">peak 3.0e-03 @ step 100</text>
+<text x="400" y="420" text-anchor="middle" font-size="9.5" fill="#1c1c1e">cosine decay: the landing -</text>
+<text x="400" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">pick the stop step BEFORE the run starts</text>
+<text x="650" y="470" text-anchor="end" font-size="9" fill="#555555">floor 3.0e-04 @ step 1,000</text>
+<text x="70.0" y="508" text-anchor="middle" font-size="9" fill="#555555">0</text>
+<text x="215.0" y="508" text-anchor="middle" font-size="9" fill="#555555">250</text>
+<text x="360.0" y="508" text-anchor="middle" font-size="9" fill="#555555">500</text>
+<text x="505.0" y="508" text-anchor="middle" font-size="9" fill="#555555">750</text>
+<text x="650.0" y="508" text-anchor="middle" font-size="9" fill="#555555">1,000</text>
+<text x="360" y="524" text-anchor="middle" font-size="9" fill="#555555">steps</text>
+</svg>

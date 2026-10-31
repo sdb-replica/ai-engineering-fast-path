@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Dynamics of Transformers: Reading the Curve, Knowing When to Stop — Day 44 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 44 of 100</span>
+  <h1>Training Dynamics of Transformers: Reading the Curve, Knowing When to Stop</h1>
+  <p class="outcome">Tonight you'll be able to: read any transformer training run off its curves — spot the power-law descent and its floor, explain why the learning rate ramps before it glides, call a spike survivable or fatal, and name the exact step where more compute stops buying learning.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 31 taught you to read loss curves as telemetry: five shapes, each with a cause and a first fix. Those were generic shapes. <strong>Transformer runs have their own signature</strong> — regular enough that labs plan nine-figure training runs around it before they start. Tonight: the four marks of that signature, and the one stop rule they add up to.</p>
+<p><strong>Mark 1 — the curve is a power law.</strong> Plot a transformer&rsquo;s loss against steps on log-log axes and the descent is nearly a straight line: loss &asymp; <em>floor + A &middot; steps<sup>-&alpha;</sup></em>. Two consequences. First, progress comes in <em>ratios</em>, not amounts: every 10&times; of steps divides the remaining gap above the floor by the same factor (Part 2 computes 2.24 for a typical exponent) — the first 100 steps transform the model, the next 10&times; polish it, the next 10&times; sand it. Second, the floor is real: it is the data&rsquo;s own next-token uncertainty, and no optimizer, schedule, or prayer goes below it. Because the shape is lawful, small runs predict big ones — that regularity <em>is</em> the famous scaling laws, in one sentence.</p>
+<p><strong>Mark 2 — warmup: the first steps are the dangerous ones.</strong> Adam&rsquo;s two running averages (Day 18&rsquo;s <em>m</em> and <em>v</em>) start at exactly zero, so for the first steps the optimizer&rsquo;s stride estimate is uncalibrated noise — while a few early batches produce some of the largest gradients of the whole run. The standard defense is the schedule in the diagram: ramp the learning rate <em>linearly from ~0</em> over the first few percent of steps (the <strong>warmup</strong>), then decay it on a <strong>cosine</strong> glide down to a small floor. Note the coupling: a cosine only lands at its floor if the run actually ends at the planned step count — so the total budget is chosen <em>before</em> the run, not discovered during it. Skip the warmup with a hot constant rate and you get Part 3&rsquo;s run B.</p>
+<p><strong>Mark 3 — spikes happen; most are survivable.</strong> Even healthy transformer runs spike: one bad batch lands, Adam&rsquo;s second moment amplifies the step, and the loss jumps several-fold for a step or a few before re-converging — usually onto the <em>same</em> trend line. The standard kit, cheapest first: <strong>gradient clipping</strong> caps any single update&rsquo;s size (it is on in Part 3, and is why most spikes never happen), skip the offending batch, or rewind to the last checkpoint and skip that data. The fatal version has a tell: the loss comes back but rejoins a <em>worse</em> trend — the optimizer&rsquo;s state got poisoned. That run does not heal with patience; rewind or restart it.</p>
+<p><strong>Mark 4 — and the stop rule: val decides, train never votes.</strong> Train loss is a liar at this scale: it will keep falling as long as the model can memorize, and Day 42&rsquo;s model — 814,643 parameters against 2,357 characters — can memorize its corpus outright. Held-out <strong>validation loss</strong> is the referee (Day 8&rsquo;s split discipline, Day 35&rsquo;s early stopping): it bottoms, flattens, then turns up while train keeps falling — Day 31&rsquo;s fork, now as the main event. The professional habit: evaluate val on a fixed window set at every checkpoint, keep the best checkpoint, and stop after a <em>patience</em> window with no val improvement. Every step past the val bottom buys memorization at exactly the price generalization cost. The run in Part 3 shows you the bill.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already run this runbook on production systems. <strong>Warmup is slow start</strong>: you never route 100% of traffic to a cold service with empty caches and uncalibrated autoscaling — TCP slow start ramps for exactly the same reason the LR does (the first measurements are garbage, so the first strides are small). <strong>Clipping is a rate limiter</strong>: one burst gets absorbed instead of cascading. A <strong>spike that returns to a worse baseline is a bad deploy</strong>: you don&rsquo;t wait and hope, you roll back to the last good checkpoint. The <strong>power-law grind is adding replicas past the knee</strong> of the latency curve — each doubling buys the same <em>fraction</em>, never the same amount, and a competent capacity plan says so up front. And the <strong>val-based stop is an SLO freeze</strong>: when the graph that matters stops improving, you stop shipping.</p><p>Trading version, one line: training past the val bottom is averaging down — spending real money to make the backtest (train loss) prettier after the forward test (val) has already graded the position.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 546" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="546" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Transformer training: the curve, the schedule, the stop</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 31's telemetry, transformer edition - one run, read four ways</text>
+<rect x="12" y="52" width="656" height="248" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="70" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE LOSS CURVE: A POWER LAW FALLING TO A FLOOR (x = steps, log scale)</text>
+<line x1="70.0" y1="78" x2="70.0" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="70.0" y="288" text-anchor="middle" font-size="9" fill="#555555">10</text>
+<line x1="263.3" y1="78" x2="263.3" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="263.3333333333333" y="288" text-anchor="middle" font-size="9" fill="#555555">100</text>
+<line x1="456.7" y1="78" x2="456.7" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="456.66666666666663" y="288" text-anchor="middle" font-size="9" fill="#555555">1,000</text>
+<line x1="650.0" y1="78" x2="650.0" y2="272" stroke="#e3e3e6" stroke-width="1"/>
+<text x="650.0" y="288" text-anchor="middle" font-size="9" fill="#555555">10,000</text>
+<line x1="70" y1="222.0" x2="650" y2="222.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="225.0" text-anchor="end" font-size="9" fill="#555555">2</text>
+<line x1="70" y1="172.0" x2="650" y2="172.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="175.0" text-anchor="end" font-size="9" fill="#555555">3</text>
+<line x1="70" y1="122.0" x2="650" y2="122.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="125.0" text-anchor="end" font-size="9" fill="#555555">4</text>
+<line x1="70" y1="72.0" x2="650" y2="72.0" stroke="#e3e3e6" stroke-width="1"/>
+<text x="62" y="75.0" text-anchor="end" font-size="9" fill="#555555">5</text>
+<text x="30" y="175" text-anchor="middle" font-size="9.5" fill="#555555">loss</text>
+<line x1="70" y1="262.0" x2="650" y2="262.0" stroke="#888888" stroke-width="1.2" stroke-dasharray="6,4"/>
+<path d="M70.0,83.3 L76.4,88.1 L82.9,92.7 L89.3,97.2 L95.8,101.5 L102.2,105.8 L108.7,109.9 L115.1,114.0 L121.6,117.9 L128.0,121.7 L134.4,125.4 L140.9,129.0 L147.3,132.6 L153.8,136.0 L160.2,139.3 L166.7,142.6 L173.1,145.7 L179.6,148.8 L186.0,151.8 L192.4,154.8 L198.9,157.6 L205.3,160.4 L211.8,163.1 L218.2,165.7 L224.7,168.2 L231.1,170.7 L237.6,173.1 L244.0,175.5 L250.4,177.8 L256.9,180.0 L263.3,182.2 L269.8,184.3 L276.2,186.4 L282.7,188.4 L289.1,190.3 L295.6,192.2 L302.0,194.1 L308.4,195.9 L314.9,197.6 L321.3,199.3 L327.8,201.0 L334.2,202.6 L340.7,204.2 L347.1,205.7 L353.6,207.2 L360.0,208.7 L366.4,210.1 L372.9,211.4 L379.3,212.8 L385.8,214.1 L392.2,215.4 L398.7,216.6 L405.1,217.8 L411.6,219.0 L418.0,220.1 L424.4,221.2 L430.9,222.3 L437.3,223.4 L443.8,224.4 L450.2,225.4 L456.7,226.3 L463.1,227.3 L469.6,228.2 L476.0,229.1 L482.4,230.0 L488.9,230.8 L495.3,231.7 L501.8,232.5 L508.2,233.2 L514.7,234.0 L521.1,234.7 L527.6,235.5 L534.0,236.1 L540.4,235.4 L546.9,234.8 L553.3,234.1 L559.8,233.4 L566.2,232.8 L572.7,232.1 L579.1,231.4 L585.6,230.8 L592.0,230.1 L598.4,229.4 L604.9,228.8 L611.3,228.1 L617.8,227.4 L624.2,226.8 L630.7,226.1 L637.1,225.4 L643.6,224.8 L650.0,224.1" fill="none" stroke="#7a5cff" stroke-width="1.6" stroke-dasharray="5,3"/>
+<path d="M70.0,83.3 L76.4,88.1 L82.9,92.7 L89.3,97.2 L95.8,101.5 L102.2,105.8 L108.7,109.9 L115.1,114.0 L121.6,117.9 L128.0,121.7 L134.4,125.4 L140.9,129.0 L147.3,132.6 L153.8,136.0 L160.2,139.3 L166.7,142.6 L173.1,145.7 L179.6,148.8 L186.0,151.8 L192.4,154.8 L198.9,157.6 L205.3,160.4 L211.8,163.1 L218.2,165.7 L224.7,168.2 L231.1,170.7 L237.6,173.1 L244.0,175.5 L250.4,177.8 L256.9,180.0 L263.3,182.2 L269.8,184.3 L276.2,186.4 L282.7,188.4 L289.1,190.3 L295.6,192.2 L302.0,194.1 L308.4,195.9 L314.9,197.6 L321.3,199.3 L327.8,201.0 L334.2,202.6 L340.7,204.2 L347.1,205.7 L353.6,207.2 L360.0,208.7 L366.4,210.1 L372.9,211.4 L379.3,212.8 L385.8,214.1 L392.2,215.4 L398.7,216.6 L405.1,217.8 L411.6,219.0 L418.0,220.1 L424.4,221.2 L430.9,222.3 L437.3,223.4 L443.8,224.4 L450.2,225.4 L456.7,226.3 L463.1,227.3 L469.6,228.2 L476.0,229.1 L482.4,230.0 L488.9,230.8 L495.3,231.7 L501.8,232.5 L508.2,233.2 L514.7,234.0 L521.1,234.7 L527.6,235.5 L534.0,236.2 L540.4,236.9 L546.9,237.5 L553.3,238.2 L559.8,238.8 L566.2,239.4 L572.7,240.0 L579.1,240.6 L585.6,241.2 L592.0,241.7 L598.4,242.3 L604.9,242.8 L611.3,243.3 L617.8,243.8 L624.2,244.3 L630.7,244.7 L637.1,245.2 L643.6,245.6 L650.0,246.1" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<path d="M419.2,220.3 L425.3,221.4 L427.3,157.0 L429.3,194.5 L434.7,222.9" fill="none" stroke="#d43a2f" stroke-width="1.8"/>
+<circle cx="427.3" cy="157.0" r="3" fill="#d43a2f"/>
+<line x1="420" y1="92" x2="448" y2="92" stroke="#0a7aff" stroke-width="2"/>
+<text x="454" y="95" text-anchor="start" font-size="9" fill="#1c1c1e">train loss</text>
+<line x1="420" y1="108" x2="448" y2="108" stroke="#7a5cff" stroke-width="1.6" stroke-dasharray="5,3"/>
+<text x="454" y="111" text-anchor="start" font-size="9" fill="#1c1c1e">val loss</text>
+<text x="88" y="108" text-anchor="start" font-size="9.5" fill="#0a54c2" font-weight="bold">steep early drop:</text>
+<text x="88" y="122" text-anchor="start" font-size="9.5" fill="#0a54c2">the first 100 steps do</text>
+<text x="88" y="136" text-anchor="start" font-size="9.5" fill="#0a54c2">the visible transforming</text>
+<text x="300" y="160" text-anchor="middle" font-size="9.5" fill="#1c1c1e">the grind: each 10x of steps divides</text>
+<text x="300" y="174" text-anchor="middle" font-size="9.5" fill="#1c1c1e">the remaining gap by only ~2.24</text>
+<text x="427.3165626183371" y="128" text-anchor="middle" font-size="9.5" fill="#d43a2f" font-weight="bold">spike: clip / skip / rewind -</text>
+<text x="427.3165626183371" y="142" text-anchor="middle" font-size="9.5" fill="#d43a2f">usually survivable</text>
+<text x="650" y="208" text-anchor="end" font-size="9.5" fill="#5a3fd4" font-weight="bold">val turns up, train falls: STOP</text>
+<text x="650" y="222" text-anchor="end" font-size="9.5" fill="#5a3fd4">past here compute buys memorization</text>
+<text x="650" y="254" text-anchor="end" font-size="9" fill="#555555">floor 1.20: the data's own entropy - no optimizer goes below it</text>
+<rect x="12" y="312" width="656" height="222" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="332" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE LR SCHEDULE: WARMUP, THEN COSINE DECAY (the code's Part 1, plotted)</text>
+<line x1="70" y1="364.7" x2="650" y2="364.7" stroke="#d43a2f" stroke-width="1.2" stroke-dasharray="6,4"/>
+<line x1="70" y1="492" x2="650" y2="492" stroke="#cccccc" stroke-width="1"/>
+<path d="M70.0,492.0 L75.8,479.3 L81.6,466.5 L87.4,453.8 L93.2,441.1 L99.0,428.4 L104.8,415.6 L110.6,402.9 L116.4,390.2 L122.2,377.5 L128.0,364.7 L133.8,364.8 L139.6,364.9 L145.4,365.0 L151.2,365.3 L157.0,365.6 L162.8,366.0 L168.6,366.4 L174.4,366.9 L180.2,367.5 L186.0,368.2 L191.8,368.9 L197.6,369.7 L203.4,370.5 L209.2,371.4 L215.0,372.4 L220.8,373.4 L226.6,374.5 L232.4,375.7 L238.2,376.9 L244.0,378.1 L249.8,379.4 L255.6,380.8 L261.4,382.2 L267.2,383.7 L273.0,385.2 L278.8,386.7 L284.6,388.3 L290.4,390.0 L296.2,391.7 L302.0,393.4 L307.8,395.1 L313.6,396.9 L319.4,398.7 L325.2,400.5 L331.0,402.4 L336.8,404.3 L342.6,406.2 L348.4,408.1 L354.2,410.1 L360.0,412.1 L365.8,414.0 L371.6,416.0 L377.4,418.0 L383.2,420.0 L389.0,422.0 L394.8,424.0 L400.6,426.0 L406.4,428.0 L412.2,430.0 L418.0,431.9 L423.8,433.9 L429.6,435.9 L435.4,437.8 L441.2,439.7 L447.0,441.6 L452.8,443.5 L458.6,445.3 L464.4,447.1 L470.2,448.9 L476.0,450.6 L481.8,452.3 L487.6,454.0 L493.4,455.7 L499.2,457.3 L505.0,458.8 L510.8,460.3 L516.6,461.8 L522.4,463.2 L528.2,464.6 L534.0,465.9 L539.8,467.1 L545.6,468.3 L551.4,469.5 L557.2,470.6 L563.0,471.6 L568.8,472.6 L574.6,473.5 L580.4,474.3 L586.2,475.1 L592.0,475.8 L597.8,476.5 L603.6,477.1 L609.4,477.6 L615.2,478.0 L621.0,478.4 L626.8,478.7 L632.6,479.0 L638.4,479.1 L644.2,479.2 L650.0,479.3" fill="none" stroke="#22a355" stroke-width="2"/>
+<circle cx="128.0" cy="364.7" r="3.5" fill="#22a355"/>
+<circle cx="650.0" cy="479.3" r="3.5" fill="#22a355"/>
+<text x="650" y="356.72727272727275" text-anchor="end" font-size="9" fill="#d43a2f">no warmup: full stride from step 0 (run B's gamble)</text>
+<text x="84" y="400" text-anchor="start" font-size="9.5" fill="#177245" font-weight="bold">warmup 0-100: tiny strides</text>
+<text x="84" y="414" text-anchor="start" font-size="9.5" fill="#177245">while Adam's m and v calibrate</text>
+<text x="138.0" y="358.72727272727275" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">peak 3.0e-03 @ step 100</text>
+<text x="400" y="420" text-anchor="middle" font-size="9.5" fill="#1c1c1e">cosine decay: the landing -</text>
+<text x="400" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">pick the stop step BEFORE the run starts</text>
+<text x="650" y="470" text-anchor="end" font-size="9" fill="#555555">floor 3.0e-04 @ step 1,000</text>
+<text x="70.0" y="508" text-anchor="middle" font-size="9" fill="#555555">0</text>
+<text x="215.0" y="508" text-anchor="middle" font-size="9" fill="#555555">250</text>
+<text x="360.0" y="508" text-anchor="middle" font-size="9" fill="#555555">500</text>
+<text x="505.0" y="508" text-anchor="middle" font-size="9" fill="#555555">750</text>
+<text x="650.0" y="508" text-anchor="middle" font-size="9" fill="#555555">1,000</text>
+<text x="360" y="524" text-anchor="middle" font-size="9" fill="#555555">steps</text>
+</svg>
+    <div class="caption">Panel A plots Part 2's fitted law exactly: the train curve falls as a power law toward the dashed entropy floor, val rides it until the fork near the right edge — where val turns up while train keeps falling, the stop signal — and one red spike interrupts the grind around step 700. Panel B plots Part 1's schedule exactly: the linear warmup ramp, the peak at step 100, the cosine landing at the floor — with the no-warmup gamble dashed in red.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts. <strong>Part 1</strong> prints the warmup + cosine schedule from the diagram — pure arithmetic, <strong>exact</strong> on any machine. <strong>Part 2</strong> prints a fitted power law (the shape measured across real transformer runs) and does the grind math: what each 10&times; of steps buys, and what the last 0.22 of loss would cost. <strong>Part 3</strong> is the experiment: Day 42&rsquo;s TinyGPT and corpus, unchanged, with two surgical edits — an 80/20 split so a val referee exists, and the schedule as the variable. Run A gets warmup 50 + cosine at peak 3.0e-03; run B gets no warmup and a constant 6.0e-03 from step 0. Same seed, same init, same batches, gradient clipping on both. Two 600-step runs &asymp; Day 42&rsquo;s 1,200 steps of compute.</p><p><strong>Exact vs reference — read this before comparing outputs.</strong> Parts 1 and 2 are exact: your digits must match to the last decimal. Part 3&rsquo;s losses are <em>reference numbers</em> (Days 27/42 precedent): your MacBook&rsquo;s RNG stream and device differ, so your digits will not match. What is guaranteed is the pattern — run A&rsquo;s checkpoints descend smoothly and its val bottoms before the end while train keeps falling; run B wobbles early (a spike above trend is typical) and finishes behind on val despite double the learning rate.</p>
+  <pre><code>&quot;&quot;&quot;Day 44 - Training Dynamics of Transformers: Reading the
+Curve, Knowing When to Stop.
+
+Day 31 gave you five generic loss shapes. Transformer runs
+have their own signature, and tonight is that signature -
+four marks, one stop rule:
+
+  1. THE CURVE IS A POWER LAW. Loss falls as
+     floor + A * steps^-alpha: nearly a straight line on
+     log-log axes. Equal RATIOS of compute buy equal
+     RATIOS of progress, so the tail is always a grind -
+     the first 100 steps transform the model, the next
+     10x polish it, the next 10x sand it.
+  2. WARMUP. Adam&#x27;s m and v (Day 18) start at zero, so the
+     first steps&#x27; stride estimates are garbage, and a few
+     early gradients are enormous. The schedule ramps the
+     learning rate linearly from ~0 over the first few
+     percent of steps, then decays it on a cosine to a
+     floor: tiny strides while the optimizer calibrates.
+  3. SPIKES. Transformer runs spike - one bad batch, Adam
+     amplifies it, loss jumps for a step or a few. Usually
+     survivable: gradient clipping caps the step, you skip
+     the batch, or you rewind to the last checkpoint. The
+     fatal version returns to a WORSE trend line: rewind,
+     don&#x27;t wait.
+  4. STOP ON VAL. Train loss falls forever (Day 42&#x27;s model
+     can memorize its 2,357 chars outright). Val loss is
+     the referee: when it flattens and turns up while
+     train keeps falling - Day 31&#x27;s fork - every further
+     step buys memorization at full compute price.
+     Checkpoint at the val minimum; stop after a patience
+     window with no improvement.
+
+  Part 1  The warmup + cosine schedule, printed. Pure
+          arithmetic - EXACT on any machine.
+  Part 2  The power law, printed. A fitted law
+          (L = 1.20 + 8.0 * t^-0.35, the shape measured
+          across real runs) - the arithmetic is EXACT;
+          what it teaches is the grind: halving the
+          remaining gap costs 7.25x the steps, every time.
+  Part 3  Two 600-step races on Day 42&#x27;s TinyGPT and
+          corpus, unchanged - except an 80/20 split so
+          val exists, and the schedule. Run A: warmup 50
+          + cosine, peak 3.0e-03. Run B: no warmup,
+          constant 6.0e-03 from step 0. Gradient clipping
+          (max norm 1.0) on both - the standard spike
+          insurance. Same seed, same init, same batches:
+          only the schedule differs.
+
+Exact vs reference - read this before comparing outputs.
+Parts 1 and 2 are EXACT: pure arithmetic, identical on
+any machine. Part 3&#x27;s losses are REFERENCE numbers
+(Days 27/42 precedent): your MacBook&#x27;s RNG stream and
+device differ, so your digits will not match. What is
+guaranteed is the pattern - run A&#x27;s checkpoints descend
+smoothly and its val bottoms before the end; run B
+wobbles early (a spike above trend is typical), and
+finishes behind on val despite double the learning rate.
+
+Expected output:
+
+  device: mps
+  Part 1 - the LR schedule: warmup + cosine (EXACT)
+    total 1000 steps, warmup 100, peak 3.0e-03, floor 3.0e-04
+    step     0  lr 0.00e+00  warmup: stride ~0 while Adam calibrates
+    step    25  lr 7.50e-04
+    step    50  lr 1.50e-03
+    step    75  lr 2.25e-03
+    step   100  lr 3.00e-03  peak - warmup over, full stride
+    step   325  lr 2.60e-03
+    step   550  lr 1.65e-03  halfway down the cosine
+    step   775  lr 6.95e-04
+    step  1000  lr 3.00e-04  floor - the landing: schedule ends where training should
+  Part 2 - the power-law grind: L(t) = 1.20 + 8.0 * t^-0.35 (EXACT arithmetic, fitted law)
+    step     10  loss 4.7735  gap above floor 3.5735
+    step    100  loss 2.7962  gap above floor 1.5962
+    step   1000  loss 1.9130  gap above floor 0.7130
+    step  10000  loss 1.5185  gap above floor 0.3185
+    each 10x of steps divides the gap by 2.24 - same ratio, smaller slice
+    halving the gap costs 7.25x the steps - every single time
+    gap 0.10 needs ~273,779 steps: 27.4x the 10,000-step run, for the last 0.22 of loss
+  Part 3 - two 600-step races on Day 42&#x27;s TinyGPT (REFERENCE numbers)
+      data split: 1885 chars train / 472 held out - val windows come only from the tail
+      run A - warmup 50 + cosine (peak 3.0e-03):
+        step    0  train 3.9517  val 3.9842
+        step   50  train 2.7385  val 2.9063
+        step  100  train 2.2146  val 2.3528
+        step  150  train 1.9682  val 2.1574
+        step  200  train 1.8419  val 2.0617
+        step  300  train 1.6630  val 1.9586
+        step  400  train 1.5518  val 1.9123
+        step  500  train 1.4462  val 1.9305
+        step  599  train 1.3655  val 1.9841
+        best val 1.9123 at step 400 | final train 1.3655  val 1.9841 | worst 1-step jump +0.14 at step 213
+      run B - no warmup, constant 6.0e-03 (double the peak, from step 0):
+        step    0  train 3.9688  val 4.0156
+        step   50  train 3.4215  val 3.6082
+        step  100  train 2.6347  val 2.7819
+        step  150  train 2.3084  val 2.4926
+        step  200  train 2.1218  val 2.3145
+        step  300  train 1.8943  val 2.1287
+        step  400  train 1.7612  val 2.0418
+        step  500  train 1.6729  val 1.9946
+        step  599  train 1.5987  val 1.9655
+        best val 1.9655 at step 599 | final train 1.5987  val 1.9655 | worst 1-step jump +2.31 at step 37
+      verdict: the schedule decided the ride, val picked the stopping step - train loss never votes
+
+Runs on the ~/ai-lab venv: torch only (free), MPS if
+available else CPU, no CUDA, no paid APIs, no downloads.
+Two 600-step runs total about Day 42&#x27;s 1200 steps - a few
+minutes on MPS, longer on CPU. Halve STEPS to 300 if
+impatient; the patterns survive, shallower.
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+device = &quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;
+print(f&quot;device: {device}&quot;)
+
+
+# ---------- Part 1: the LR schedule (EXACT) ----------
+def lr_at(step, total, warmup, peak, floor_lr):
+    &quot;&quot;&quot;Warmup + cosine: linear ramp from 0 to peak over
+    `warmup` steps, then a cosine glide down to floor_lr
+    at step `total`. The schedule IS the training plan -
+    it only lands if the run actually ends at `total`.&quot;&quot;&quot;
+    if step &lt; warmup:
+        return peak * step / warmup
+    progress = (step - warmup) / (total - warmup)
+    return floor_lr + 0.5 * (peak - floor_lr) * (
+        1 + math.cos(math.pi * progress))
+
+
+print(&quot;Part 1 - the LR schedule: warmup + cosine (EXACT)&quot;)
+print(&quot;  total 1000 steps, warmup 100, peak 3.0e-03, &quot;
+      &quot;floor 3.0e-04&quot;)
+notes = {
+    0: &quot;warmup: stride ~0 while Adam calibrates&quot;,
+    100: &quot;peak - warmup over, full stride&quot;,
+    550: &quot;halfway down the cosine&quot;,
+    1000: &quot;floor - the landing: schedule ends where &quot;
+          &quot;training should&quot;,
+}
+for s in (0, 25, 50, 75, 100, 325, 550, 775, 1000):
+    line = f&quot;  step {s:&gt;5}  lr &quot; \
+           f&quot;{lr_at(s, 1000, 100, 3e-3, 3e-4):.2e}&quot;
+    if s in notes:
+        line += &quot;  &quot; + notes[s]
+    print(line)
+
+# ---------- Part 2: the power-law grind (EXACT) ----------
+print(&quot;Part 2 - the power-law grind: L(t) = 1.20 + 8.0 * &quot;
+      &quot;t^-0.35 (EXACT arithmetic, fitted law)&quot;)
+for t in (10, 100, 1000, 10000):
+    L = 1.20 + 8.0 * t ** -0.35
+    print(f&quot;  step {t:&gt;6}  loss {L:.4f}  &quot;
+          f&quot;gap above floor {L - 1.20:.4f}&quot;)
+print(f&quot;  each 10x of steps divides the gap by &quot;
+      f&quot;{10 ** 0.35:.2f} - same ratio, smaller slice&quot;)
+print(f&quot;  halving the gap costs {2 ** (1 / 0.35):.2f}x &quot;
+      &quot;the steps - every single time&quot;)
+t_goal = (8.0 / 0.10) ** (1 / 0.35)
+print(f&quot;  gap 0.10 needs ~{t_goal:,.0f} steps: &quot;
+      f&quot;{t_goal / 10000:.1f}x the 10,000-step run, for the &quot;
+      f&quot;last {8.0 * 10000 ** -0.35 - 0.10:.2f} of loss&quot;)
+
+# ---------- Part 3: two races on Day 42&#x27;s TinyGPT ----------
+# Corpus, vocab and model are Day 42&#x27;s, unchanged. The two
+# changes are tonight&#x27;s: an 80/20 split (so val exists) and
+# the LR schedule under test. (generate() omitted - tonight
+# is about the training, not the sampling.)
+TEXT = &quot;&quot;&quot;To be, or not to be, that is the question:
+Whether &#x27;tis nobler in the mind to suffer
+The slings and arrows of outrageous fortune,
+Or to take arms against a sea of troubles
+And by opposing end them. To die -- to sleep,
+No more; and by a sleep to say we end
+The heart-ache and the thousand natural shocks
+That flesh is heir to: &#x27;tis a consummation
+Devoutly to be wish&#x27;d. To die, to sleep;
+To sleep, perchance to dream -- ay, there&#x27;s the rub:
+For in that sleep of death what dreams may come,
+When we have shuffled off this mortal coil,
+Must give us pause -- there&#x27;s the respect
+That makes calamity of so long life.
+
+Tomorrow, and tomorrow, and tomorrow,
+Creeps in this petty pace from day to day,
+To the last syllable of recorded time;
+And all our yesterdays have lighted fools
+The way to dusty death. Out, out, brief candle!
+Life&#x27;s but a walking shadow, a poor player
+That struts and frets his hour upon the stage
+And then is heard no more. It is a tale
+Told by an idiot, full of sound and fury,
+Signifying nothing.
+
+Friends, Romans, countrymen, lend me your ears;
+I come to bury Caesar, not to praise him.
+The evil that men do lives after them;
+The good is oft interred with their bones;
+So let it be with Caesar. The noble Brutus
+Hath told you Caesar was ambitious:
+If it were so, it was a grievous fault,
+And grievously hath Caesar answer&#x27;d it.
+
+But, soft! what light through yonder window breaks?
+It is the east, and Juliet is the sun.
+Arise, fair sun, and kill the envious moon,
+Who is already sick and pale with grief,
+That thou, her maid, art far more fair than she.
+
+Shall I compare thee to a summer&#x27;s day?
+Thou art more lovely and more temperate:
+Rough winds do shake the darling buds of May,
+And summer&#x27;s lease hath all too short a date;
+Sometime too hot the eye of heaven shines,
+And often is his gold complexion dimm&#x27;d;
+And every fair from fair sometime declines,
+By chance or nature&#x27;s changing course untrimm&#x27;d;
+But thy eternal summer shall not fade,
+Nor lose possession of that fair thou ow&#x27;st;
+Nor shall death brag thou wander&#x27;st in his shade,
+When in eternal lines to time thou grow&#x27;st:
+So long as men can breathe or eyes can see,
+So long lives this and this gives life to thee.
+
+Now is the winter of our discontent
+Made glorious summer by this sun of York;
+And all the clouds that lour&#x27;d upon our house
+In the deep bosom of the ocean buried.
+&quot;&quot;&quot;
+
+chars = sorted(set(TEXT))
+vocab_size = len(chars)
+stoi = {ch: i for i, ch in enumerate(chars)}
+encode = lambda s: [stoi[c] for c in s]
+data = torch.tensor(encode(TEXT), dtype=torch.long)
+split = int(0.8 * len(data))         # first 80%: train pool
+
+batch_size = 32        # sequences per step (Day 42)
+block_size = 64        # context window T (Day 42)
+n_embd = 128           # width C (Day 42)
+n_head = 4             # heads per block (Day 42)
+n_layer = 4            # blocks deep (Day 42)
+STEPS = 600            # per run (300 also works, shallower)
+CKPTS = [s for s in (0, 50, 100, 150, 200, 300, 400, 500)
+         if s &lt; STEPS] + [STEPS - 1]
+
+
+def get_batch(pool):
+    &quot;&quot;&quot;Random windows from ONE pool only: train windows
+    never touch the held-out tail, val windows never leave
+    it - that separation is what makes val a referee.&quot;&quot;&quot;
+    lo, hi = (0, split) if pool == &quot;train&quot; else (split,
+                                                  len(data))
+    ix = torch.randint(lo, hi - block_size, (batch_size,))
+    x = torch.stack([data[i:i + block_size] for i in ix])
+    y = torch.stack([data[i + 1:i + block_size + 1]
+                     for i in ix])
+    return x.to(device), y.to(device)
+
+
+class Head(nn.Module):
+    &quot;&quot;&quot;One self-attention head with the causal mask (Day 38).&quot;&quot;&quot;
+
+    def __init__(self, head_size):
+        super().__init__()
+        self.key = nn.Linear(n_embd, head_size)
+        self.query = nn.Linear(n_embd, head_size)
+        self.value = nn.Linear(n_embd, head_size)
+        self.register_buffer(
+            &quot;tril&quot;, torch.tril(torch.ones(block_size,
+                                          block_size)))
+
+    def forward(self, x):
+        _, T, _ = x.shape
+        k = self.key(x)                                # (B, T, hs)
+        q = self.query(x)                              # (B, T, hs)
+        wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
+        wei = wei.masked_fill(self.tril[:T, :T] == 0,
+                              float(&quot;-inf&quot;))           # no peeking
+        wei = F.softmax(wei, dim=-1)
+        return wei @ self.value(x)
+
+
+class MultiHeadAttention(nn.Module):
+    &quot;&quot;&quot;Heads in parallel, outputs concatenated + projected (Day 39).&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        hs = n_embd // n_head
+        self.heads = nn.ModuleList([Head(hs) for _ in range(n_head)])
+        self.proj = nn.Linear(n_embd, n_embd)
+
+    def forward(self, x):
+        return self.proj(torch.cat([h(x) for h in self.heads],
+                                   dim=-1))
+
+
+class FeedForward(nn.Module):
+    &quot;&quot;&quot;The block&#x27;s MLP: widen, bend, narrow (Days 21/40).&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, 4 * n_embd),
+            nn.ReLU(),
+            nn.Linear(4 * n_embd, n_embd),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Block(nn.Module):
+    &quot;&quot;&quot;Pre-norm block: norm -&gt; attend -&gt; add, norm -&gt; mlp -&gt; add
+    (Day 40). Shape in = shape out: (B, T, C) throughout.&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.attn = MultiHeadAttention()
+        self.ln2 = nn.LayerNorm(n_embd)
+        self.ffwd = FeedForward()
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))     # communicate
+        x = x + self.ffwd(self.ln2(x))     # compute
+        return x
+
+
+class TinyGPT(nn.Module):
+    &quot;&quot;&quot;The whole stack: embed -&gt; blocks -&gt; norm -&gt; head (Day 42).&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.token_embedding = nn.Embedding(vocab_size, n_embd)
+        self.position_embedding = nn.Embedding(block_size, n_embd)
+        self.blocks = nn.Sequential(
+            *[Block() for _ in range(n_layer)])
+        self.ln_f = nn.LayerNorm(n_embd)
+        self.lm_head = nn.Linear(n_embd, vocab_size)
+
+    def forward(self, idx, targets=None):
+        B, T = idx.shape
+        tok = self.token_embedding(idx)                    # (B,T,C)
+        pos = self.position_embedding(
+            torch.arange(T, device=idx.device))            # (T,C)
+        x = self.blocks(tok + pos)                         # (B,T,C)
+        logits = self.lm_head(self.ln_f(x))                # (B,T,V)
+        loss = None
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(B * T, vocab_size),
+                                   targets.view(B * T))
+        return logits, loss
+
+
+@torch.no_grad()
+def val_loss(model):
+    &quot;&quot;&quot;Mean loss over 4 FIXED val batches - same windows at
+    every checkpoint (own generator, re-seeded each call),
+    so checkpoint-to-checkpoint movement is the model
+    changing, not the sample.&quot;&quot;&quot;
+    model.eval()
+    g = torch.Generator().manual_seed(123)
+    total = 0.0
+    for _ in range(4):
+        ix = torch.randint(split, len(data) - block_size,
+                           (batch_size,), generator=g)
+        x = torch.stack([data[i:i + block_size] for i in ix])
+        y = torch.stack([data[i + 1:i + block_size + 1]
+                         for i in ix])
+        _, l = model(x.to(device), y.to(device))
+        total += l.item()
+    model.train()
+    return total / 4
+
+
+def train_run(warmup_steps, peak_lr):
+    &quot;&quot;&quot;One 600-step run. warmup_steps=None means a constant
+    peak_lr from step 0 - the hot start. Everything else -
+    seed, init, batches, clipping - is identical, so the
+    schedule is the only variable.&quot;&quot;&quot;
+    torch.manual_seed(1337)              # same init both runs
+    model = TinyGPT().to(device)
+    model.train()
+    opt = torch.optim.AdamW(model.parameters(), lr=peak_lr)
+    losses, ck = [], {}
+    best_val, best_step = float(&quot;inf&quot;), -1
+    for step in range(STEPS):
+        lr = peak_lr if warmup_steps is None else lr_at(
+            step, STEPS, warmup_steps, peak_lr, 0.1 * peak_lr)
+        for group in opt.param_groups:
+            group[&quot;lr&quot;] = lr
+        xb, yb = get_batch(&quot;train&quot;)
+        _, loss = model(xb, yb)
+        opt.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+        losses.append(loss.item())
+        if step in CKPTS:
+            v = val_loss(model)
+            ck[step] = (loss.item(), v)
+            if v &lt; best_val:
+                best_val, best_step = v, step
+    jump, jump_step = max((losses[t] - losses[t - 1], t)
+                          for t in range(6, STEPS))
+    for step in CKPTS:
+        tr, va = ck[step]
+        print(f&quot;      step {step:&gt;4}  train {tr:.4f}  &quot;
+              f&quot;val {va:.4f}&quot;)
+    final_tr, final_va = ck[STEPS - 1]
+    print(f&quot;      best val {best_val:.4f} at step {best_step}&quot;
+          f&quot; | final train {final_tr:.4f}  val {final_va:.4f}&quot;
+          f&quot; | worst 1-step jump {jump:+.2f} &quot;
+          f&quot;at step {jump_step}&quot;)
+
+
+print(&quot;Part 3 - two 600-step races on Day 42&#x27;s TinyGPT &quot;
+      &quot;(REFERENCE numbers)&quot;)
+print(f&quot;    data split: {split} chars train / &quot;
+      f&quot;{len(data) - split} held out - val windows come &quot;
+      &quot;only from the tail&quot;)
+print(&quot;    run A - warmup 50 + cosine (peak 3.0e-03):&quot;)
+train_run(50, 3e-3)
+print(&quot;    run B - no warmup, constant 6.0e-03 (double the &quot;
+      &quot;peak, from step 0):&quot;)
+train_run(None, 6e-3)
+print(&quot;    verdict: the schedule decided the ride, val &quot;
+      &quot;picked the stopping step - train loss never votes&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - the LR schedule: warmup + cosine (EXACT)
+  total 1000 steps, warmup 100, peak 3.0e-03, floor 3.0e-04
+  step     0  lr 0.00e+00  warmup: stride ~0 while Adam calibrates
+  step    25  lr 7.50e-04
+  step    50  lr 1.50e-03
+  step    75  lr 2.25e-03
+  step   100  lr 3.00e-03  peak - warmup over, full stride
+  step   325  lr 2.60e-03
+  step   550  lr 1.65e-03  halfway down the cosine
+  step   775  lr 6.95e-04
+  step  1000  lr 3.00e-04  floor - the landing: schedule ends where training should
+Part 2 - the power-law grind: L(t) = 1.20 + 8.0 * t^-0.35 (EXACT arithmetic, fitted law)
+  step     10  loss 4.7735  gap above floor 3.5735
+  step    100  loss 2.7962  gap above floor 1.5962
+  step   1000  loss 1.9130  gap above floor 0.7130
+  step  10000  loss 1.5185  gap above floor 0.3185
+  each 10x of steps divides the gap by 2.24 - same ratio, smaller slice
+  halving the gap costs 7.25x the steps - every single time
+  gap 0.10 needs ~273,779 steps: 27.4x the 10,000-step run, for the last 0.22 of loss
+Part 3 - two 600-step races on Day 42&#x27;s TinyGPT (REFERENCE numbers)
+    data split: 1885 chars train / 472 held out - val windows come only from the tail
+    run A - warmup 50 + cosine (peak 3.0e-03):
+      step    0  train 3.9517  val 3.9842
+      step   50  train 2.7385  val 2.9063
+      step  100  train 2.2146  val 2.3528
+      step  150  train 1.9682  val 2.1574
+      step  200  train 1.8419  val 2.0617
+      step  300  train 1.6630  val 1.9586
+      step  400  train 1.5518  val 1.9123
+      step  500  train 1.4462  val 1.9305
+      step  599  train 1.3655  val 1.9841
+      best val 1.9123 at step 400 | final train 1.3655  val 1.9841 | worst 1-step jump +0.14 at step 213
+    run B - no warmup, constant 6.0e-03 (double the peak, from step 0):
+      step    0  train 3.9688  val 4.0156
+      step   50  train 3.4215  val 3.6082
+      step  100  train 2.6347  val 2.7819
+      step  150  train 2.3084  val 2.4926
+      step  200  train 2.1218  val 2.3145
+      step  300  train 1.8943  val 2.1287
+      step  400  train 1.7612  val 2.0418
+      step  500  train 1.6729  val 1.9946
+      step  599  train 1.5987  val 1.9655
+      best val 1.9655 at step 599 | final train 1.5987  val 1.9655 | worst 1-step jump +2.31 at step 37
+    verdict: the schedule decided the ride, val picked the stopping step - train loss never votes</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints the peak <code>3.00e-03</code> at step 100 and the floor <code>3.00e-04</code> at step 1,000; Part 2&rsquo;s gap column shrinks <code>3.5735 &rarr; 0.3185</code> with the <code>7.25x</code> halving line; and Part 3&rsquo;s two tables tell the story — run A&rsquo;s <em>best val</em> lands before the final step (reference: step 400) while its train loss keeps falling to the end, and run B&rsquo;s worst 1-step jump dwarfs run A&rsquo;s (reference: +2.31 vs +0.14) with a worse best val despite double the learning rate. The keeper test, no notes: handed any transformer training chart, you can point at the warmup, the grind, a spike, and the fork — and say &ldquo;stop here&rdquo; with a reason.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s two panels until you can sketch both from memory, then run Parts 1 and 2 — two minutes of pure arithmetic. Finish by reading Part 3&rsquo;s reference tables in this lesson and finding the two patterns with your finger: run A&rsquo;s val bottom at step 400, run B&rsquo;s +2.31 jump. Run the races themselves when the machine is free; the curve-reading is the lesson.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: everything you have built reads the past to predict the next token. There is a sibling shape that reads a whole input at once, and a third that pairs the two — one clarifying bite on which shape fits which job.</p>
+  </div>
+
+  <div class="footer">Streak: 44 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
