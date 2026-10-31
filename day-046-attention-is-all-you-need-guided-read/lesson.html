@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>&ldquo;Attention Is All You Need&rdquo;: A Guided Read — Day 46 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 46 of 100</span>
+  <h1>&ldquo;Attention Is All You Need&rdquo;: A Guided Read</h1>
+  <p class="outcome">Tonight you'll be able to: read the most-cited paper in modern AI like an engineer who has already built it &mdash; five stops, in order, with a skip list &mdash; and reproduce two of its headline numbers (the parameter count behind the reported 65M, and its learning-rate schedule) from the config alone.</p>
+
+  <h2>The one idea</h2>
+  <p>Normally you read the paper first and implement later. You did it backwards on purpose: Days 36&ndash;45 built every mechanism in this paper with your own hands &mdash; Q/K/V attention (Day 37), scaled dot-product by hand (Day 38), multi-head (Day 39), the full block with residuals and norms (Day 40), sinusoidal position codes (Day 41), BPE (Day 43), and the encoder / decoder / encoder-decoder wiring (Day 45). So tonight there is nothing new to <em>learn</em> mechanically. The one idea is a reading skill: <strong>a famous paper is an artifact with a load-bearing structure &mdash; a claim, one figure, one mechanism, one evidence table, and a boundary around what it does not say.</strong> Read for that structure and you can walk through in an hour; read linearly, cover to cover, and you will drown in ablations.</p>
+<p><strong>Stop 1 &mdash; Abstract + Introduction (&sect;1): READ.</strong> One task (machine translation), one bet, stated in the abstract&rsquo;s own words: an architecture &ldquo;based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.&rdquo; Everything else in the paper is evidence for that single sentence. You framed the same bet on Day 36.</p>
+<p><strong>Stop 2 &mdash; Figure 1 + the stacks (&sect;3.1): READ SLOWLY.</strong> Figure 1 is the whole system on one page: the left tower is the encoder, the right tower is the decoder, each a stack of N = 6 layers, with one cross-attention bridge between them. Keep the figure open while reading anything else &mdash; every section is a zoom into one of its boxes. You assembled this exact wiring on Days 40 and 45.</p>
+<p><strong>Stop 3 &mdash; Attention (&sect;3.2): READ.</strong> This is the paper&rsquo;s one new mechanism, and it is short: the scaled dot-product formula is your Day 38 code &mdash; including the divide-by-&radic;d<sub>k</sub> you derived from dot-product growth &mdash; and &sect;3.2.2&rsquo;s &ldquo;multi-head&rdquo; is Day 39: run the same attention h = 8 times in parallel slices and concatenate. Nothing here should surprise your hands.</p>
+<p><strong>Stop 4 &mdash; The supporting pieces (&sect;3.3&ndash;3.5): SKIM.</strong> The position-wise feed-forward net (Day 40&rsquo;s MLP, applied per position), embeddings (Day 15) with one detail worth noticing &mdash; the paper shares <em>one</em> weight matrix across encoder input, decoder input, and the pre-softmax projection (&sect;3.4), which is why Part 1 of tonight&rsquo;s code counts the embedding once &mdash; and the sinusoidal positional encodings of Day 41. Recognize each piece, note where it lives, move on.</p>
+<p><strong>Stop 5 &mdash; The results table (Table 2, &sect;6): READ.</strong> This is where the claim gets graded. The paper reports its base model at 65M parameters scoring 27.3 BLEU on English&ndash;German translation, and its big model (213M) at 28.4 &mdash; ahead of every RNN and CNN system listed. And the quiet bombshell for a systems brain: the base model trained in about 12 hours on 8 NVIDIA P100 GPUs (100,000 steps). The revolution shipped on hardware you could rent for a weekend.</p>
+<p><strong>Skip on the first pass:</strong> &sect;2&rsquo;s background (a name-check of prior sequence models &mdash; context, not content), Table 3&rsquo;s ablation rows one by one (reproduction-day material), and &sect;5.2&rsquo;s optimizer fine print beyond the schedule formula you will reproduce tonight. Skipping is not cheating; it is triage, and every scientist in the room did it too.</p>
+<p><strong>What the paper does NOT contain</strong> &mdash; know this cold, because it is the boundary that makes your citations accurate. There is <em>no pretraining at scale</em>: the paper trains one translator per language pair, supervised, from scratch, on about 4.5 million sentence pairs. There is <em>no RLHF, no preference learning</em> of any kind. And the hero is encoder-decoder &mdash; the <em>decoder-only</em> design that later ate the world is not in this paper; it arrives with the GPT line. The paper contributed the architecture and the shape of the training recipe at 2017 scale (65M parameters; modern LLMs are roughly a thousand times larger). Being able to say &ldquo;that part isn&rsquo;t in Vaswani et al. &mdash; that&rsquo;s a later paper&rdquo; is exactly what talking about this paper natively sounds like.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Read it the way you would read <strong>the original design doc for a system you have already reimplemented</strong>. Nobody reviews a design doc linearly. You check the doc&rsquo;s claims against your build (&ldquo;does it actually dispense with recurrence? &mdash; yes, I never wrote a loop over time&rdquo;), you read the sections that carry the invariants word by word (here: &sect;3.2), you skim the parts your implementation already proves true, and you write down precisely which behaviors the doc never specified &mdash; because those are the ones later systems added on their own (here: pretraining, RLHF, decoder-only). Same skill, older artifact: your scientists cite papers the way engineers cite design docs &mdash; name, year, one claim. After tonight, &ldquo;Vaswani et al. 2017&rdquo; is a handle you can use with that precision.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Reading map: 'Attention Is All You Need' (Vaswani et al., 2017)</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Five stops, in order - every stop is something you already built</text>
+<rect x="12" y="54" width="656" height="296" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE ROUTE - READ THE PAPER IN THIS ORDER</text>
+<rect x="24" y="86" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="96" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="113" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="106" font-size="10.5" fill="#1c1c1e" font-weight="bold">1. Abstract + Introduction (Sec 1)</text>
+<text x="96" y="123" font-size="9" fill="#555555">the claim: attention alone - no recurrence, no convolution</text>
+<rect x="564.5" y="97" width="75.5" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="602.25" y="112" text-anchor="middle" font-size="8.5" fill="#177245">sets up Day 36</text>
+<rect x="24" y="138" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="148" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="165" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="158" font-size="10.5" fill="#1c1c1e" font-weight="bold">2. Figure 1 + Encoder/Decoder stacks (Sec 3.1)</text>
+<text x="96" y="175" font-size="9" fill="#555555">the whole architecture on one page - stare at this figure</text>
+<rect x="517.75" y="149" width="122.25" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="578.875" y="164" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 40, 45</text>
+<rect x="24" y="190" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="200" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="217" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="210" font-size="10.5" fill="#1c1c1e" font-weight="bold">3. Attention + Multi-Head (Sec 3.2)</text>
+<text x="96" y="227" font-size="9" fill="#555555">the one new mechanism, incl. the sqrt(d_k) you derived</text>
+<rect x="522.0" y="201" width="118.0" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="581.0" y="216" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 37-39</text>
+<rect x="24" y="242" width="616" height="46" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<rect x="32" y="252" width="52" height="26" rx="6" fill="#d99a00" stroke="none" stroke-width="1.2"/>
+<text x="58" y="269" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">SKIM</text>
+<text x="96" y="262" font-size="10.5" fill="#1c1c1e" font-weight="bold">4. FFN, Embeddings, Position (Sec 3.3-3.5)</text>
+<text x="96" y="279" font-size="9" fill="#555555">the supporting pieces - recognize them, don't study them</text>
+<rect x="500.75" y="253" width="139.25" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="570.375" y="268" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 40, 15, 41</text>
+<rect x="24" y="294" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="304" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="321" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="314" font-size="10.5" fill="#1c1c1e" font-weight="bold">5. Results: Table 2 + Sec 6</text>
+<text x="96" y="331" font-size="9" fill="#555555">base: 65M params, 27.3 BLEU EN-DE - big: 213M, 28.4</text>
+<rect x="539.0" y="305" width="101.0" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="589.5" y="320" text-anchor="middle" font-size="8.5" fill="#177245">judge models: Day 44</text>
+<rect x="12" y="362" width="656" height="52" rx="8" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="28" y="382" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">SKIP ON THE FIRST PASS</text>
+<text x="28" y="400" text-anchor="start" font-size="9" fill="#555555">Sec 2 background name-checks - Table 3 ablations, row by row - Sec 5.2 optimizer fine print (look up on reproduction day)</text>
+<rect x="12" y="426" width="656" height="52" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="28" y="446" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">NOT IN THIS PAPER - IT ENDS AT TRANSLATION</text>
+<text x="28" y="464" text-anchor="start" font-size="9" fill="#555555">No pretraining at scale - no RLHF - no decoder-only models. Those are later papers (your Days 51-56).</text>
+</svg>
+    <div class="caption">The reading map. Five stops in order &mdash; abstract, Figure 1, the attention section, a skim of the supporting pieces, the results table &mdash; each tagged with the day you built what it describes. Below: what to skip on a first pass, and the paper&rsquo;s boundary: everything the modern LLM era added later lives <em>outside</em> this paper.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>No downloads tonight &mdash; you are not fetching the paper&rsquo;s PDF. Instead, the code reproduces <strong>two of the paper&rsquo;s own numbers from its stated configuration</strong>, the way you would sanity-check any design doc against its spec. It is pure standard-library Python (<code>math</code> only) &mdash; no torch, no numpy, nothing to install. <strong>Part 1</strong> recounts the base Transformer&rsquo;s parameters from the Table 3 config: one attention block is 4 matrices of d<sub>model</sub> &times; d<sub>model</sub> (the 8 heads are slices of them &mdash; Day 39), an encoder layer adds an FFN and 2 norms, a decoder layer adds a second attention and a third norm, and the embedding is counted <em>once</em> because &sect;3.4 ties it three ways. Compare your total against the figure the paper reports in Table 2. <strong>Part 2</strong> evaluates the learning-rate schedule from &sect;5.3 exactly as written &mdash; d<sub>model</sub><sup>&minus;0.5</sup> scaling, warmup_steps = 4000 &mdash; at the steps that tell its story: a linear ramp, a peak, and a 1/&radic;step tail that runs to the paper&rsquo;s own 100,000-step finish.</p>
+  <pre><code>&quot;&quot;&quot;Day 46 - &quot;Attention Is All You Need&quot;: A Guided Read.
+
+Days 36-45 you built every mechanism in the 2017 paper by
+Vaswani et al.: Q/K/V attention (Day 37), scaled dot-product
+by hand (Day 38), multi-head (Day 39), the full block (Day 40),
+sinusoidal position codes (Day 41), BPE (Day 43), and the
+encoder / decoder / encoder-decoder wiring (Day 45). Tonight
+is not a new mechanism. Tonight the paper itself is the
+artifact: a reading map of what to read, what to skip, and
+which of your builds each section is describing - plus the
+honest list of what the paper does NOT contain.
+
+Tonight&#x27;s code does not download the paper and calls no API.
+It reproduces two of the paper&#x27;s own numbers from its stated
+configuration, the way you would sanity-check any design doc:
+
+  Part 1  The parameter count. Section 5.3 / Table 3 of the
+          paper give the base config: d_model = 512, N = 6
+          layers per stack, h = 8 heads, d_ff = 2048, and a
+          shared source-target BPE vocabulary of &quot;about
+          37,000&quot; tokens (Section 5.1). The embedding matrix
+          is shared three ways (encoder in, decoder in,
+          pre-softmax out - Section 3.4), the positional
+          encodings are fixed sinusoids (zero parameters -
+          Day 41), and attention heads split d_model, so
+          h = 8 changes no count: each attention block is
+          still 4 matrices of d_model x d_model. Add up
+          weights, biases, and LayerNorm gains/biases and
+          compare with the number the paper reports for the
+          base model in Table 2: 65M.
+  Part 2  The learning-rate schedule, Section 5.3 verbatim:
+              lrate = d_model^-0.5 * min(step^-0.5,
+                                         step * warmup^-1.5)
+          with warmup_steps = 4000. Print it across the run:
+          a linear ramp for 4,000 steps, a peak, then an
+          inverse-square-root decay. Base training ran
+          100,000 steps (Section 5.3), so the last printed
+          step is the end of the paper&#x27;s own run.
+
+Pure standard-library Python (math only): no torch, no
+numpy, no downloads, no paid APIs. Runs identically in the
+~/ai-lab venv on the MacBook. Every number is exact
+arithmetic - no RNG anywhere in this lesson.
+
+Expected output:
+
+Part 1 - recount the base Transformer from its config (paper, Table 3)
+  config: d_model 512, N 6 layers/stack, h 8 heads, d_ff 2048, vocab ~37,000 (shared)
+  shared embedding (tied x3, Sec 3.4):    18,944,000
+  one encoder layer:                       3,152,384
+    x6 encoder layers:                   18,914,304
+  one decoder layer:                       4,204,032
+    x6 decoder layers:                   25,224,192
+  final LayerNorm:                             1,024
+  YOUR count:                             63,083,520  = 63.08M
+  the paper reports (Table 2): 65M  -&gt;  your count is 97.1% of it
+  the ~3% gap is bookkeeping, not architecture: &#x27;about 37,000&#x27; tokens
+  is doing real work in that sentence (the gap = 3,743 tokens x 512).
+Part 2 - the paper&#x27;s learning-rate schedule (Sec 5.3, warmup 4,000)
+  step       1  lr 1.75e-07   warming up (linear ramp)
+  step     100  lr 1.75e-05   warming up (linear ramp)
+  step   1,000  lr 1.75e-04   warming up (linear ramp)
+  step   2,000  lr 3.49e-04   warming up (linear ramp)
+  step   4,000  lr 6.99e-04   PEAK - warmup ends, decay takes over
+  step  10,000  lr 4.42e-04   decaying as 1/sqrt(step)
+  step  40,000  lr 2.21e-04   decaying as 1/sqrt(step)
+  step 100,000  lr 1.40e-04   decaying as 1/sqrt(step)
+  read: x40 from step 100 to the peak, then the peak only halves
+  every time the step count quadruples - a long, gentle tail.
+&quot;&quot;&quot;
+import math
+
+# ---------- Part 1: recount the base Transformer ----------
+print(&quot;Part 1 - recount the base Transformer from its config &quot;
+      &quot;(paper, Table 3)&quot;)
+d_model = 512          # width of every sub-layer output (Sec 3.1)
+n_layers = 6           # N: layers in EACH stack (Sec 3.1)
+n_heads = 8            # h: heads split d_model into 8 x 64 (Sec 3.2.2)
+d_ff = 2048            # inner width of the feed-forward net (Sec 3.3)
+vocab = 37_000         # shared BPE vocab, &quot;about 37,000&quot; (Sec 5.1)
+
+print(f&quot;  config: d_model {d_model}, N {n_layers} layers/stack, &quot;
+      f&quot;h {n_heads} heads, d_ff {d_ff}, vocab ~{vocab:,} (shared)&quot;)
+
+# One multi-head attention block: Q, K, V and output projections,
+# each d_model x d_model with a bias. h = 8 heads does NOT change
+# the count - the heads are slices of these same matrices (Day 39).
+attn = 4 * d_model * d_model + 4 * d_model
+# One position-wise feed-forward net: d_model -&gt; d_ff -&gt; d_model (Day 40).
+ffn = (d_model * d_ff + d_ff) + (d_ff * d_model + d_model)
+# One LayerNorm: a gain and a bias per feature (Day 29).
+norm = 2 * d_model
+
+# Encoder layer: self-attention + FFN + 2 norms (Sec 3.1).
+enc_layer = attn + ffn + 2 * norm
+# Decoder layer: masked self-attention + cross-attention + FFN + 3 norms.
+dec_layer = 2 * attn + ffn + 3 * norm
+# Embeddings: ONE matrix, shared by encoder input, decoder input,
+# and the pre-softmax projection (Sec 3.4). Positional encodings
+# are fixed sinusoids - zero parameters (Day 41).
+embedding = vocab * d_model
+
+enc_total = n_layers * enc_layer
+dec_total = n_layers * dec_layer
+total = embedding + enc_total + dec_total + norm   # + final norm
+
+print(f&quot;  shared embedding (tied x3, Sec 3.4):  {embedding:&gt;12,}&quot;)
+print(f&quot;  one encoder layer:                    {enc_layer:&gt;12,}&quot;)
+print(f&quot;    x{n_layers} encoder layers:                 {enc_total:&gt;12,}&quot;)
+print(f&quot;  one decoder layer:                    {dec_layer:&gt;12,}&quot;)
+print(f&quot;    x{n_layers} decoder layers:                 {dec_total:&gt;12,}&quot;)
+print(f&quot;  final LayerNorm:                      {norm:&gt;12,}&quot;)
+print(f&quot;  YOUR count:                           {total:&gt;12,}  &quot;
+      f&quot;= {total / 1e6:.2f}M&quot;)
+paper_params = 65_000_000                          # Table 2, base model
+print(f&quot;  the paper reports (Table 2): 65M  -&gt;  your count is &quot;
+      f&quot;{100 * total / paper_params:.1f}% of it&quot;)
+gap_tokens = (paper_params - total) // d_model
+print(&quot;  the ~3% gap is bookkeeping, not architecture: &quot;
+      &quot;&#x27;about 37,000&#x27; tokens&quot;)
+print(f&quot;  is doing real work in that sentence (the gap = &quot;
+      f&quot;{gap_tokens:,} tokens x {d_model}).&quot;)
+
+# ---------- Part 2: the paper&#x27;s learning-rate schedule ----------
+print(&quot;Part 2 - the paper&#x27;s learning-rate schedule &quot;
+      &quot;(Sec 5.3, warmup 4,000)&quot;)
+warmup = 4_000
+
+
+def paper_lr(step):
+    &quot;&quot;&quot;Section 5.3, verbatim: d_model^-0.5 scaled, linear ramp
+    during warmup, inverse-square-root decay after it. The min()
+    is the whole trick - whichever term is smaller is in charge,
+    and the two terms cross exactly at step = warmup.&quot;&quot;&quot;
+    return d_model ** -0.5 * min(step ** -0.5,
+                                 step * warmup ** -1.5)
+
+
+steps = [1, 100, 1_000, 2_000, 4_000, 10_000, 40_000, 100_000]
+for s in steps:
+    if s &lt; warmup:
+        phase = &quot;warming up (linear ramp)&quot;
+    elif s == warmup:
+        phase = &quot;PEAK - warmup ends, decay takes over&quot;
+    else:
+        phase = &quot;decaying as 1/sqrt(step)&quot;
+    print(f&quot;  step {s:&gt;7,}  lr {paper_lr(s):.2e}   {phase}&quot;)
+print(&quot;  read: x40 from step 100 to the peak, then the peak only &quot;
+      &quot;halves&quot;)
+print(&quot;  every time the step count quadruples - a long, gentle tail.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - recount the base Transformer from its config (paper, Table 3)
+  config: d_model 512, N 6 layers/stack, h 8 heads, d_ff 2048, vocab ~37,000 (shared)
+  shared embedding (tied x3, Sec 3.4):    18,944,000
+  one encoder layer:                       3,152,384
+    x6 encoder layers:                   18,914,304
+  one decoder layer:                       4,204,032
+    x6 decoder layers:                   25,224,192
+  final LayerNorm:                             1,024
+  YOUR count:                             63,083,520  = 63.08M
+  the paper reports (Table 2): 65M  -&gt;  your count is 97.1% of it
+  the ~3% gap is bookkeeping, not architecture: &#x27;about 37,000&#x27; tokens
+  is doing real work in that sentence (the gap = 3,743 tokens x 512).
+Part 2 - the paper&#x27;s learning-rate schedule (Sec 5.3, warmup 4,000)
+  step       1  lr 1.75e-07   warming up (linear ramp)
+  step     100  lr 1.75e-05   warming up (linear ramp)
+  step   1,000  lr 1.75e-04   warming up (linear ramp)
+  step   2,000  lr 3.49e-04   warming up (linear ramp)
+  step   4,000  lr 6.99e-04   PEAK - warmup ends, decay takes over
+  step  10,000  lr 4.42e-04   decaying as 1/sqrt(step)
+  step  40,000  lr 2.21e-04   decaying as 1/sqrt(step)
+  step 100,000  lr 1.40e-04   decaying as 1/sqrt(step)
+  read: x40 from step 100 to the peak, then the peak only halves
+  every time the step count quadruples - a long, gentle tail.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when three things are true. (1) You can walk Figure 1 top to bottom and name the day you built each box. (2) Your run prints <code>YOUR count: 63,083,520 = 63.08M</code> at <code>97.1%</code> of the paper&rsquo;s reported 65M, and you can explain the gap in one sentence: the architecture matches exactly; the residual is the word &ldquo;about&rdquo; in &ldquo;about 37,000 tokens&rdquo; plus counting conventions. (3) You can state the schedule&rsquo;s shape from memory &mdash; linear ramp for 4,000 steps to a peak of 6.99e-04, then a 1/&radic;step decay &mdash; and name three things that are <em>not</em> in the paper: pretraining at scale, RLHF, and decoder-only models. That is the whole paper, owned.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read stops 1, 2, and 5 (abstract, Figure 1, Table 2), glance at the diagram&rsquo;s skip and not-in-this-paper panels, then run the code. If you can say what the paper claims, what its one figure shows, what its headline numbers are, and where its boundary is, you have the guided read &mdash; the full &sect;3.2 walk is a victory lap your hands already took on Days 38&ndash;39.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the paper&rsquo;s model consumes whole sentences at training time &mdash; but a trained transformer has to <em>produce</em> its output one token at a time. How that generation loop runs, and who decides how daring each next token is allowed to be, is tomorrow&rsquo;s single idea.</p>
+  </div>
+
+  <div class="footer">Streak: 46 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

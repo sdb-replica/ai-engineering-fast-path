@@ -1,0 +1,48 @@
+<svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Reading map: 'Attention Is All You Need' (Vaswani et al., 2017)</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Five stops, in order - every stop is something you already built</text>
+<rect x="12" y="54" width="656" height="296" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE ROUTE - READ THE PAPER IN THIS ORDER</text>
+<rect x="24" y="86" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="96" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="113" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="106" font-size="10.5" fill="#1c1c1e" font-weight="bold">1. Abstract + Introduction (Sec 1)</text>
+<text x="96" y="123" font-size="9" fill="#555555">the claim: attention alone - no recurrence, no convolution</text>
+<rect x="564.5" y="97" width="75.5" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="602.25" y="112" text-anchor="middle" font-size="8.5" fill="#177245">sets up Day 36</text>
+<rect x="24" y="138" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="148" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="165" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="158" font-size="10.5" fill="#1c1c1e" font-weight="bold">2. Figure 1 + Encoder/Decoder stacks (Sec 3.1)</text>
+<text x="96" y="175" font-size="9" fill="#555555">the whole architecture on one page - stare at this figure</text>
+<rect x="517.75" y="149" width="122.25" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="578.875" y="164" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 40, 45</text>
+<rect x="24" y="190" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="200" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="217" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="210" font-size="10.5" fill="#1c1c1e" font-weight="bold">3. Attention + Multi-Head (Sec 3.2)</text>
+<text x="96" y="227" font-size="9" fill="#555555">the one new mechanism, incl. the sqrt(d_k) you derived</text>
+<rect x="522.0" y="201" width="118.0" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="581.0" y="216" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 37-39</text>
+<rect x="24" y="242" width="616" height="46" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<rect x="32" y="252" width="52" height="26" rx="6" fill="#d99a00" stroke="none" stroke-width="1.2"/>
+<text x="58" y="269" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">SKIM</text>
+<text x="96" y="262" font-size="10.5" fill="#1c1c1e" font-weight="bold">4. FFN, Embeddings, Position (Sec 3.3-3.5)</text>
+<text x="96" y="279" font-size="9" fill="#555555">the supporting pieces - recognize them, don't study them</text>
+<rect x="500.75" y="253" width="139.25" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="570.375" y="268" text-anchor="middle" font-size="8.5" fill="#177245">you built it: Days 40, 15, 41</text>
+<rect x="24" y="294" width="616" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<rect x="32" y="304" width="52" height="26" rx="6" fill="#0a7aff" stroke="none" stroke-width="1.2"/>
+<text x="58" y="321" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">READ</text>
+<text x="96" y="314" font-size="10.5" fill="#1c1c1e" font-weight="bold">5. Results: Table 2 + Sec 6</text>
+<text x="96" y="331" font-size="9" fill="#555555">base: 65M params, 27.3 BLEU EN-DE - big: 213M, 28.4</text>
+<rect x="539.0" y="305" width="101.0" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="589.5" y="320" text-anchor="middle" font-size="8.5" fill="#177245">judge models: Day 44</text>
+<rect x="12" y="362" width="656" height="52" rx="8" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="28" y="382" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">SKIP ON THE FIRST PASS</text>
+<text x="28" y="400" text-anchor="start" font-size="9" fill="#555555">Sec 2 background name-checks - Table 3 ablations, row by row - Sec 5.2 optimizer fine print (look up on reproduction day)</text>
+<rect x="12" y="426" width="656" height="52" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="28" y="446" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">NOT IN THIS PAPER - IT ENDS AT TRANSLATION</text>
+<text x="28" y="464" text-anchor="start" font-size="9" fill="#555555">No pretraining at scale - no RLHF - no decoder-only models. Those are later papers (your Days 51-56).</text>
+</svg>
