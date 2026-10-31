@@ -1,0 +1,68 @@
+<svg viewBox="0 0 680 536" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="536" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Three runs, one question: which config won?</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Same data, same 30 epochs, only lr moves - every epoch logged, even the blow-up</text>
+<rect x="12" y="56" width="656" height="204" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - VAL-LOSS CURVES (LOG SCALE) - ALL THREE START AT 10.4531</text>
+<line x1="84" y1="74.0" x2="428" y2="74.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="77.0" text-anchor="end" font-size="8.5" fill="#777777">10^6</text>
+<line x1="84" y1="128.7" x2="428" y2="128.7" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="131.7" text-anchor="end" font-size="8.5" fill="#777777">10^3</text>
+<line x1="84" y1="183.3" x2="428" y2="183.3" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="186.3" text-anchor="end" font-size="8.5" fill="#777777">10^0</text>
+<line x1="84" y1="238.0" x2="428" y2="238.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="241.0" text-anchor="end" font-size="8.5" fill="#777777">10^-3</text>
+<line x1="84" y1="74" x2="84" y2="238" stroke="#cccccc" stroke-width="1"/>
+<line x1="84" y1="238" x2="428" y2="238" stroke="#cccccc" stroke-width="1"/>
+<text x="84.0" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 0</text>
+<text x="198.7" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 10</text>
+<text x="313.3" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 20</text>
+<text x="428.0" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 30</text>
+<polyline points="84.0,164.8 118.4,172.8 152.8,180.5 187.2,188.0 221.6,195.2 256.0,202.1 290.4,208.6 324.8,214.8 359.2,220.7 393.6,226.4 428.0,231.9" fill="none" stroke="#22a355" stroke-width="2.2"/>
+<polyline points="84.0,164.8 118.4,164.9 152.8,165.1 187.2,165.2 221.6,165.4 256.0,165.5 290.4,165.7 324.8,165.8 359.2,165.9 393.6,166.1 428.0,166.2" fill="none" stroke="#d99a00" stroke-width="2.2"/>
+<polyline points="84.0,164.8 118.4,159.3 152.8,152.0 187.2,144.7 221.6,137.4 256.0,130.1 290.4,122.8 324.8,115.4 359.2,108.1 393.6,100.8 428.0,93.5" fill="none" stroke="#d64545" stroke-width="2.2"/>
+<rect x="448" y="90" width="14" height="4" fill="#22a355"/>
+<text x="470" y="100" font-size="9.5" fill="#1c1c1e">run-002  lr 0.05 (healthy)</text>
+<text x="470" y="115" font-size="9" fill="#555555">final val 0.0022</text>
+<rect x="448" y="134" width="14" height="4" fill="#d99a00"/>
+<text x="470" y="144" font-size="9.5" fill="#1c1c1e">run-001  lr 0.001 (flatline)</text>
+<text x="470" y="159" font-size="9" fill="#555555">final val 8.6657</text>
+<rect x="448" y="178" width="14" height="4" fill="#d64545"/>
+<text x="470" y="188" font-size="9.5" fill="#1c1c1e">run-003  lr 0.65 (diverging)</text>
+<text x="470" y="203" font-size="9" fill="#555555">final val 85268.1238</text>
+<text x="549" y="248" text-anchor="middle" font-size="8.5" fill="#d64545">red climbs four orders of magnitude</text>
+<text x="340" y="282" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">compare() reads the log and sorts - no scrollback archaeology</text>
+<rect x="12" y="292" width="656" height="112" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="312" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE COMPARISON TABLE (SORTED BY FINAL VAL LOSS)</text>
+<text x="40" y="336" font-size="9.5" fill="#555555" font-weight="bold">run</text>
+<text x="150" y="336" font-size="9.5" fill="#555555" font-weight="bold">lr</text>
+<text x="230" y="336" font-size="9.5" fill="#555555" font-weight="bold">final val</text>
+<text x="360" y="336" font-size="9.5" fill="#555555" font-weight="bold">hash</text>
+<text x="470" y="336" font-size="9.5" fill="#555555" font-weight="bold">verdict</text>
+<rect x="28" y="344" width="620" height="20" rx="4" fill="#e9f9ee"/>
+<text x="40" y="358" font-size="9.5" fill="#1c1c1e">run-002</text>
+<text x="150" y="358" font-size="9.5" fill="#1c1c1e">0.05</text>
+<text x="230" y="358" font-size="9.5" fill="#1c1c1e">0.0022</text>
+<text x="360" y="358" font-size="9.5" fill="#1c1c1e">7d8d997b</text>
+<text x="470" y="358" font-size="9.5" fill="#1c1c1e">BEST - re-run it</text>
+<text x="40" y="378" font-size="9.5" fill="#1c1c1e">run-001</text>
+<text x="150" y="378" font-size="9.5" fill="#1c1c1e">0.001</text>
+<text x="230" y="378" font-size="9.5" fill="#1c1c1e">8.6657</text>
+<text x="360" y="378" font-size="9.5" fill="#1c1c1e">37c2d268</text>
+<text x="470" y="378" font-size="9.5" fill="#1c1c1e">flatline</text>
+<text x="40" y="398" font-size="9.5" fill="#1c1c1e">run-003</text>
+<text x="150" y="398" font-size="9.5" fill="#1c1c1e">0.65</text>
+<text x="230" y="398" font-size="9.5" fill="#1c1c1e">85268.1238</text>
+<text x="360" y="398" font-size="9.5" fill="#1c1c1e">bb50b172</text>
+<text x="470" y="398" font-size="9.5" fill="#1c1c1e">diverging</text>
+<rect x="12" y="418" width="656" height="104" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="438" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE STORE ON DISK: THIS LAYOUT IS WHAT THE BIG TOOLS KEEP</text>
+<text x="40" y="462" font-size="9.5" fill="#1c1c1e">runs/index.jsonl</text>
+<text x="40" y="480" font-size="9.5" fill="#555555">194 append-only events: start, metric, end</text>
+<text x="40" y="498" font-size="9.5" fill="#1c1c1e">runs/run-001 .. run-004 /</text>
+<text x="40" y="514" font-size="9.5" fill="#555555">config.json (params + hash) + result.json (final metrics)</text>
+<text x="380" y="462" font-size="9.5" fill="#1c1c1e">MLflow local store = same shape</text>
+<text x="380" y="480" font-size="9.5" fill="#555555">mlruns/ holds run folders of params + metrics</text>
+<text x="380" y="498" font-size="9.5" fill="#1c1c1e">W&amp;B run object = same four fields</text>
+<text x="380" y="514" font-size="9.5" fill="#555555">run id, params, metrics, artifacts - just hosted</text>
+</svg>

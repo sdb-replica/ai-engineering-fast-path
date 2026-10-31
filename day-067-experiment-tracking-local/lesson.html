@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiment Tracking: The 10-Minute Setup — Day 67 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 67 of 100</span>
+  <h1>Experiment Tracking: The 10-Minute Setup</h1>
+  <p class="outcome">Tonight you'll be able to: replace terminal scrollback with a tiny queryable tracker &mdash; log every run&rsquo;s params, metrics, and config hash, answer &ldquo;which config produced that val loss?&rdquo; from a sorted table, and prove the best run reproduces exactly.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 35&rsquo;s project ran <em>one</em> CONFIG with <em>one</em> seed, so its result had exactly one possible explanation. Real tuning never looks like that: you run the same training three times and change one dial. You already own the perfect fossil record &mdash; Day 31&rsquo;s trio on Day 7&rsquo;s line: lr 0.001 flatlined, lr 0.05 converged, lr 0.65 diverged. Now imagine those three runs happened on three different evenings, in three terminal windows, and a week later you ask the only question that matters: <em>which config produced the good val loss?</em> The scrollbacks are gone. &ldquo;I think it was 0.05&hellip; or was that the run where I also changed the epochs?&rdquo; Memory is not a database.</p>
+<p><strong>An experiment tracker is just a structured log.</strong> Every run records four things: a <strong>run id</strong> (its name in the store), its <strong>params</strong> (the config that fully determines the run &mdash; lr, epochs, seed, data), its <strong>metrics over time</strong> (the Day 31 loss curves, but written down per epoch instead of glanced at), and its <strong>artifacts</strong> (files the run leaves behind: its config, its final result &mdash; later, its trained weights). The store is <strong>append-only</strong>: old runs are never edited, only new ones added. And it is <strong>queryable</strong>: the entire point is <code>compare()</code> &mdash; read every finished run, sort by the metric you care about, get an answer.</p>
+<p><strong>The discipline is the lesson.</strong> Log params, final metrics, and a <strong>config hash</strong> for <em>every</em> run &mdash; the diverged ones too. The hash is one line: SHA-256 over the config&rsquo;s sorted JSON, kept to 8 characters (tonight: lr 0.05 &rarr; <code>7d8d997b</code>). Two runs sharing a hash claim to be the same experiment; if their results differ, something unlogged changed &mdash; data, code, seed &mdash; and the hash is the tripwire that tells you. And the failed runs earn their rows: run-003&rsquo;s val loss of 85268.1238 rules lr 0.65 out <em>forever</em>. Unlogged, you would retry it next month and pay for the same crater twice.</p>
+<p><strong>Reproducibility is the payoff.</strong> Same params + same data + same seed should mean the same numbers, bit for bit. Part 3 re-runs the winning config untouched and lands on the same hash and the identical final val loss (0.0022). That is the difference between &ldquo;it worked once, on my machine, I think&rdquo; and an experiment someone else can check.</p>
+<p><strong>The honest map:</strong> tonight&rsquo;s tracker is ~60 lines of standard library and a folder called <code>runs/</code> &mdash; and that folder <em>is</em> the shape of the real tools. MLflow&rsquo;s local store is a directory of run folders holding params and metrics files with a small index beside them. A Weights &amp; Biases run object carries exactly these four fields &mdash; config, history, summary, artifacts &mdash; just hosted, with a search UI on top. No account, no install, and no API tonight; learn the shape here and MLflow/W&amp;B vocabulary transfers 1:1 when you need the hosted versions.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Day 31 was a <em>dashboard during an incident</em> &mdash; live telemetry, gone when the session ends. A tracker is the other half of observability you already practice: <strong>structured logs shipped to a store you can query tomorrow.</strong> A <code>print()</code> is an SSH session&rsquo;s scrollback; a tracker is CloudWatch Logs with a schema &mdash; every event timestamped (here: epoch-stepped), tagged (run id), carrying its context (params) with it, in a format a query can sort. You would never debug a Conveyor regression from a terminal you closed last Tuesday; don&rsquo;t debug a training regression that way either.</p><p>Trading version, one line: you would never reconstruct a month of trades from remembered charts &mdash; the journal holds every fill with its setup. Runs are trades, configs are setups, and final val loss is the P&amp;L line. Journal every one, losers included.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 536" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="536" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Three runs, one question: which config won?</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Same data, same 30 epochs, only lr moves - every epoch logged, even the blow-up</text>
+<rect x="12" y="56" width="656" height="204" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - VAL-LOSS CURVES (LOG SCALE) - ALL THREE START AT 10.4531</text>
+<line x1="84" y1="74.0" x2="428" y2="74.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="77.0" text-anchor="end" font-size="8.5" fill="#777777">10^6</text>
+<line x1="84" y1="128.7" x2="428" y2="128.7" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="131.7" text-anchor="end" font-size="8.5" fill="#777777">10^3</text>
+<line x1="84" y1="183.3" x2="428" y2="183.3" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="186.3" text-anchor="end" font-size="8.5" fill="#777777">10^0</text>
+<line x1="84" y1="238.0" x2="428" y2="238.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="241.0" text-anchor="end" font-size="8.5" fill="#777777">10^-3</text>
+<line x1="84" y1="74" x2="84" y2="238" stroke="#cccccc" stroke-width="1"/>
+<line x1="84" y1="238" x2="428" y2="238" stroke="#cccccc" stroke-width="1"/>
+<text x="84.0" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 0</text>
+<text x="198.7" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 10</text>
+<text x="313.3" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 20</text>
+<text x="428.0" y="252" text-anchor="middle" font-size="8.5" fill="#777777">epoch 30</text>
+<polyline points="84.0,164.8 118.4,172.8 152.8,180.5 187.2,188.0 221.6,195.2 256.0,202.1 290.4,208.6 324.8,214.8 359.2,220.7 393.6,226.4 428.0,231.9" fill="none" stroke="#22a355" stroke-width="2.2"/>
+<polyline points="84.0,164.8 118.4,164.9 152.8,165.1 187.2,165.2 221.6,165.4 256.0,165.5 290.4,165.7 324.8,165.8 359.2,165.9 393.6,166.1 428.0,166.2" fill="none" stroke="#d99a00" stroke-width="2.2"/>
+<polyline points="84.0,164.8 118.4,159.3 152.8,152.0 187.2,144.7 221.6,137.4 256.0,130.1 290.4,122.8 324.8,115.4 359.2,108.1 393.6,100.8 428.0,93.5" fill="none" stroke="#d64545" stroke-width="2.2"/>
+<rect x="448" y="90" width="14" height="4" fill="#22a355"/>
+<text x="470" y="100" font-size="9.5" fill="#1c1c1e">run-002  lr 0.05 (healthy)</text>
+<text x="470" y="115" font-size="9" fill="#555555">final val 0.0022</text>
+<rect x="448" y="134" width="14" height="4" fill="#d99a00"/>
+<text x="470" y="144" font-size="9.5" fill="#1c1c1e">run-001  lr 0.001 (flatline)</text>
+<text x="470" y="159" font-size="9" fill="#555555">final val 8.6657</text>
+<rect x="448" y="178" width="14" height="4" fill="#d64545"/>
+<text x="470" y="188" font-size="9.5" fill="#1c1c1e">run-003  lr 0.65 (diverging)</text>
+<text x="470" y="203" font-size="9" fill="#555555">final val 85268.1238</text>
+<text x="549" y="248" text-anchor="middle" font-size="8.5" fill="#d64545">red climbs four orders of magnitude</text>
+<text x="340" y="282" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">compare() reads the log and sorts - no scrollback archaeology</text>
+<rect x="12" y="292" width="656" height="112" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="312" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE COMPARISON TABLE (SORTED BY FINAL VAL LOSS)</text>
+<text x="40" y="336" font-size="9.5" fill="#555555" font-weight="bold">run</text>
+<text x="150" y="336" font-size="9.5" fill="#555555" font-weight="bold">lr</text>
+<text x="230" y="336" font-size="9.5" fill="#555555" font-weight="bold">final val</text>
+<text x="360" y="336" font-size="9.5" fill="#555555" font-weight="bold">hash</text>
+<text x="470" y="336" font-size="9.5" fill="#555555" font-weight="bold">verdict</text>
+<rect x="28" y="344" width="620" height="20" rx="4" fill="#e9f9ee"/>
+<text x="40" y="358" font-size="9.5" fill="#1c1c1e">run-002</text>
+<text x="150" y="358" font-size="9.5" fill="#1c1c1e">0.05</text>
+<text x="230" y="358" font-size="9.5" fill="#1c1c1e">0.0022</text>
+<text x="360" y="358" font-size="9.5" fill="#1c1c1e">7d8d997b</text>
+<text x="470" y="358" font-size="9.5" fill="#1c1c1e">BEST - re-run it</text>
+<text x="40" y="378" font-size="9.5" fill="#1c1c1e">run-001</text>
+<text x="150" y="378" font-size="9.5" fill="#1c1c1e">0.001</text>
+<text x="230" y="378" font-size="9.5" fill="#1c1c1e">8.6657</text>
+<text x="360" y="378" font-size="9.5" fill="#1c1c1e">37c2d268</text>
+<text x="470" y="378" font-size="9.5" fill="#1c1c1e">flatline</text>
+<text x="40" y="398" font-size="9.5" fill="#1c1c1e">run-003</text>
+<text x="150" y="398" font-size="9.5" fill="#1c1c1e">0.65</text>
+<text x="230" y="398" font-size="9.5" fill="#1c1c1e">85268.1238</text>
+<text x="360" y="398" font-size="9.5" fill="#1c1c1e">bb50b172</text>
+<text x="470" y="398" font-size="9.5" fill="#1c1c1e">diverging</text>
+<rect x="12" y="418" width="656" height="104" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="438" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE STORE ON DISK: THIS LAYOUT IS WHAT THE BIG TOOLS KEEP</text>
+<text x="40" y="462" font-size="9.5" fill="#1c1c1e">runs/index.jsonl</text>
+<text x="40" y="480" font-size="9.5" fill="#555555">194 append-only events: start, metric, end</text>
+<text x="40" y="498" font-size="9.5" fill="#1c1c1e">runs/run-001 .. run-004 /</text>
+<text x="40" y="514" font-size="9.5" fill="#555555">config.json (params + hash) + result.json (final metrics)</text>
+<text x="380" y="462" font-size="9.5" fill="#1c1c1e">MLflow local store = same shape</text>
+<text x="380" y="480" font-size="9.5" fill="#555555">mlruns/ holds run folders of params + metrics</text>
+<text x="380" y="498" font-size="9.5" fill="#1c1c1e">W&amp;B run object = same four fields</text>
+<text x="380" y="514" font-size="9.5" fill="#555555">run id, params, metrics, artifacts - just hosted</text>
+</svg>
+    <div class="caption">Top: the three val-loss curves from tonight&rsquo;s actual log (log scale &mdash; the diverging run ends four orders of magnitude above where it started). Middle: what compare() returns &mdash; one row per run, sorted, the winner&rsquo;s config one lookup away. Bottom: the store itself, and the honest map &mdash; MLflow&rsquo;s local folders and a W&amp;B run object are this same layout with a service around it.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, pure Python standard library &mdash; no torch needed, nothing to install, no accounts. <strong>Part 1</strong> is the whole tracker: <code>start_run</code> writes the run&rsquo;s <code>config.json</code> artifact and appends a start event, <code>log_metric</code> appends one JSON line per measurement to <code>runs/index.jsonl</code>, <code>end_run</code> writes <code>result.json</code> and appends the finals; <code>compare()</code> is a plain read of that log. <strong>Part 2</strong> runs Day 7&rsquo;s regression (truth w=2.5, b=&minus;1) under Day 31&rsquo;s trio &mdash; same data, same 30 epochs, only lr moves &mdash; logging both losses every epoch, blow-up included. <strong>Part 3</strong> queries the table, prints the best run&rsquo;s full config from its artifact, then re-runs it untouched to test reproducibility. The demo writes <code>./runs/</code> beside where you run it and resets that folder first, so your output matches this page every time &mdash; afterwards, open <code>runs/</code> and read the store with your own eyes.</p>
+  <pre><code>&quot;&quot;&quot;Day 67 - Experiment Tracking: The 10-Minute Setup.
+
+Day 31 gave you loss curves as observability - for ONE run, live,
+on your screen. Tonight is what happens on run three: three
+terminal scrollbacks, three sets of numbers, and no way to say
+which config produced the good val loss. Print statements are
+logs you throw away. Tonight the logs get a store.
+
+ONE idea: an experiment tracker is just a structured log -
+(run id, params, metrics-over-time, artifacts) in an append-only
+store you can QUERY. The discipline that makes it worth anything:
+log the params, the final metrics, and a hash of the config for
+EVERY run - the diverged ones too - so results are comparable
+and reproducible, not remembered.
+
+  Part 1  A tiny Tracker in pure stdlib: start_run writes the
+          run&#x27;s config.json artifact and appends a start event;
+          log_metric appends one JSON line per measurement;
+          end_run writes result.json and appends the final
+          numbers. compare() is just a read of that log, sorted.
+  Part 2  Day 7&#x27;s regression (truth w=2.5, b=-1) under the
+          Day 31 trio - lr 0.001 (flatline), 0.05 (healthy),
+          0.65 (diverging) - same data, same 30 epochs, only
+          lr changes. Every epoch of every run is logged,
+          including the run that blows up.
+  Part 3  compare() prints the runs table sorted by final val
+          loss and the best run&#x27;s full config; then the best
+          config is re-run untouched - and lands on the same
+          config hash and the identical final val loss.
+          That is reproducibility, demonstrated not promised.
+
+Pure Python standard library - no torch needed, no installs,
+no W&amp;B account, no MLflow server, no downloads. This file
+layout IS what the real tools keep: MLflow&#x27;s local store is
+a directory of run folders with params/metrics files, and a
+W&amp;B run object carries the same four fields. Learn the shape
+here and the tools are just bigger versions of it.
+
+The demo writes ./runs/ next to where you run it (and resets
+that folder first, so your output matches this page every
+time). Run it in ~/ai-lab, then open runs/ and look around.
+
+Expected output:
+
+  Part 1 - the tracker: (run id, params, metrics, artifacts) in an append-only store
+    store = runs/index.jsonl (events) + runs/&lt;run-id&gt;/ (config.json, result.json)
+  Part 2 - Day 7&#x27;s line under Day 31&#x27;s trio (same data, same epochs, only lr moves)
+    run-001  lr=0.001  final train 9.4124  val 8.6657  w=0.2383 b=-0.0583  hash 37c2d268  (flatline)
+    run-002  lr=0.05   final train 0.0020  val 0.0022  w=2.4895 b=-0.9576  hash 7d8d997b  (healthy)
+    run-003  lr=0.65   final train 108276.9826  val 85268.1238  w=-252.3847 b=-1.0000  hash bb50b172  (diverging)
+    the diverged run is IN the table - a run you don&#x27;t log is a result you can&#x27;t rule out
+  Part 3 - compare(): the question scrollback can&#x27;t answer
+    run           lr epochs  final train     final val  hash
+    run-002     0.05     30       0.0020        0.0022  7d8d997b
+    run-001    0.001     30       9.4124        8.6657  37c2d268
+    run-003     0.65     30  108276.9826    85268.1238  bb50b172
+    best run: run-002 - full config from its artifact:
+      {&quot;data&quot;: &quot;day7-line&quot;, &quot;epochs&quot;: 30, &quot;lr&quot;: 0.05, &quot;seed&quot;: 42}  (config_hash 7d8d997b)
+    re-run as run-004: hash matches True, final val identical True (0.0022)
+    store on disk: runs/index.jsonl = 194 events, 4 run folders each holding config.json + result.json
+    verdict: log params + final metrics + config hash for EVERY run, and &#x27;which config was that?&#x27; is a query, not an archaeology dig
+&quot;&quot;&quot;
+import hashlib
+import json
+import shutil
+from pathlib import Path
+
+# ---------- the data: Day 7&#x27;s line, truth w=2.5, b=-1 ----------
+X_TRAIN = [-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+Y_TRAIN = [2.5 * x - 1.0 for x in X_TRAIN]
+X_VAL = [-1.75, -0.75, 0.25, 1.25]          # never trained on
+Y_VAL = [2.5 * x - 1.0 for x in X_VAL]
+
+
+def mse(w, b, xs, ys):
+    return sum((w * x + b - y) ** 2 for x, y in zip(xs, ys)) / len(xs)
+
+
+def train_line(lr, epochs):
+    &quot;&quot;&quot;Full-batch gradient descent (Day 6&#x27;s hand math).
+    Returns the (train_loss, val_loss) history, epoch 0..epochs.&quot;&quot;&quot;
+    w = b = 0.0
+    history = [(mse(w, b, X_TRAIN, Y_TRAIN), mse(w, b, X_VAL, Y_VAL))]
+    for _ in range(epochs):
+        n = len(X_TRAIN)
+        dw = sum(2 * (w * x + b - y) * x
+                 for x, y in zip(X_TRAIN, Y_TRAIN)) / n
+        db = sum(2 * (w * x + b - y)
+                 for x, y in zip(X_TRAIN, Y_TRAIN)) / n
+        w -= lr * dw
+        b -= lr * db
+        history.append((mse(w, b, X_TRAIN, Y_TRAIN),
+                        mse(w, b, X_VAL, Y_VAL)))
+    return w, b, history
+
+
+# ---------- Part 1: the tracker (the whole tool) ----------
+def config_hash(params):
+    blob = json.dumps(params, sort_keys=True).encode()
+    return hashlib.sha256(blob).hexdigest()[:8]
+
+
+class Run:
+    def __init__(self, tracker, run_id, params):
+        self.tracker = tracker
+        self.run_id = run_id
+        self.params = params
+        self.hash = config_hash(params)
+        self.final = {}
+
+    def log_metric(self, name, value, step):
+        self.tracker.append({&quot;event&quot;: &quot;metric&quot;, &quot;run&quot;: self.run_id,
+                             &quot;name&quot;: name, &quot;value&quot;: value,
+                             &quot;step&quot;: step})
+
+    def end_run(self, final_metrics):
+        self.final = final_metrics
+        out = {&quot;run_id&quot;: self.run_id, &quot;config_hash&quot;: self.hash,
+               &quot;params&quot;: self.params, &quot;final&quot;: final_metrics}
+        path = self.tracker.root / self.run_id / &quot;result.json&quot;
+        path.write_text(json.dumps(out, indent=2))
+        self.tracker.append({&quot;event&quot;: &quot;end&quot;, &quot;run&quot;: self.run_id,
+                             &quot;config_hash&quot;: self.hash,
+                             &quot;final&quot;: final_metrics})
+
+
+class Tracker:
+    &quot;&quot;&quot;Append-only JSONL event log + one folder per run.&quot;&quot;&quot;
+
+    def __init__(self, root=&quot;runs&quot;):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.log_path = self.root / &quot;index.jsonl&quot;
+
+    def append(self, event):
+        with open(self.log_path, &quot;a&quot;) as f:
+            f.write(json.dumps(event) + &quot;\n&quot;)
+
+    def start_run(self, name, params):
+        done = 0
+        if self.log_path.exists():
+            for line in open(self.log_path):
+                if json.loads(line)[&quot;event&quot;] == &quot;start&quot;:
+                    done += 1
+        run_id = f&quot;run-{done + 1:03d}&quot;
+        run = Run(self, run_id, params)
+        folder = self.root / run_id
+        folder.mkdir(exist_ok=True)
+        cfg = {&quot;run_id&quot;: run_id, &quot;name&quot;: name, &quot;params&quot;: params,
+               &quot;config_hash&quot;: run.hash}
+        (folder / &quot;config.json&quot;).write_text(json.dumps(cfg, indent=2))
+        self.append({&quot;event&quot;: &quot;start&quot;, &quot;run&quot;: run_id, &quot;name&quot;: name,
+                     &quot;params&quot;: params, &quot;config_hash&quot;: run.hash})
+        return run
+
+
+def compare(root=&quot;runs&quot;):
+    &quot;&quot;&quot;The query: read the log, one row per finished run,
+    sorted by final val loss. The scrollback can&#x27;t do this.&quot;&quot;&quot;
+    rows = {}
+    for line in open(Path(root) / &quot;index.jsonl&quot;):
+        ev = json.loads(line)
+        if ev[&quot;event&quot;] == &quot;start&quot;:
+            rows[ev[&quot;run&quot;]] = {&quot;params&quot;: ev[&quot;params&quot;],
+                               &quot;hash&quot;: ev[&quot;config_hash&quot;]}
+        elif ev[&quot;event&quot;] == &quot;end&quot;:
+            rows[ev[&quot;run&quot;]][&quot;final&quot;] = ev[&quot;final&quot;]
+    done = {r: v for r, v in rows.items() if &quot;final&quot; in v}
+    ranked = sorted(done.items(),
+                    key=lambda kv: kv[1][&quot;final&quot;][&quot;val_loss&quot;])
+    print(f&quot;  {&#x27;run&#x27;:&lt;9} {&#x27;lr&#x27;:&gt;6} {&#x27;epochs&#x27;:&gt;6} &quot;
+          f&quot;{&#x27;final train&#x27;:&gt;12} {&#x27;final val&#x27;:&gt;13}  hash&quot;)
+    for run_id, v in ranked:
+        f = v[&quot;final&quot;]
+        print(f&quot;  {run_id:&lt;9} {v[&#x27;params&#x27;][&#x27;lr&#x27;]:&gt;6} &quot;
+              f&quot;{v[&#x27;params&#x27;][&#x27;epochs&#x27;]:&gt;6} &quot;
+              f&quot;{f[&#x27;train_loss&#x27;]:&gt;12.4f} {f[&#x27;val_loss&#x27;]:&gt;13.4f}&quot;
+              f&quot;  {v[&#x27;hash&#x27;]}&quot;)
+    return ranked[0]
+
+
+# ---------- Part 2: three runs, one variable changed ----------
+print(&quot;Part 1 - the tracker: (run id, params, metrics, artifacts)&quot;
+      &quot; in an append-only store&quot;)
+print(&quot;  store = runs/index.jsonl (events) + runs/&lt;run-id&gt;/&quot;
+      &quot; (config.json, result.json)&quot;)
+
+print(&quot;Part 2 - Day 7&#x27;s line under Day 31&#x27;s trio &quot;
+      &quot;(same data, same epochs, only lr moves)&quot;)
+ROOT = Path(&quot;runs&quot;)
+if ROOT.exists():                       # demo resets its own store
+    shutil.rmtree(ROOT)
+tracker = Tracker(ROOT)
+for lr, note in ((0.001, &quot;flatline&quot;), (0.05, &quot;healthy&quot;),
+                 (0.65, &quot;diverging&quot;)):
+    params = {&quot;lr&quot;: lr, &quot;epochs&quot;: 30, &quot;seed&quot;: 42,
+              &quot;data&quot;: &quot;day7-line&quot;}
+    run = tracker.start_run(f&quot;lr-sweep-{note}&quot;, params)
+    w, b, history = train_line(lr, params[&quot;epochs&quot;])
+    for step, (tr, va) in enumerate(history):
+        run.log_metric(&quot;train_loss&quot;, tr, step)
+        run.log_metric(&quot;val_loss&quot;, va, step)
+    run.end_run({&quot;train_loss&quot;: history[-1][0],
+                 &quot;val_loss&quot;: history[-1][1], &quot;w&quot;: w, &quot;b&quot;: b})
+    print(f&quot;  {run.run_id}  lr={lr:&lt;6} final train &quot;
+          f&quot;{history[-1][0]:.4f}  val {history[-1][1]:.4f}&quot;
+          f&quot;  w={w:.4f} b={b:.4f}  hash {run.hash}  ({note})&quot;)
+print(&quot;  the diverged run is IN the table - a run you don&#x27;t log&quot;
+      &quot; is a result you can&#x27;t rule out&quot;)
+
+# ---------- Part 3: query it, then prove reproducibility ----------
+print(&quot;Part 3 - compare(): the question scrollback can&#x27;t answer&quot;)
+best_id, best = compare(ROOT)
+cfg = json.loads((ROOT / best_id / &quot;config.json&quot;).read_text())
+print(f&quot;  best run: {best_id} - full config from its artifact:&quot;)
+print(f&quot;    {json.dumps(cfg[&#x27;params&#x27;], sort_keys=True)}&quot;
+      f&quot;  (config_hash {cfg[&#x27;config_hash&#x27;]})&quot;)
+again = tracker.start_run(&quot;lr-sweep-healthy-rerun&quot;, cfg[&quot;params&quot;])
+w, b, history = train_line(cfg[&quot;params&quot;][&quot;lr&quot;],
+                           cfg[&quot;params&quot;][&quot;epochs&quot;])
+again.end_run({&quot;train_loss&quot;: history[-1][0],
+               &quot;val_loss&quot;: history[-1][1], &quot;w&quot;: w, &quot;b&quot;: b})
+print(f&quot;  re-run as {again.run_id}: hash matches &quot;
+      f&quot;{again.hash == best[&#x27;hash&#x27;]}, final val identical &quot;
+      f&quot;{history[-1][1] == best[&#x27;final&#x27;][&#x27;val_loss&#x27;]}&quot;
+      f&quot; ({history[-1][1]:.4f})&quot;)
+n_events = sum(1 for _ in open(ROOT / &quot;index.jsonl&quot;))
+print(f&quot;  store on disk: runs/index.jsonl = {n_events} events, &quot;
+      f&quot;4 run folders each holding config.json + result.json&quot;)
+print(&quot;  verdict: log params + final metrics + config hash for&quot;
+      &quot; EVERY run, and &#x27;which config was that?&#x27; is a query,&quot;
+      &quot; not an archaeology dig&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the tracker: (run id, params, metrics, artifacts) in an append-only store
+  store = runs/index.jsonl (events) + runs/&lt;run-id&gt;/ (config.json, result.json)
+Part 2 - Day 7&#x27;s line under Day 31&#x27;s trio (same data, same epochs, only lr moves)
+  run-001  lr=0.001  final train 9.4124  val 8.6657  w=0.2383 b=-0.0583  hash 37c2d268  (flatline)
+  run-002  lr=0.05   final train 0.0020  val 0.0022  w=2.4895 b=-0.9576  hash 7d8d997b  (healthy)
+  run-003  lr=0.65   final train 108276.9826  val 85268.1238  w=-252.3847 b=-1.0000  hash bb50b172  (diverging)
+  the diverged run is IN the table - a run you don&#x27;t log is a result you can&#x27;t rule out
+Part 3 - compare(): the question scrollback can&#x27;t answer
+  run           lr epochs  final train     final val  hash
+  run-002     0.05     30       0.0020        0.0022  7d8d997b
+  run-001    0.001     30       9.4124        8.6657  37c2d268
+  run-003     0.65     30  108276.9826    85268.1238  bb50b172
+  best run: run-002 - full config from its artifact:
+    {&quot;data&quot;: &quot;day7-line&quot;, &quot;epochs&quot;: 30, &quot;lr&quot;: 0.05, &quot;seed&quot;: 42}  (config_hash 7d8d997b)
+  re-run as run-004: hash matches True, final val identical True (0.0022)
+  store on disk: runs/index.jsonl = 194 events, 4 run folders each holding config.json + result.json
+  verdict: log params + final metrics + config hash for EVERY run, and &#x27;which config was that?&#x27; is a query, not an archaeology dig</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints the comparison sorted with <code>run-002</code> on top (final val <code>0.0022</code>, hash <code>7d8d997b</code>), the flatline and diverging runs present with their own hashes, and the re-run line reads <code>hash matches True, final val identical True</code>. Then the keeper test, no scrolling allowed: someone asks &ldquo;which lr gave you that val loss, and can you reproduce it?&rdquo; &mdash; and you answer from the table and point at run-004.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram, then run <code>code.py</code> and open two files: <code>runs/run-002/config.json</code> and <code>runs/index.jsonl</code>. If you can say what the four recorded fields are and why the diverged run deserves its row, you have the lesson &mdash; the re-run proof is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: tracked runs start leaving trained model files behind &mdash; and &ldquo;final_v2_REAL_final.pt&rdquo; stops being a versioning strategy.</p>
+  </div>
+
+  <div class="footer">Streak: 67 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
