@@ -1,0 +1,122 @@
+<svg viewBox="0 0 680 566" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="566" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">BPE: the vocabulary builds itself, one merge at a time</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">corpus: low x5 - lower x2 - newest x6 - widest x3 - every number below is real output from tonight's code</text>
+<rect x="12" y="56" width="656" height="176" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ROUND 0: CHARACTERS ONLY - COUNT EVERY ADJACENT PAIR</text>
+<text x="28" y="106" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">low x5</text>
+<rect x="118" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">l</text>
+<rect x="149" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">o</text>
+<rect x="180" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="90" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="229.5" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="138" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">lower x2</text>
+<rect x="118" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">l</text>
+<rect x="149" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">o</text>
+<rect x="180" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="224.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="255.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">r</text>
+<rect x="273" y="122" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="291.5" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="170" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">newest x6</text>
+<rect x="118" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">n</text>
+<rect x="149" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="180" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="154" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="224.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="154" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="255.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">s</text>
+<rect x="273" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="286.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">t</text>
+<rect x="304" y="154" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="322.5" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="202" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">widest x3</text>
+<rect x="118" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="149" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">i</text>
+<rect x="180" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">d</text>
+<rect x="211" y="186" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="224.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="186" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="255.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">s</text>
+<rect x="273" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="286.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">t</text>
+<rect x="304" y="186" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="322.5" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<rect x="400" y="90" width="250" height="118" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="525" y="108" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">round-1 pair leaderboard</text>
+<text x="525" y="128" text-anchor="middle" font-size="9.0" fill="#1c1c1e">e+s 9   s+t 9   t+&lt;/w&gt; 9</text>
+<text x="525" y="144" text-anchor="middle" font-size="9.0" fill="#1c1c1e">w+e 8   l+o 7   o+w 7</text>
+<text x="525" y="160" text-anchor="middle" font-size="9.0" fill="#1c1c1e">three-way tie at 9 - the pair met</text>
+<text x="525" y="176" text-anchor="middle" font-size="9.0" fill="#1c1c1e">first scanning the corpus wins:</text>
+<text x="525" y="192" text-anchor="middle" font-size="9.0" fill="#1c1c1e">merge #1 is e + s -&gt; es</text>
+<text x="209" y="224" text-anchor="middle" font-size="9.0" fill="#666666">amber = the winning pair, everywhere it occurs</text>
+<rect x="12" y="246" width="656" height="152" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="266" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE LOOP: MERGE THE MOST FREQUENT PAIR, REPEAT</text>
+<rect x="28" y="278" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="293" text-anchor="start" font-size="9.5" fill="#1c1c1e">1.  e + s -&gt; es  (x9)</text>
+<rect x="28" y="304" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="319" text-anchor="start" font-size="9.5" fill="#1c1c1e">2.  es + t -&gt; est  (x9)</text>
+<rect x="28" y="330" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="345" text-anchor="start" font-size="9.5" fill="#1c1c1e">3.  est + &lt;/w&gt; -&gt; est&lt;/w&gt;  (x9)</text>
+<rect x="28" y="356" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="371" text-anchor="start" font-size="9.5" fill="#1c1c1e">4.  l + o -&gt; lo  (x7)</text>
+<rect x="352" y="278" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="293" text-anchor="start" font-size="9.5" fill="#1c1c1e">5.  lo + w -&gt; low  (x7)</text>
+<rect x="352" y="304" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="319" text-anchor="start" font-size="9.5" fill="#1c1c1e">6.  n + e -&gt; ne  (x6)</text>
+<rect x="352" y="330" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="345" text-anchor="start" font-size="9.5" fill="#1c1c1e">7.  ne + w -&gt; new  (x6)</text>
+<rect x="352" y="356" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="371" text-anchor="start" font-size="9.5" fill="#1c1c1e">8.  new + est&lt;/w&gt; -&gt; newest&lt;/w&gt;  (x6)</text>
+<text x="340" y="390" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">vocab 11 -&gt; 19 symbols (+8 embedding rows)   |   corpus 95 -&gt; 36 tokens (2.6x shorter) - the dial, mid-setting</text>
+<rect x="12" y="412" width="656" height="140" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="432" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - ENCODE WITH THE LEARNED MERGES: TOKENS ARE NOT WORDS</text>
+<text x="28" y="460" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">newest</text>
+<line x1="104" y1="456" x2="122" y2="456" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,456 116,452.5 116,459.5" fill="#555555"/>
+<rect x="130" y="444" width="69" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="164.5" y="460" text-anchor="middle" font-size="9.5" fill="#1c1c1e">newest&lt;/w&gt;</text>
+<text x="430" y="460" text-anchor="start" font-size="9.0" fill="#1c1c1e">1 token - the favourite earned a row</text>
+<text x="28" y="486" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">low</text>
+<line x1="104" y1="482" x2="122" y2="482" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,482 116,478.5 116,485.5" fill="#555555"/>
+<rect x="130" y="470" width="31" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="145.5" y="486" text-anchor="middle" font-size="9.5" fill="#1c1c1e">low</text>
+<rect x="166" y="470" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="184.5" y="486" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="430" y="486" text-anchor="start" font-size="9.0" fill="#1c1c1e">2 tokens</text>
+<text x="28" y="512" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">widest</text>
+<line x1="104" y1="508" x2="122" y2="508" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,508 116,504.5 116,511.5" fill="#555555"/>
+<rect x="130" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="143.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="161" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="174.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">i</text>
+<rect x="192" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="205.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">d</text>
+<rect x="223" y="496" width="53" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="249.5" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">est&lt;/w&gt;</text>
+<text x="430" y="512" text-anchor="start" font-size="9.0" fill="#1c1c1e">4 tokens - rare stays spelled out</text>
+<text x="28" y="538" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">lowest*</text>
+<line x1="104" y1="534" x2="122" y2="534" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,534 116,530.5 116,537.5" fill="#555555"/>
+<rect x="130" y="522" width="31" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="145.5" y="538" text-anchor="middle" font-size="9.5" fill="#1c1c1e">low</text>
+<rect x="166" y="522" width="53" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="192.5" y="538" text-anchor="middle" font-size="9.5" fill="#1c1c1e">est&lt;/w&gt;</text>
+<text x="430" y="538" text-anchor="start" font-size="9.0" fill="#1c1c1e">2 tokens - *never trained on, still no UNK</text>
+</svg>

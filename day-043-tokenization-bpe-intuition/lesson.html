@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenization: BPE Intuition — Day 43 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 43 of 100</span>
+  <h1>Tokenization: BPE Intuition</h1>
+  <p class="outcome">Tonight you'll be able to: run the byte-pair merge loop by hand on a four-word corpus until you can call the next merge before the code does &mdash; and explain why a model reads tokens instead of characters or words, why a common word costs 1 token and a rare one 4, and why a word the tokenizer never saw still can&rsquo;t break it.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 42&rsquo;s tiny GPT read text one <em>character</em> at a time &mdash; simple, and not what real models do. Between your raw text and Day 15&rsquo;s embedding lookup sits a step we skipped: the <strong>tokenizer</strong>. It chops text into <strong>tokens</strong> &mdash; chunks that are sometimes a whole word, sometimes a syllable, sometimes a single letter &mdash; and swaps each chunk for an integer id. The model never sees letters or words. It sees ids, and each id is one row of the embedding table.</p>
+<p>Why not stay with characters? Think of it as one dial with two bad ends. <strong>Characters:</strong> the vocabulary is tiny, but sequences balloon &mdash; a page of text becomes thousands of steps, and everything downstream (attention time, context space, cost) is spent <em>per token</em>, so characters make every text long. <strong>Words:</strong> sequences shrink, but the vocabulary explodes &mdash; every word in every form needs its own embedding row &mdash; and the first word the vocab never saw is unrepresentable: the dreaded <strong>UNK</strong>, a dead end. Tokens are the learned middle setting of that dial: <em>vocabulary size vs sequence length</em>. Every vocab entry costs an embedding row and must appear often enough in training to earn a good vector; every merge you skip costs sequence length on every text, forever.</p>
+<p><strong>Byte-Pair Encoding (BPE)</strong> learns where to set the dial, from data, with one move repeated. Start from the smallest possible vocab &mdash; individual characters, plus one housekeeping symbol <code>&lt;/w&gt;</code> marking end-of-word, so word-final pieces can differ from mid-word ones. Then loop: <strong>count every adjacent pair in the corpus (weighted by word frequency), merge the most frequent pair into a new symbol, add it to the vocab.</strong> That is the entire algorithm. Tonight you run 8 rounds and stop at 19 symbols; GPT-2&rsquo;s tokenizer ran the same loop over real text until its vocab held 50,257 symbols. (Production BPE starts from the 256 possible <em>bytes</em> rather than characters &mdash; same loop, and it&rsquo;s why any input at all, any language or emoji, stays representable.)</p>
+<p>Because merges are bought with frequency, the results are not words. In tonight&rsquo;s corpus, <code>newest</code> (&times;6) earns a single token; <code>widest</code> (&times;3) stays in 4 pieces; and <code>lowest</code> &mdash; never in training &mdash; still encodes as <code>[low, est&lt;/w&gt;]</code>, two known pieces. There is no UNK: worst case, a strange string falls back to smaller and smaller pieces, down to single characters. It also explains a famous quirk: ask a model how many letters are in a word and it may fumble &mdash; it never saw the letters, it saw chunks.</p>
+<p>One practical consequence to file away: everything downstream is denominated in tokens. A context window is a token budget, and an API bill is a token count (the dollar math gets its own day later). When someone says a model &ldquo;read a 200-page document,&rdquo; the honest unit is tokens.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>BPE is a <strong>compression dictionary, learned once and shared</strong> &mdash; the LZ77/gzip pattern from your storage world. A compressor scans data, notices strings that repeat, and replaces later occurrences with a short reference into a dictionary instead of spelling them out. BPE does the same accounting ahead of time: one pass over a training corpus, counting which adjacent chunks repeat most, and the most reusable chunks win permanent slots in a fixed codebook. Two consequences carry over exactly. First, the dictionary must be <em>agreed</em>: encode and decode only work if both sides hold the same codebook &mdash; which is why the tokenizer ships as part of the model artifact, like a schema version pinned to the weights; tokenize with the wrong one and the ids point at the wrong embedding rows, the same garbage as decoding with the wrong codebook. Second, the difference: gzip&rsquo;s dictionary is built per file from that file&rsquo;s redundancy, while BPE&rsquo;s is built once from a corpus by pure frequency &mdash; it is a Huffman-flavoured codebook (frequent &rarr; cheap) for chunks instead of symbols.</p><p>Trading version, one line: frequency earns the abbreviation &mdash; your desk shorthand exists for the names you touch daily, never for the one-off ticker you spell out in full.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 566" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="566" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">BPE: the vocabulary builds itself, one merge at a time</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">corpus: low x5 - lower x2 - newest x6 - widest x3 - every number below is real output from tonight's code</text>
+<rect x="12" y="56" width="656" height="176" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ROUND 0: CHARACTERS ONLY - COUNT EVERY ADJACENT PAIR</text>
+<text x="28" y="106" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">low x5</text>
+<rect x="118" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">l</text>
+<rect x="149" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">o</text>
+<rect x="180" y="90" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="90" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="229.5" y="106" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="138" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">lower x2</text>
+<rect x="118" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">l</text>
+<rect x="149" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">o</text>
+<rect x="180" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="224.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="122" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="255.0" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">r</text>
+<rect x="273" y="122" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="291.5" y="138" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="170" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">newest x6</text>
+<rect x="118" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">n</text>
+<rect x="149" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="180" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="211" y="154" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="224.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="154" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="255.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">s</text>
+<rect x="273" y="154" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="286.0" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">t</text>
+<rect x="304" y="154" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="322.5" y="170" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="28" y="202" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">widest x3</text>
+<rect x="118" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="131.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="149" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="162.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">i</text>
+<rect x="180" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="193.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">d</text>
+<rect x="211" y="186" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="224.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">e</text>
+<rect x="242" y="186" width="26" height="24" rx="6" fill="#ffe9c9" stroke="#d98a00" stroke-width="1.0"/>
+<text x="255.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">s</text>
+<rect x="273" y="186" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="286.0" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">t</text>
+<rect x="304" y="186" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="322.5" y="202" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<rect x="400" y="90" width="250" height="118" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="525" y="108" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">round-1 pair leaderboard</text>
+<text x="525" y="128" text-anchor="middle" font-size="9.0" fill="#1c1c1e">e+s 9   s+t 9   t+&lt;/w&gt; 9</text>
+<text x="525" y="144" text-anchor="middle" font-size="9.0" fill="#1c1c1e">w+e 8   l+o 7   o+w 7</text>
+<text x="525" y="160" text-anchor="middle" font-size="9.0" fill="#1c1c1e">three-way tie at 9 - the pair met</text>
+<text x="525" y="176" text-anchor="middle" font-size="9.0" fill="#1c1c1e">first scanning the corpus wins:</text>
+<text x="525" y="192" text-anchor="middle" font-size="9.0" fill="#1c1c1e">merge #1 is e + s -&gt; es</text>
+<text x="209" y="224" text-anchor="middle" font-size="9.0" fill="#666666">amber = the winning pair, everywhere it occurs</text>
+<rect x="12" y="246" width="656" height="152" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="266" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE LOOP: MERGE THE MOST FREQUENT PAIR, REPEAT</text>
+<rect x="28" y="278" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="293" text-anchor="start" font-size="9.5" fill="#1c1c1e">1.  e + s -&gt; es  (x9)</text>
+<rect x="28" y="304" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="319" text-anchor="start" font-size="9.5" fill="#1c1c1e">2.  es + t -&gt; est  (x9)</text>
+<rect x="28" y="330" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="345" text-anchor="start" font-size="9.5" fill="#1c1c1e">3.  est + &lt;/w&gt; -&gt; est&lt;/w&gt;  (x9)</text>
+<rect x="28" y="356" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="40" y="371" text-anchor="start" font-size="9.5" fill="#1c1c1e">4.  l + o -&gt; lo  (x7)</text>
+<rect x="352" y="278" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="293" text-anchor="start" font-size="9.5" fill="#1c1c1e">5.  lo + w -&gt; low  (x7)</text>
+<rect x="352" y="304" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="319" text-anchor="start" font-size="9.5" fill="#1c1c1e">6.  n + e -&gt; ne  (x6)</text>
+<rect x="352" y="330" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="345" text-anchor="start" font-size="9.5" fill="#1c1c1e">7.  ne + w -&gt; new  (x6)</text>
+<rect x="352" y="356" width="300" height="22" rx="6" fill="#f1efff" stroke="#7a5cff" stroke-width="0.8"/>
+<text x="364" y="371" text-anchor="start" font-size="9.5" fill="#1c1c1e">8.  new + est&lt;/w&gt; -&gt; newest&lt;/w&gt;  (x6)</text>
+<text x="340" y="390" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">vocab 11 -&gt; 19 symbols (+8 embedding rows)   |   corpus 95 -&gt; 36 tokens (2.6x shorter) - the dial, mid-setting</text>
+<rect x="12" y="412" width="656" height="140" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="432" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - ENCODE WITH THE LEARNED MERGES: TOKENS ARE NOT WORDS</text>
+<text x="28" y="460" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">newest</text>
+<line x1="104" y1="456" x2="122" y2="456" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,456 116,452.5 116,459.5" fill="#555555"/>
+<rect x="130" y="444" width="69" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="164.5" y="460" text-anchor="middle" font-size="9.5" fill="#1c1c1e">newest&lt;/w&gt;</text>
+<text x="430" y="460" text-anchor="start" font-size="9.0" fill="#1c1c1e">1 token - the favourite earned a row</text>
+<text x="28" y="486" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">low</text>
+<line x1="104" y1="482" x2="122" y2="482" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,482 116,478.5 116,485.5" fill="#555555"/>
+<rect x="130" y="470" width="31" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="145.5" y="486" text-anchor="middle" font-size="9.5" fill="#1c1c1e">low</text>
+<rect x="166" y="470" width="37" height="24" rx="6" fill="#eeeeee" stroke="#888888" stroke-width="1.0"/>
+<text x="184.5" y="486" text-anchor="middle" font-size="9.5" fill="#1c1c1e">&lt;/w&gt;</text>
+<text x="430" y="486" text-anchor="start" font-size="9.0" fill="#1c1c1e">2 tokens</text>
+<text x="28" y="512" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">widest</text>
+<line x1="104" y1="508" x2="122" y2="508" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,508 116,504.5 116,511.5" fill="#555555"/>
+<rect x="130" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="143.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">w</text>
+<rect x="161" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="174.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">i</text>
+<rect x="192" y="496" width="26" height="24" rx="6" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="205.0" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">d</text>
+<rect x="223" y="496" width="53" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="249.5" y="512" text-anchor="middle" font-size="9.5" fill="#1c1c1e">est&lt;/w&gt;</text>
+<text x="430" y="512" text-anchor="start" font-size="9.0" fill="#1c1c1e">4 tokens - rare stays spelled out</text>
+<text x="28" y="538" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-weight="bold">lowest*</text>
+<line x1="104" y1="534" x2="122" y2="534" stroke="#555555" stroke-width="1.4"/>
+<polygon points="122,534 116,530.5 116,537.5" fill="#555555"/>
+<rect x="130" y="522" width="31" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="145.5" y="538" text-anchor="middle" font-size="9.5" fill="#1c1c1e">low</text>
+<rect x="166" y="522" width="53" height="24" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="192.5" y="538" text-anchor="middle" font-size="9.5" fill="#1c1c1e">est&lt;/w&gt;</text>
+<text x="430" y="538" text-anchor="start" font-size="9.0" fill="#1c1c1e">2 tokens - *never trained on, still no UNK</text>
+</svg>
+    <div class="caption">Panel A: round 0 &mdash; the corpus as bare characters plus <code>&lt;/w&gt;</code>, with the round-1 pair leaderboard; the amber pair (<code>e + s</code>, 9 occurrences) is the merge the loop is about to make, in both words where it occurs. Panel B: all 8 merges with their counts, and the trade they bought &mdash; vocab 11 &rarr; 19 against corpus 95 &rarr; 36 tokens. Panel C: encoding after training &mdash; the favourite collapses to 1 token, the rare word stays in 4 pieces, and <code>lowest</code>, never trained on, still encodes cleanly.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, pure standard library &mdash; a tokenizer is string surgery, so tonight there is no torch and no GPU at all; it runs as-is in <code>~/ai-lab</code>. <strong>Part 1</strong> lays out the corpus as characters, prints the round-1 pair table, and makes you call the first merge (watch the three-way tie at 9 &mdash; the tie-break rule is stated and matters). <strong>Part 2</strong> is the whole algorithm: count pairs, merge the winner, repeat 8 times, printing the vocab size and corpus token total each round so you can watch the dial trade entries for length. <strong>Part 3</strong> encodes four words with the learned merges &mdash; including one the corpus never contained &mdash; and prints the token ids, because ids are all the model ever gets.</p>
+  <pre><code>&quot;&quot;&quot;Day 43 - Tokenization: BPE Intuition.
+
+Day 42&#x27;s tiny GPT read text one CHARACTER at a time.
+Real models don&#x27;t. Before the embedding lookup (Day 15)
+ever runs, a tokenizer chops text into TOKENS - chunks
+that are sometimes a whole word, sometimes a syllable,
+sometimes a single letter - and swaps each chunk for an
+id. The model only ever sees the ids.
+
+Why tokens? One dial with two bad ends:
+  characters - vocab is tiny, but sequences balloon:
+               every chunk of text costs hundreds of
+               steps, and attention pays per step.
+  words      - sequences shrink, but the vocab explodes
+               (every word, every form), and a word the
+               vocab never saw is UNREPRESENTABLE - the
+               dreaded UNK, a dead end.
+Tokens are the learned middle: BYTE-PAIR ENCODING (BPE)
+learns the chunks from data. Start from characters, then
+repeat one move - count every adjacent pair, merge the
+most frequent one into a new symbol - until the vocab
+reaches its budget. Frequent strings collapse into one
+token; rare strings stay spelled out in pieces. So a
+token is NOT a word: a common word costs 1 token, a rare
+word costs 4, and a word training never saw still encodes
+as known pieces - no UNK, ever.
+
+Tonight&#x27;s corpus is four trading-desk words with made-up
+frequencies, small enough to run the whole loop by hand:
+
+  Part 1  The starting point: characters + an end-of-word
+          marker &lt;/w&gt;. The round-1 pair table goes up so
+          you can call the first merge before the loop
+          does (three pairs tie at 9 - the tie-break rule
+          is part of the lesson).
+  Part 2  The merge loop, 8 rounds. Each round prints the
+          winning pair, the new symbol, the vocab size and
+          the corpus token total - watch the trade happen:
+          vocab 11 -&gt; 19 buys corpus 95 -&gt; 36 tokens.
+  Part 3  Encode with the learned merges: newest = 1
+          token, low = 2, widest = 4, and &quot;lowest&quot; - a
+          word training NEVER saw - still encodes as 2
+          known pieces. Plus the ids: tokens are just row
+          numbers in Day 15&#x27;s embedding table.
+
+Runs anywhere Python 3 runs: standard library only - a
+tokenizer is string surgery, no torch, no GPU, no paid
+APIs, no downloads. In the ~/ai-lab venv it works exactly
+as-is. No RNG: every printed number is exact.
+
+Expected output:
+
+  Part 1 - the starting point: characters, no chunks yet
+    low     x5  as symbols: [l, o, w, &lt;/w&gt;]
+    lower   x2  as symbols: [l, o, w, e, r, &lt;/w&gt;]
+    newest  x6  as symbols: [n, e, w, e, s, t, &lt;/w&gt;]
+    widest  x3  as symbols: [w, i, d, e, s, t, &lt;/w&gt;]
+    vocab: 11 symbols - d, e, i, l, n, o, r, s, t, w, &lt;/w&gt;
+    the whole corpus at character level: 95 tokens
+    round-1 pair counts, top of the table:
+      e + s     9
+      s + t     9
+      t + &lt;/w&gt;  9
+      w + e     8
+      l + o     7
+      o + w     7
+    three pairs tie at 9 - first met in scan order wins: e + s (9)
+  Part 2 - the merge loop: 8 rounds of one move
+    round 1: e + s -&gt; es  (9 occurrences)  vocab 12  corpus 95 -&gt; 86 tokens
+    round 2: es + t -&gt; est  (9 occurrences)  vocab 13  corpus 86 -&gt; 77 tokens
+    round 3: est + &lt;/w&gt; -&gt; est&lt;/w&gt;  (9 occurrences)  vocab 14  corpus 77 -&gt; 68 tokens
+    round 4: l + o -&gt; lo  (7 occurrences)  vocab 15  corpus 68 -&gt; 61 tokens
+    round 5: lo + w -&gt; low  (7 occurrences)  vocab 16  corpus 61 -&gt; 54 tokens
+    round 6: n + e -&gt; ne  (6 occurrences)  vocab 17  corpus 54 -&gt; 48 tokens
+    round 7: ne + w -&gt; new  (6 occurrences)  vocab 18  corpus 48 -&gt; 42 tokens
+    round 8: new + est&lt;/w&gt; -&gt; newest&lt;/w&gt;  (6 occurrences)  vocab 19  corpus 42 -&gt; 36 tokens
+    final vocab: 19 symbols (ids 0-18, one embedding row each)
+    the trade: +8 vocab entries bought a corpus of 95 -&gt; 36 tokens (2.6x shorter)
+  Part 3 - encode with the learned merges: tokens != words
+    newest  -&gt; [newest&lt;/w&gt;]  ids [18]  (1 token)  the corpus favourite
+    low     -&gt; [low, &lt;/w&gt;]  ids [15, 10]  (2 tokens)  common, but never merged with &lt;/w&gt;
+    widest  -&gt; [w, i, d, est&lt;/w&gt;]  ids [9, 2, 0, 13]  (4 tokens)  rarer - stays in pieces
+    lowest  -&gt; [low, est&lt;/w&gt;]  ids [15, 13]  (2 tokens)  NEVER in training - still no UNK
+    decode check: join the pieces, &lt;/w&gt; becomes a space -
+      [low, est&lt;/w&gt;] decodes back to &#x27;lowest&#x27;
+    verdict: the vocab is learned, not designed - frequency
+      decides what earns a single token, and every string
+      stays representable. Tokens are the unit everything
+      downstream counts: context windows and API bills
+      are both denominated in them.
+&quot;&quot;&quot;
+
+CORPUS = {&quot;low&quot;: 5, &quot;lower&quot;: 2, &quot;newest&quot;: 6, &quot;widest&quot;: 3}
+END = &quot;&lt;/w&gt;&quot;          # end-of-word marker: one extra symbol
+NUM_MERGES = 8
+
+
+def pair_counts(words):
+    &quot;&quot;&quot;Count adjacent pairs across the corpus, weighted by
+    word frequency. The dict keeps first-encounter order
+    (corpus order, left to right) - that order is the
+    tie-break rule when two pairs share the top count.&quot;&quot;&quot;
+    counts = {}
+    for symbols, freq in words.items():
+        for a, b in zip(symbols, symbols[1:]):
+            counts[(a, b)] = counts.get((a, b), 0) + freq
+    return counts
+
+
+def merge_pair(symbols, pair, new):
+    &quot;&quot;&quot;One left-to-right pass replacing every non-overlapping
+    occurrence of pair with the new merged symbol.&quot;&quot;&quot;
+    merged = []
+    i = 0
+    while i &lt; len(symbols):
+        if i &lt; len(symbols) - 1 and (symbols[i], symbols[i + 1]) == pair:
+            merged.append(new)
+            i += 2
+        else:
+            merged.append(symbols[i])
+            i += 1
+    return merged
+
+
+def show(symbols):
+    return &quot;[&quot; + &quot;, &quot;.join(symbols) + &quot;]&quot;
+
+
+# ---------- Part 1: characters only, and the first call ----------
+print(&quot;Part 1 - the starting point: characters, no chunks yet&quot;)
+words = {}
+for word, freq in CORPUS.items():
+    words[tuple(list(word) + [END])] = freq
+    print(f&quot;  {word:&lt;7} x{freq}  as symbols: {show(list(word) + [END])}&quot;)
+vocab = sorted({s for symbols in words for s in symbols if s != END})
+vocab.append(END)
+total = sum(len(symbols) * freq for symbols, freq in words.items())
+print(f&quot;  vocab: {len(vocab)} symbols - {&#x27;, &#x27;.join(vocab)}&quot;)
+print(f&quot;  the whole corpus at character level: {total} tokens&quot;)
+counts = pair_counts(words)
+top = sorted(counts.items(), key=lambda kv: -kv[1])[:6]
+print(&quot;  round-1 pair counts, top of the table:&quot;)
+for (a, b), n in top:
+    print(f&quot;    {a} + {b:&lt;5} {n}&quot;)
+best, best_n = max(counts.items(), key=lambda kv: kv[1])
+print(f&quot;  three pairs tie at 9 - first met in scan order wins: &quot;
+      f&quot;{best[0]} + {best[1]} ({best_n})&quot;)
+
+# ---------- Part 2: the merge loop ----------
+print(f&quot;Part 2 - the merge loop: {NUM_MERGES} rounds of one move&quot;)
+merges = []
+for rnd in range(1, NUM_MERGES + 1):
+    counts = pair_counts(words)
+    (a, b), n = max(counts.items(), key=lambda kv: kv[1])
+    new = a + b
+    merges.append(((a, b), new))
+    words = {tuple(merge_pair(list(symbols), (a, b), new)): freq
+             for symbols, freq in words.items()}
+    vocab.append(new)
+    new_total = sum(len(symbols) * freq
+                    for symbols, freq in words.items())
+    print(f&quot;  round {rnd}: {a} + {b} -&gt; {new}  ({n} occurrences)&quot;
+          f&quot;  vocab {len(vocab)}  corpus {total} -&gt; {new_total} tokens&quot;)
+    total = new_total
+print(f&quot;  final vocab: {len(vocab)} symbols &quot;
+      f&quot;(ids 0-{len(vocab) - 1}, one embedding row each)&quot;)
+print(f&quot;  the trade: +{len(vocab) - 11} vocab entries bought a corpus &quot;
+      f&quot;of 95 -&gt; {total} tokens (2.6x shorter)&quot;)
+
+# ---------- Part 3: encode - tokens are not words ----------
+print(&quot;Part 3 - encode with the learned merges: tokens != words&quot;)
+ids = {symbol: i for i, symbol in enumerate(vocab)}
+
+
+def encode(word):
+    symbols = list(word) + [END]
+    for pair, new in merges:
+        symbols = merge_pair(symbols, pair, new)
+    return symbols
+
+
+for word, note in ((&quot;newest&quot;, &quot;the corpus favourite&quot;),
+                   (&quot;low&quot;, &quot;common, but never merged with &lt;/w&gt;&quot;),
+                   (&quot;widest&quot;, &quot;rarer - stays in pieces&quot;),
+                   (&quot;lowest&quot;, &quot;NEVER in training - still no UNK&quot;)):
+    tokens = encode(word)
+    token_ids = [ids[t] for t in tokens]
+    print(f&quot;  {word:&lt;7} -&gt; {show(tokens)}  ids {token_ids}&quot;
+          f&quot;  ({len(tokens)} token{&#x27;s&#x27; if len(tokens) &gt; 1 else &#x27;&#x27;})&quot;
+          f&quot;  {note}&quot;)
+print(&quot;  decode check: join the pieces, &lt;/w&gt; becomes a space -&quot;)
+joined = &quot;&quot;.join(encode(&quot;lowest&quot;)).replace(END, &quot; &quot;).strip()
+print(f&quot;    [low, est&lt;/w&gt;] decodes back to &#x27;{joined}&#x27;&quot;)
+print(&quot;  verdict: the vocab is learned, not designed - frequency&quot;)
+print(&quot;    decides what earns a single token, and every string&quot;)
+print(&quot;    stays representable. Tokens are the unit everything&quot;)
+print(&quot;    downstream counts: context windows and API bills&quot;)
+print(&quot;    are both denominated in them.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the starting point: characters, no chunks yet
+  low     x5  as symbols: [l, o, w, &lt;/w&gt;]
+  lower   x2  as symbols: [l, o, w, e, r, &lt;/w&gt;]
+  newest  x6  as symbols: [n, e, w, e, s, t, &lt;/w&gt;]
+  widest  x3  as symbols: [w, i, d, e, s, t, &lt;/w&gt;]
+  vocab: 11 symbols - d, e, i, l, n, o, r, s, t, w, &lt;/w&gt;
+  the whole corpus at character level: 95 tokens
+  round-1 pair counts, top of the table:
+    e + s     9
+    s + t     9
+    t + &lt;/w&gt;  9
+    w + e     8
+    l + o     7
+    o + w     7
+  three pairs tie at 9 - first met in scan order wins: e + s (9)
+Part 2 - the merge loop: 8 rounds of one move
+  round 1: e + s -&gt; es  (9 occurrences)  vocab 12  corpus 95 -&gt; 86 tokens
+  round 2: es + t -&gt; est  (9 occurrences)  vocab 13  corpus 86 -&gt; 77 tokens
+  round 3: est + &lt;/w&gt; -&gt; est&lt;/w&gt;  (9 occurrences)  vocab 14  corpus 77 -&gt; 68 tokens
+  round 4: l + o -&gt; lo  (7 occurrences)  vocab 15  corpus 68 -&gt; 61 tokens
+  round 5: lo + w -&gt; low  (7 occurrences)  vocab 16  corpus 61 -&gt; 54 tokens
+  round 6: n + e -&gt; ne  (6 occurrences)  vocab 17  corpus 54 -&gt; 48 tokens
+  round 7: ne + w -&gt; new  (6 occurrences)  vocab 18  corpus 48 -&gt; 42 tokens
+  round 8: new + est&lt;/w&gt; -&gt; newest&lt;/w&gt;  (6 occurrences)  vocab 19  corpus 42 -&gt; 36 tokens
+  final vocab: 19 symbols (ids 0-18, one embedding row each)
+  the trade: +8 vocab entries bought a corpus of 95 -&gt; 36 tokens (2.6x shorter)
+Part 3 - encode with the learned merges: tokens != words
+  newest  -&gt; [newest&lt;/w&gt;]  ids [18]  (1 token)  the corpus favourite
+  low     -&gt; [low, &lt;/w&gt;]  ids [15, 10]  (2 tokens)  common, but never merged with &lt;/w&gt;
+  widest  -&gt; [w, i, d, est&lt;/w&gt;]  ids [9, 2, 0, 13]  (4 tokens)  rarer - stays in pieces
+  lowest  -&gt; [low, est&lt;/w&gt;]  ids [15, 13]  (2 tokens)  NEVER in training - still no UNK
+  decode check: join the pieces, &lt;/w&gt; becomes a space -
+    [low, est&lt;/w&gt;] decodes back to &#x27;lowest&#x27;
+  verdict: the vocab is learned, not designed - frequency
+    decides what earns a single token, and every string
+    stays representable. Tokens are the unit everything
+    downstream counts: context windows and API bills
+    are both denominated in them.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches on all four checks: the merge sequence <code>es, est, est&lt;/w&gt;, lo, low, ne, new, newest&lt;/w&gt;</code>; final vocab <code>19</code>; corpus total <code>95 &rarr; 36</code> tokens; and the encodes &mdash; <code>newest</code> 1 token, <code>low</code> 2, <code>widest</code> 4, <code>lowest</code> exactly <code>[low, est&lt;/w&gt;]</code>. The keeper test, no notes: hand someone a new tiny corpus and call its first merge from the pair counts; state the dial in one sentence (vocab size vs sequence length); and explain why <code>lowest</code> can never produce an UNK. If you can, you own tokenization &mdash; the front door every LLM text walks through.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study Panel B of the diagram until you can reproduce the 8 merges in order, then run the code and verify just two things: round 1&rsquo;s winner (<code>e + s</code>, on the tie-break) and <code>lowest</code> encoding to <code>[low, est&lt;/w&gt;]</code>. If both land, you have the concept &mdash; the pair table and the ids are the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the tiny transformer goes back into training &mdash; and you learn to read its loss curve like a dashboard, including the moment it tells you to stop.</p>
+  </div>
+
+  <div class="footer">Streak: 43 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
