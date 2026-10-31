@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capstone: The Finance-ML System, Assembled End to End — Day 99 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 99 of 100</span>
+  <h1>Capstone: The Finance-ML System, Assembled End to End</h1>
+  <p class="outcome">Tonight you'll be able to: run the entire Phase G system as one program &mdash; Day 92's linter, Day 88's data, Day 85's features, Day 86's labels, Days 87&ndash;88's walk-forward baseline, Day 90's sizing, Day 91's gate, fills, and journal &mdash; and read the report card it prints about itself: accuracy 0.5150 vs a 0.5088 majority baseline, 127 trades, +2.15% net of costs, a kill switch that tripped four times, and a buy-and-hold line that still beat it.</p>
+
+  <h2>The one idea</h2>
+  <p>Tonight there is no new machinery at all. Day 92 drew this system on one page and shipped a linter for it; tonight the claim is narrower and stronger: <strong>the pieces compose</strong>. Every function in the file is an earlier day's, reused with its definition intact &mdash; Day 88's generator, feature builder, and barrier labeler; Day 87's purged walk-forward; Day 90's sizing formula; Day 91's gate; Day 92's audit rules, verbatim. The only new code is the plumbing between them &mdash; and the report card at the end, which is the system grading itself in public.</p>
+  <p><strong>The linter runs first (Part 1).</strong> Before a single bar is processed, Day 92's eight checks grade the config this run actually uses &mdash; triple-barrier labels, walk-forward split, 7 bps of costs, half-Kelly, kill switch armed, journal on. Eight PASS lines, and an assert: nothing below runs on a config that fails. A system that grades its own config first can't quietly start grading itself later.</p>
+  <p><strong>The seed, disclosed (Part 2).</strong> The world is Day 88's ACME process again &mdash; drift, two vol regimes, one planted mean-reversion signal at &kappa; = 0.10 &mdash; but the seed is 119, and the code says why in the open: seed 99, the first tried, sent ACME up 6.5&times; and drowned the machinery in drift. Seeds 99&ndash;120 were scanned; 119 was picked because every device in the harness fires on it &mdash; a clip, rejections, kill-switch trips &mdash; not because of its P&amp;L. Across those 22 seeds the <em>identical</em> system returned &minus;3.7% to +10.3%. Same code, different world, different report card: Days 83&ndash;84, measured on this file. The draw matters at signal level too: tonight's planted reversion measures a lag-1 autocorrelation of &minus;0.082, against Day 88's &minus;0.127. Same process, weaker weather.</p>
+  <p><strong>Reading the model (Parts 3&ndash;4).</strong> Pooled walk-forward accuracy is <strong>0.5150</strong> against a majority baseline of <strong>0.5088</strong> &mdash; an edge of +0.0062, a whisper (Day 83's word for exactly this). The folds swing from 0.3175 to 0.6508; fold 8 is a regime where the reversion simply wasn't paying, and the harness shows it instead of averaging it away. The final fold's biggest votes are against the 20-day trend (<code>mom_20d</code> &minus;0.173 &mdash; the planted reversion, right sign) diluted by a momentum-flavored <code>up_frac_14d</code> at +0.238. Partial credit, honestly reported.</p>
+  <p><strong>Reading the harness (Part 5).</strong> 127 trades. The sizing stack &mdash; half-Kelly on the model's own probability and the fold's payoff ratio, vol-targeted at 15% &mdash; asked for at most 26.9% of equity once, and the gate clipped it to the 25% cap. The kill switch tripped <strong>four times</strong> (days 900, 983, 1209, 1552; day losses of &minus;$514, &minus;$593, &minus;$519, &minus;$502 against the &minus;$400 line), flattened the position each time, and the next day's signal was rejected at the gate four times &mdash; the cooldown working as designed. Friction took $1,478.80 across the run, 7 bps a side, no exceptions.</p>
+  <p><strong>The verdict (Part 6).</strong> Strategy: <strong>+2.15%, Sharpe +0.28</strong>. Buy-and-hold over the same span: <strong>+8.41%, Sharpe +0.20</strong>. Buy-and-hold won the return &mdash; the bracket exits cap every winner and cash drags. The strategy's Sharpe is a touch higher because it sat out some of the worst weather, which is worth one sentence and no more: sizing and the kill switch bought smoothness, not victory. The capstone was never this P&amp;L. It is a pipeline whose numbers you can trust on data whose truth you do not control &mdash; point it at a real watchlist name and only the data loader changes.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It's the <strong>canary deploy with the circuit breaker armed and the audit log on</strong> &mdash; the run you do <em>after</em> the unit tests pass. Every day since 83 was a unit test: features leak-checked, labels first-touch-checked, folds purged, sizing stress-tested, gate unit-tested (Day 91, literally). Tonight is the first time the whole path runs under load at once: pre-flight checks green, traffic flowing, the breaker tripping for real and the log able to replay why. Nobody calls a canary a failure because it didn't beat the old version on day one &mdash; its job was to prove the path works with the safety systems live. That is tonight's job, and it passes.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 392" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+  </defs>
+  <text x="340" y="20" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#555">THE CAPSTONE, RUNNING &#8212; EVERY BOX IS A DAY YOU ALREADY BUILT</text>
+
+  <rect x="10" y="30" width="660" height="30" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="340" y="49" text-anchor="middle" font-size="11" fill="#1c1c1e">PRE-FLIGHT &#183; Day 92 &#8212; the linter grades this run's config first: 8 checks, 0 FAIL</text>
+
+  <rect x="10" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="85" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">DATA &#183; Days 83&#8211;88</text>
+  <text x="85" y="112" text-anchor="middle" font-size="10" fill="#555">synthetic ACME, process stated</text>
+  <rect x="180" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">FEATURES &#183; Day 85</text>
+  <text x="255" y="112" text-anchor="middle" font-size="10" fill="#555">five features, as of t</text>
+  <rect x="350" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">LABELS &#183; Day 86</text>
+  <text x="425" y="112" text-anchor="middle" font-size="10" fill="#555">first-touch, exits fixed</text>
+  <rect x="520" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">WALK-FWD &#183; Days 87&#8211;88</text>
+  <text x="595" y="112" text-anchor="middle" font-size="10" fill="#555">purged folds, dumb model</text>
+
+  <line x1="161" y1="99" x2="179" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="331" y1="99" x2="349" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="501" y1="99" x2="519" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <path d="M170,90 C176,92 178,93 178,96 C178,102 174,106 170,109 C166,106 162,102 162,96 C162,93 164,92 170,90 Z" fill="#22a355"/>
+  <path d="M166.5,98.5 L169,101.5 L174,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="170" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">POINT-IN-TIME</text>
+  <path d="M340,90 C346,92 348,93 348,96 C348,102 344,106 340,109 C336,106 332,102 332,96 C332,93 334,92 340,90 Z" fill="#22a355"/>
+  <path d="M336.5,98.5 L339,101.5 L344,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FIRST-TOUCH</text>
+  <path d="M510,90 C516,92 518,93 518,96 C518,102 514,106 510,109 C506,106 502,102 502,96 C502,93 504,92 510,90 Z" fill="#22a355"/>
+  <path d="M506.5,98.5 L509,101.5 L514,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">PURGED</text>
+
+  <line x1="595" y1="123" x2="595" y2="152" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <path d="M595,128 C601,130 603,131 603,134 C603,140 599,144 595,147 C591,144 587,140 587,134 C587,131 589,130 595,128 Z" fill="#22a355"/>
+  <path d="M591.5,136.5 L594,139.5 L599,133.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="580" y="141" text-anchor="end" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">NET OF COSTS</text>
+
+  <rect x="520" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">SIZING &#183; Day 90</text>
+  <text x="595" y="190" text-anchor="middle" font-size="10" fill="#555">&#189;-Kelly &#215; vol target</text>
+  <rect x="350" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">RISK GATE &#183; Day 91</text>
+  <text x="425" y="190" text-anchor="middle" font-size="10" fill="#555">clips, vetoes, halts</text>
+  <rect x="180" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">JOURNAL &#183; Day 91</text>
+  <text x="255" y="190" text-anchor="middle" font-size="10" fill="#555">every decision, replayable</text>
+  <rect x="10" y="154" width="150" height="46" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="85" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">PAPER FILLS</text>
+  <text x="85" y="190" text-anchor="middle" font-size="10" fill="#555">7 bps a side, always</text>
+
+  <line x1="519" y1="177" x2="501" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="349" y1="177" x2="331" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="179" y1="177" x2="161" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <path d="M510,168 C516,170 518,171 518,174 C518,180 514,184 510,187 C506,184 502,180 502,174 C502,171 504,170 510,168 Z" fill="#22a355"/>
+  <path d="M506.5,176.5 L509,179.5 L514,173.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="206" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FRACTIONAL KELLY</text>
+  <path d="M340,168 C346,170 348,171 348,174 C348,180 344,184 340,187 C336,184 332,180 332,174 C332,171 334,170 340,168 Z" fill="#22a355"/>
+  <path d="M336.5,176.5 L339,179.5 L344,173.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="206" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">CAN SAY NO</text>
+
+  <rect x="10" y="224" width="660" height="126" rx="8" fill="#f4f7fb" stroke="#0a7aff"/>
+  <text x="340" y="248" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">THE REPORT CARD &#8212; THIS RUN (SEED 119)</text>
+  <text x="30" y="274" font-size="11.5" fill="#1c1c1e">accuracy 0.5150 vs majority 0.5088 &#8212; edge +0.0062</text>
+  <text x="30" y="296" font-size="11.5" fill="#1c1c1e">trades taken 127 &#8212; 1 clipped, 4 rejected at the gate</text>
+  <text x="30" y="318" font-size="11.5" fill="#1c1c1e">friction paid $1,478.80 &#8212; 7 bps/side, every fill</text>
+  <text x="360" y="274" font-size="11.5" fill="#1c1c1e">strategy +2.15% &#183; Sharpe +0.28</text>
+  <text x="360" y="296" font-size="11.5" fill="#1c1c1e">buy-and-hold +8.41% &#183; Sharpe +0.20</text>
+  <text x="360" y="318" font-size="11.5" fill="#1c1c1e">kill switch tripped 4&#215; &#183; final state ARMED</text>
+  <text x="340" y="340" text-anchor="middle" font-size="11" font-style="italic" fill="#555">accuracy is still the least important number on this page</text>
+
+  <text x="340" y="378" text-anchor="middle" font-size="12" font-style="italic" fill="#555">Day 92 drew this system. Day 99 ran it &#8212; the honesty devices are the system.</text>
+</svg>
+
+    <div class="caption">The capstone as built: Day 92's linter clears the config before a bar is processed; Day 88's data flows through Day 85 features, Day 86 labels, and purged walk-forward folds; Day 90 sizes, Day 91's gate vetoes, Day 91's journal records, and paper fills pay friction on every trade. The panel underneath is this run's actual report card — not a target, a result.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, six parts, numpy only &mdash; it runs in about a second. <strong>Part 1</strong> is Day 92's linter, rules verbatim, against the config at the top of the file; it asserts 0 fails before anything trades. <strong>Part 2</strong> regenerates ACME (Day 88's process, seed 119 &mdash; the docstring discloses how the seed was chosen) and measures the planted signal. <strong>Part 3</strong> builds the five features and the triple-barrier labels, unchanged; each label's exit day becomes the trade's resting bracket. <strong>Part 4</strong> is the purged walk-forward with the hand-rolled logistic baseline, plus one addition: each fold reports the payoff ratio <em>b</em> of its own training labels, which Part 5's Kelly formula needs &mdash; estimated only from the past. <strong>Part 5</strong> is the harness: signal at p &ge; 0.5, half-Kelly &times; vol-target sizing, Day 91's gate (approve / clip / reject), fills at 7 bps a side, the &minus;$400 kill switch with a next-day cooldown, and a journal entry for every decision. <strong>Part 6</strong> prints the report card. Run it in <code>~/ai-lab</code>; seed 119 makes every digit reproduce exactly.</p>
+  <pre><code>&quot;&quot;&quot;Day 99 - Capstone: The Finance-ML System, Assembled End to End.
+
+Day 92 drew the whole system on one page and shipped
+a linter for it. Tonight the system RUNS - one file,
+one pass, every stage the one you already built:
+
+    lint (Day 92) -&gt; data (Days 83/88) -&gt; features
+    (Day 85) -&gt; labels (Day 86) -&gt; walk-forward
+    baseline (Days 87/88) -&gt; sizing (Day 90)
+    -&gt; risk gate + paper fills + journal (Day 91)
+    -&gt; the report card
+
+No new machinery. The capstone claim is narrower and
+stronger: the pieces compose, the honesty devices
+still fire when nobody is demonstrating them one at
+a time, and the system grades itself in public.
+
+  The data is Day 88&#x27;s ACME again - SYNTHETIC, stated
+  process, no downloads: drift mu = 0.0002, vol
+  regimes 0.9%/2.0% switching at p = 0.02/day, one
+  weak planted mean-reversion signal (KAPPA = 0.10).
+  Seed 119 was NOT drawn first. Seed 99, the first
+  tried, sent ACME up 6.5x and drowned the machinery
+  in drift; seeds 99-120 were scanned and 119 was
+  picked because every device in the harness fires
+  on it - a clip, rejections, kill-switch trips -
+  not because of its P&amp;L. Across those 22 seeds the
+  IDENTICAL system returned -3.7% to +10.3%: same
+  code, different world, different report card.
+  That spread is Days 83-84, measured on this file.
+
+  Part 1  Pre-flight: Day 92&#x27;s linter, rules verbatim,
+          against the config this run actually uses.
+          It must pass 8 of 8 before anything trades.
+  Part 2  The series, regenerated; the planted signal
+          measured before anything learns from it.
+  Part 3  Features + labels, Day 88&#x27;s code unchanged:
+          the five features, point-in-time; triple-
+          barrier labels that also fix each trade&#x27;s
+          exit (a resting bracket order, Day 91).
+  Part 4  Walk-forward, Day 88&#x27;s folds unchanged:
+          purged, z-scored on train stats, logistic
+          regression by hand, fixed lr/iters. Each
+          fold also reports b, the payoff ratio of
+          its own training labels - Part 5&#x27;s Kelly
+          input, estimated only from the past.
+  Part 5  The harness (Day 91) with sizing (Day 90):
+          signal = model prob &gt;= 0.5; stake = half-
+          Kelly on (p, b), vol-targeted, capped by
+          the gate at 25% of equity; fills pay 5 bps
+          half-spread + 2 bps slippage per side; the
+          kill switch flattens any day down $400 and
+          pauses entries the next day. Every decision
+          is journaled with what the model saw.
+  Part 6  The report card. Whatever it says, it
+          prints: accuracy vs the majority baseline,
+          trades, net return and Sharpe vs buy-and-
+          hold over the same span, friction paid,
+          kill-switch status, the linter&#x27;s verdict.
+
+Runs on the ~/ai-lab venv: numpy only (free), no
+torch needed, CPU, no CUDA, no paid APIs, no
+downloads. Seed stated (119); every number below
+reproduces exactly.
+
+Expected output:
+
+  Part 1 - pre-flight: Day 92&#x27;s linter vs this run&#x27;s config
+      PASS  Day 84  trials counted
+      PASS  Day 85  no lookahead
+      PASS  Day 86  first-touch labels
+      PASS  Day 87  walk-forward split
+      PASS  Day 88  costs charged
+      PASS  Day 90  sizing capped
+      PASS  Day 91  kill switch armed
+      PASS  Day 91  journal on
+      -&gt; 0 of 8 checks FAIL - cleared for paper
+         trading (Day 91: paper first, always). Nothing below runs
+         on a config that grades itself.
+  Part 2 - synthetic ACME (Day 88&#x27;s process, seed 119)
+    days 2016  price 98.08 -&gt; 247.83  days in high-vol regime: 953
+    planted reversion KAPPA = 0.10 -&gt; measured lag-1 autocorrelation of returns: -0.082
+    weaker than Day 88&#x27;s draw (-0.127): the signal itself has weather.
+  Part 3 - features (Day 85) + triple-barrier labels (Day 86)
+    samples 1987  features [&#x27;ret_1d&#x27;, &#x27;mom_5d&#x27;, &#x27;mom_20d&#x27;, &#x27;vol_5d&#x27;, &#x27;up_frac_14d&#x27;]
+    barriers +/- 1.0 x sigma_20 x sqrt(10), vertical barrier 10 days
+    label balance: up-first 0.555  down/time 0.445  mean holding 8.0 days
+  Part 4 - walk-forward (Day 87) + logistic regression by hand
+    fold 1: train 751 rows (purged)  test days 775-900  accuracy 0.4206  payoff b 1.19
+    fold 2: train 878 rows (purged)  test days 901-1026  accuracy 0.4603  payoff b 1.19
+    fold 3: train 1000 rows (purged)  test days 1027-1152  accuracy 0.5794  payoff b 1.13
+    fold 4: train 1127 rows (purged)  test days 1153-1278  accuracy 0.5714  payoff b 1.14
+    fold 5: train 1250 rows (purged)  test days 1279-1404  accuracy 0.5079  payoff b 1.12
+    fold 6: train 1376 rows (purged)  test days 1405-1530  accuracy 0.5079  payoff b 1.13
+    fold 7: train 1502 rows (purged)  test days 1531-1656  accuracy 0.6190  payoff b 1.16
+    fold 8: train 1628 rows (purged)  test days 1657-1782  accuracy 0.3175  payoff b 1.12
+    fold 9: train 1754 rows (purged)  test days 1783-1908  accuracy 0.6508  payoff b 1.10
+    pooled test accuracy 0.5150  majority-class baseline 0.5088
+    final fold&#x27;s weights (z-scored features):
+      ret_1d       -0.012
+      mom_5d       -0.092
+      mom_20d      -0.173
+      vol_5d       -0.022
+      up_frac_14d  +0.238
+  Part 5 - the harness runs (Days 90/91): journal excerpts
+    decisions journaled: 258 (approved 126, clipped 1, rejected 4, kill-switch trips 4)
+    first decisions:
+      day  775  BUY              APPROVED qty 74 @ 218.12 - p 0.635, stake 16.3% of equity
+      day  784  SELL             bracket exit - the label&#x27;s own exit, trade return +3.04%
+      day  785  BUY              APPROVED qty 81 @ 225.92 - p 0.657, stake 18.4% of equity
+      day  791  SELL             bracket exit - the label&#x27;s own exit, trade return -4.32%
+      day  792  BUY              APPROVED qty 61 @ 221.48 - p 0.629, stake 13.7% of equity
+      day  802  SELL             bracket exit - the label&#x27;s own exit, trade return -0.94%
+    every kill-switch trip:
+      day  900  KILL SWITCH SELL day P&amp;L $-514 &lt; -$400 - flattened, entries paused tomorrow
+      day  983  KILL SWITCH SELL day P&amp;L $-593 &lt; -$400 - flattened, entries paused tomorrow
+      day 1209  KILL SWITCH SELL day P&amp;L $-519 &lt; -$400 - flattened, entries paused tomorrow
+      day 1552  KILL SWITCH SELL day P&amp;L $-502 &lt; -$400 - flattened, entries paused tomorrow
+  Part 6 - the report card (whatever it says, it prints)
+    accuracy vs majority    0.5150 vs 0.5088  edge +0.0062
+    trades taken            127  (largest ask 26.9% of equity - the gate clipped it to 25%)
+    strategy, net of costs  +2.15%  Sharpe +0.28
+    buy-and-hold, same span +8.41%  Sharpe +0.20
+    friction paid           $1,478.80  (7 bps/side, every fill, no exceptions)
+    kill switch             tripped 4x - final state ARMED
+    pre-flight linter       0 of 8 FAIL (Part 1)
+    verdict: the machine ran end to end and every honesty
+    device in it fired at least once - clip, rejection,
+    kill switch. The edge it found is a whisper and
+    buy-and-hold still won the span. Both of those are
+    the system working. The deliverable was never this
+    P&amp;L - it is a pipeline whose numbers you can trust
+    on data whose truth you do not control. That is the
+    capstone. Tomorrow: the map of where you stand.
+&quot;&quot;&quot;
+import numpy as np
+
+# ---------- the config this run answers to ----------
+FINAL_CONFIG = {
+    &quot;trials_counted&quot;: True,      # one config, declared: this one
+    &quot;lookahead_bars&quot;: 0,
+    &quot;label_mode&quot;: &quot;triple_barrier&quot;,
+    &quot;split&quot;: &quot;walk_forward&quot;,
+    &quot;costs_bps&quot;: 7,              # 5 half-spread + 2 slippage, per side
+    &quot;kelly_fraction&quot;: 0.5,
+    &quot;kill_switch&quot;: True,
+    &quot;journal&quot;: True,
+}
+
+# ---------- data (Days 83/88: Day 88&#x27;s generator) ----------
+SEED = 119
+N_DAYS = 2016                  # ~8 years of trading days
+MU = 0.0002                    # daily drift
+KAPPA = 0.10                   # planted mean-reversion strength
+SIGMA_LO, SIGMA_HI = 0.009, 0.020
+P_SWITCH = 0.02                # vol-regime switch probability / day
+
+# ---------- labels (Day 86, as built in Day 88) ----------
+HORIZON = 10                   # vertical barrier, days
+BARRIER_MULT = 1.0             # barriers at +/- mult * sigma_t * sqrt(H)
+
+# ---------- model (Days 87/88) ----------
+TRAIN_DAYS, TEST_DAYS, STEP_DAYS = 756, 126, 126
+LR, ITERS = 0.1, 1000
+FEATURES = (&quot;ret_1d&quot;, &quot;mom_5d&quot;, &quot;mom_20d&quot;, &quot;vol_5d&quot;, &quot;up_frac_14d&quot;)
+
+# ---------- sizing (Day 90) + harness (Day 91) ----------
+START_CASH = 100_000.0
+KELLY_FRACTION = 0.5           # half-Kelly: the edge is an estimate
+TARGET_VOL = 0.15              # annualized vol target for sizing
+MAX_FRAC = 0.25                # gate cap: 25% of equity per position
+HALF_SPREAD = 0.0005           # 5 bps, every fill (Day 91)
+SLIPPAGE = 0.0002              # 2 bps adverse, every fill (Day 91)
+FRICTION = HALF_SPREAD + SLIPPAGE
+KILL_LOSS = 400.0              # daily-loss kill switch, dollars
+
+
+# ---------- Part 1: the pre-flight linter (Day 92, verbatim) ----------
+# One check per rule Phase G taught: (day, name, test, why).
+RULES = [
+    (84, &quot;trials counted&quot;,
+     lambda c: c[&quot;trials_counted&quot;],
+     &quot;uncounted trials: luck never gets priced&quot;),
+    (85, &quot;no lookahead&quot;,
+     lambda c: c[&quot;lookahead_bars&quot;] == 0,
+     &quot;features must use bars up to t, never t+1&quot;),
+    (86, &quot;first-touch labels&quot;,
+     lambda c: c[&quot;label_mode&quot;] == &quot;triple_barrier&quot;,
+     &quot;fixed-horizon labels grade trades you never took&quot;),
+    (87, &quot;walk-forward split&quot;,
+     lambda c: c[&quot;split&quot;] == &quot;walk_forward&quot;,
+     &quot;a shuffled split grades the model on the future&quot;),
+    (88, &quot;costs charged&quot;,
+     lambda c: c[&quot;costs_bps&quot;] &gt; 0,
+     &quot;free trades: Day 88&#x27;s accuracy still lost -25.01%&quot;),
+    (90, &quot;sizing capped&quot;,
+     lambda c: 0 &lt; c[&quot;kelly_fraction&quot;] &lt;= 1.0,
+     &quot;over full Kelly, one bad run ends the account&quot;),
+    (91, &quot;kill switch armed&quot;,
+     lambda c: c[&quot;kill_switch&quot;],
+     &quot;something must be able to say no, mid-flight&quot;),
+    (91, &quot;journal on&quot;,
+     lambda c: c[&quot;journal&quot;],
+     &quot;every decision logged with what the model saw&quot;),
+]
+
+
+def lint(cfg):
+    &quot;&quot;&quot;Day 92&#x27;s audit, unchanged: grade the config, count fails.&quot;&quot;&quot;
+    fails = 0
+    for day, check, test, why in RULES:
+        if test(cfg):
+            print(f&quot;    PASS  Day {day}  {check}&quot;)
+        else:
+            fails += 1
+            print(f&quot;    FAIL  Day {day}  {check} - {why}&quot;)
+    return fails
+
+
+print(&quot;Part 1 - pre-flight: Day 92&#x27;s linter vs this run&#x27;s config&quot;)
+lint_fails = lint(FINAL_CONFIG)
+print(f&quot;    -&gt; {lint_fails} of {len(RULES)} checks FAIL - &quot;
+      &quot;cleared for paper&quot;)
+print(&quot;       trading (Day 91: paper first, always). &quot;
+      &quot;Nothing below runs&quot;)
+print(&quot;       on a config that grades itself.&quot;)
+assert lint_fails == 0
+
+
+# ---------- Part 2: the series, process stated (Day 88) ----------
+def generate_series():
+    &quot;&quot;&quot;ACME: drift + two vol regimes + one planted signal.&quot;&quot;&quot;
+    rng = np.random.default_rng(SEED)
+    sigma = np.empty(N_DAYS)
+    state = 0
+    for t in range(N_DAYS):
+        if rng.random() &lt; P_SWITCH:
+            state = 1 - state
+        sigma[t] = SIGMA_HI if state else SIGMA_LO
+    eps = rng.standard_normal(N_DAYS)
+    r = np.empty(N_DAYS)
+    prev = 0.0
+    for t in range(N_DAYS):
+        r[t] = MU - KAPPA * (prev - MU) + sigma[t] * eps[t]
+        prev = r[t]
+    return r, 100.0 * np.exp(np.cumsum(r)), sigma
+
+
+r, price, sigma = generate_series()
+print(&quot;Part 2 - synthetic ACME (Day 88&#x27;s process, seed 119)&quot;)
+print(f&quot;  days {N_DAYS}  price {price[0]:.2f} -&gt; {price[-1]:.2f}  &quot;
+      f&quot;days in high-vol regime: {(sigma == SIGMA_HI).sum()}&quot;)
+ac1 = np.corrcoef(r[:-1], r[1:])[0, 1]
+print(f&quot;  planted reversion KAPPA = {KAPPA:.2f} -&gt; measured lag-1 &quot;
+      f&quot;autocorrelation of returns: {ac1:+.3f}&quot;)
+print(&quot;  weaker than Day 88&#x27;s draw (-0.127): the signal itself &quot;
+      &quot;has weather.&quot;)
+
+
+# ---------- Part 3: features (Day 85) + labels (Day 86) ----------
+def build_features(r):
+    &quot;&quot;&quot;One row per day t (t &gt;= 19), data up to t only (Day 85).
+    The same five features as Days 32 and 88.&quot;&quot;&quot;
+    rows = []
+    for t in range(19, len(r)):
+        rows.append([
+            r[t],                                   # ret_1d
+            r[t - 4:t + 1].mean(),                  # mom_5d
+            r[t - 19:t + 1].mean(),                 # mom_20d
+            r[t - 4:t + 1].std(),                   # vol_5d
+            (r[t - 13:t + 1] &gt; 0).mean(),           # up_frac_14d
+        ])
+    return np.array(rows), np.arange(19, len(r))
+
+
+def triple_barrier(price, r, t):
+    &quot;&quot;&quot;Day 86: from close t, first barrier touched wins.
+    Returns (label 1/0, exit day index, realized simple
+    return). The exits double as the trade&#x27;s resting
+    bracket order - set at entry, never revised.&quot;&quot;&quot;
+    sig = r[t - 19:t + 1].std()
+    bar = BARRIER_MULT * sig * np.sqrt(HORIZON)
+    entry = price[t]
+    for s in range(1, HORIZON + 1):
+        cum = price[t + s] / entry - 1.0
+        if cum &gt;= bar:
+            return 1, t + s, cum
+        if cum &lt;= -bar:
+            return 0, t + s, cum
+    cum = price[t + HORIZON] / entry - 1.0
+    return (1 if cum &gt; 0 else 0), t + HORIZON, cum
+
+
+X, days = build_features(r)
+keep = days + HORIZON &lt; N_DAYS
+X, days = X[keep], days[keep]
+labels, exits, rets = [], [], []
+for t in days:
+    lab, ex, ret = triple_barrier(price, r, int(t))
+    labels.append(lab)
+    exits.append(ex)
+    rets.append(ret)
+y = np.array(labels)
+exit_day = np.array(exits)
+exit_ret = np.array(rets)
+
+print(&quot;Part 3 - features (Day 85) + triple-barrier labels (Day 86)&quot;)
+print(f&quot;  samples {len(y)}  features {list(FEATURES)}&quot;)
+print(f&quot;  barriers +/- {BARRIER_MULT:.1f} x sigma_20 x sqrt({HORIZON}), &quot;
+      f&quot;vertical barrier {HORIZON} days&quot;)
+print(f&quot;  label balance: up-first {y.mean():.3f}  down/time &quot;
+      f&quot;{1 - y.mean():.3f}  mean holding {(exit_day - days).mean():.1f} days&quot;)
+
+
+# ---------- Part 4: walk-forward + the baseline (Days 87/88) ----------
+def sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
+
+
+def train_logreg(Xtr, ytr):
+    &quot;&quot;&quot;Full-batch GD, fixed lr/iters/zero init - no knobs turned.&quot;&quot;&quot;
+    w = np.zeros(Xtr.shape[1])
+    b = 0.0
+    for _ in range(ITERS):
+        p = sigmoid(Xtr @ w + b)
+        g = p - ytr
+        w -= LR * (Xtr.T @ g) / len(ytr)
+        b -= LR * g.mean()
+    return w, b
+
+
+def walk_forward():
+    &quot;&quot;&quot;Expanding folds, purged (Day 87); per fold, also the
+    payoff ratio b of its training labels (Day 90&#x27;s input).&quot;&quot;&quot;
+    folds = []
+    test_lo, fold = TRAIN_DAYS, 0
+    while test_lo + TEST_DAYS &lt;= len(y):
+        test_hi = test_lo + TEST_DAYS
+        tr = np.arange(0, test_lo)
+        tr = tr[exit_day[tr] &lt; days[test_lo]]   # purge label-peekers
+        mu_x, sd_x = X[tr].mean(0), X[tr].std(0) + 1e-12
+        w, b0 = train_logreg((X[tr] - mu_x) / sd_x, y[tr])
+        p = sigmoid(((X[test_lo:test_hi] - mu_x) / sd_x) @ w + b0)
+        wins = exit_ret[tr][y[tr] == 1]
+        losses = exit_ret[tr][y[tr] == 0]
+        folds.append({
+            &quot;fold&quot;: fold + 1, &quot;ntr&quot;: len(tr),
+            &quot;acc&quot;: ((p &gt;= 0.5).astype(int)
+                    == y[test_lo:test_hi]).mean(),
+            &quot;lo&quot;: test_lo, &quot;hi&quot;: test_hi, &quot;probs&quot;: p, &quot;w&quot;: w,
+            &quot;b&quot;: wins.mean() / abs(losses.mean()),
+        })
+        fold += 1
+        test_lo += STEP_DAYS
+    return folds
+
+
+folds = walk_forward()
+print(&quot;Part 4 - walk-forward (Day 87) + logistic regression by hand&quot;)
+for f in folds:
+    print(f&quot;  fold {f[&#x27;fold&#x27;]}: train {f[&#x27;ntr&#x27;]} rows (purged)  &quot;
+          f&quot;test days {days[f[&#x27;lo&#x27;]]}-{days[f[&#x27;hi&#x27;] - 1]}  &quot;
+          f&quot;accuracy {f[&#x27;acc&#x27;]:.4f}  payoff b {f[&#x27;b&#x27;]:.2f}&quot;)
+true_all = np.concatenate([y[f[&quot;lo&quot;]:f[&quot;hi&quot;]] for f in folds])
+pred_all = np.concatenate([(f[&quot;probs&quot;] &gt;= 0.5).astype(int)
+                             for f in folds])
+pooled = (pred_all == true_all).mean()
+baseline = max(true_all.mean(), 1 - true_all.mean())
+print(f&quot;  pooled test accuracy {pooled:.4f}  &quot;
+      f&quot;majority-class baseline {baseline:.4f}&quot;)
+print(&quot;  final fold&#x27;s weights (z-scored features):&quot;)
+for name, wi in zip(FEATURES, folds[-1][&quot;w&quot;]):
+    print(f&quot;    {name:&lt;12} {wi:+.3f}&quot;)
+
+
+# ---------- Part 5: sizing (Day 90) + the harness (Day 91) ----------
+def size_position(p, b, sig_t):
+    &quot;&quot;&quot;Day 90: f* = p - (1-p)/b, halved (the edge is an
+    estimate), then vol-targeted: stake scales down as
+    trailing vol rises above the 15% target. Returns
+    (f_star, stake fraction before the gate&#x27;s cap).&quot;&quot;&quot;
+    f_star = min(max(p - (1.0 - p) / b, 0.0), 1.0)
+    vol_mult = min(1.0, TARGET_VOL / (sig_t * np.sqrt(252)))
+    return f_star, KELLY_FRACTION * f_star * vol_mult
+
+
+class RiskGate:
+    &quot;&quot;&quot;Day 91&#x27;s gate, denominated in equity fractions.
+    Deterministic admission control - no model in here.&quot;&quot;&quot;
+
+    def review(self, frac, halted):
+        if halted:
+            return &quot;REJECTED&quot;, 0.0, &quot;kill switch: cooling down&quot;
+        if frac &gt; MAX_FRAC:
+            return &quot;APPROVED-CLIPPED&quot;, MAX_FRAC, \
+                f&quot;requested {frac:.1%} &gt; cap {MAX_FRAC:.0%}&quot;
+        return &quot;APPROVED&quot;, frac, &quot;within limits&quot;
+
+
+def run_harness():
+    &quot;&quot;&quot;Paper trading over the walk-forward test span.&quot;&quot;&quot;
+    signals = {}
+    for f in folds:
+        for j in range(f[&quot;lo&quot;], f[&quot;hi&quot;]):
+            signals[int(days[j])] = (float(f[&quot;probs&quot;][j - f[&quot;lo&quot;]]),
+                                     int(exit_day[j]), f[&quot;b&quot;],
+                                     float(exit_ret[j]))
+    start = int(days[folds[0][&quot;lo&quot;]])
+    end = int(max(exit_day[folds[0][&quot;lo&quot;]:folds[-1][&quot;hi&quot;]]))
+    gate = RiskGate()
+    cash, pos, entry = START_CASH, 0, None
+    last_exit, cooldown = -1, -1
+    friction_paid, trips, max_stake = 0.0, 0, 0.0
+    journal = []
+    counts = {&quot;APPROVED&quot;: 0, &quot;APPROVED-CLIPPED&quot;: 0,
+              &quot;REJECTED&quot;: 0, &quot;KILL&quot;: 0}
+    equity_curve, prev_eq = [], START_CASH
+
+    def log(day, event, detail):
+        journal.append((day, event, detail))
+
+    for t in range(start, end + 1):
+        mid = price[t]
+        if pos &gt; 0 and t == entry[&quot;exit_day&quot;]:      # bracket exit
+            fill = mid * (1 - FRICTION)
+            cash += pos * fill
+            friction_paid += pos * mid * FRICTION
+            log(t, &quot;SELL&quot;, f&quot;bracket exit - the label&#x27;s own exit, &quot;
+                           f&quot;trade return {entry[&#x27;ret&#x27;]:+.2%}&quot;)
+            pos, last_exit, entry = 0, t, None
+        day_pnl = (cash + pos * mid) - prev_eq      # kill switch
+        if pos &gt; 0 and day_pnl &lt; -KILL_LOSS:
+            fill = mid * (1 - FRICTION)
+            cash += pos * fill
+            friction_paid += pos * mid * FRICTION
+            log(t, &quot;KILL SWITCH SELL&quot;,
+                f&quot;day P&amp;L ${day_pnl:,.0f} &lt; -${KILL_LOSS:,.0f} - &quot;
+                &quot;flattened, entries paused tomorrow&quot;)
+            counts[&quot;KILL&quot;] += 1
+            trips += 1
+            pos, last_exit, entry = 0, t, None
+            cooldown = t + 1
+        if pos == 0 and t &gt; last_exit and t in signals:
+            p, exit_sched, b, lab_ret = signals[t]
+            if p &gt;= 0.5:
+                f_star, frac = size_position(
+                    p, b, r[t - 19:t + 1].std())
+                if frac &lt;= 0.0:
+                    log(t, &quot;NO BET&quot;, f&quot;Kelly f* = {f_star:.3f} at &quot;
+                                     f&quot;p = {p:.3f}, b = {b:.2f}&quot;)
+                else:
+                    verdict, ok, _ = gate.review(frac,
+                                                 t == cooldown)
+                    counts[verdict] += 1
+                    max_stake = max(max_stake, frac)
+                    if ok &gt; 0.0:
+                        qty = int(ok * cash / mid)
+                        fill = mid * (1 + FRICTION)
+                        cash -= qty * fill
+                        friction_paid += qty * mid * FRICTION
+                        pos = qty
+                        entry = {&quot;exit_day&quot;: exit_sched,
+                                 &quot;ret&quot;: lab_ret}
+                        log(t, &quot;BUY&quot;, f&quot;{verdict} qty {qty} @ &quot;
+                                      f&quot;{fill:.2f} - p {p:.3f}, &quot;
+                                      f&quot;stake {ok:.1%} of equity&quot;)
+                    else:
+                        log(t, &quot;BUY (no fill)&quot;, f&quot;{verdict} - &quot;
+                                                &quot;kill-switch cooldown&quot;)
+        equity_curve.append(cash + pos * mid)
+        prev_eq = equity_curve[-1]
+    return {
+        &quot;start&quot;: start, &quot;end&quot;: end, &quot;journal&quot;: journal,
+        &quot;counts&quot;: counts, &quot;trips&quot;: trips,
+        &quot;friction&quot;: friction_paid, &quot;max_stake&quot;: max_stake,
+        &quot;equity&quot;: np.array(equity_curve),
+        &quot;trades&quot;: counts[&quot;APPROVED&quot;] + counts[&quot;APPROVED-CLIPPED&quot;],
+    }
+
+
+res = run_harness()
+print(&quot;Part 5 - the harness runs (Days 90/91): journal excerpts&quot;)
+print(f&quot;  decisions journaled: {len(res[&#x27;journal&#x27;])} &quot;
+      f&quot;(approved {res[&#x27;counts&#x27;][&#x27;APPROVED&#x27;]}, &quot;
+      f&quot;clipped {res[&#x27;counts&#x27;][&#x27;APPROVED-CLIPPED&#x27;]}, &quot;
+      f&quot;rejected {res[&#x27;counts&#x27;][&#x27;REJECTED&#x27;]}, &quot;
+      f&quot;kill-switch trips {res[&#x27;counts&#x27;][&#x27;KILL&#x27;]})&quot;)
+print(&quot;  first decisions:&quot;)
+for d, ev, det in res[&quot;journal&quot;][:6]:
+    print(f&quot;    day {d:&gt;4}  {ev:&lt;16} {det}&quot;)
+print(&quot;  every kill-switch trip:&quot;)
+for d, ev, det in res[&quot;journal&quot;]:
+    if ev.startswith(&quot;KILL&quot;):
+        print(f&quot;    day {d:&gt;4}  {ev:&lt;16} {det}&quot;)
+
+
+# ---------- Part 6: the report card ----------
+def sharpe(daily):
+    return daily.mean() / (daily.std() + 1e-12) * np.sqrt(252)
+
+
+eq = res[&quot;equity&quot;]
+strat_ret = eq[-1] / START_CASH - 1.0
+strat_sh = sharpe(np.diff(eq) / eq[:-1])
+bh_seg = price[res[&quot;start&quot;]:res[&quot;end&quot;] + 1]
+bh_ret = bh_seg[-1] / bh_seg[0] - 1.0
+bh_sh = sharpe(bh_seg[1:] / bh_seg[:-1] - 1.0)
+kill_state = (&quot;armed, never tripped&quot; if res[&quot;trips&quot;] == 0 else
+              f&quot;tripped {res[&#x27;trips&#x27;]}x - final state ARMED&quot;)
+
+print(&quot;Part 6 - the report card (whatever it says, it prints)&quot;)
+print(f&quot;  accuracy vs majority    {pooled:.4f} vs {baseline:.4f}  &quot;
+      f&quot;edge {pooled - baseline:+.4f}&quot;)
+print(f&quot;  trades taken            {res[&#x27;trades&#x27;]}  &quot;
+      f&quot;(largest ask {res[&#x27;max_stake&#x27;]:.1%} of equity - &quot;
+      f&quot;the gate clipped it to {MAX_FRAC:.0%})&quot;)
+print(f&quot;  strategy, net of costs  {strat_ret * 100:+.2f}%  &quot;
+      f&quot;Sharpe {strat_sh:+.2f}&quot;)
+print(f&quot;  buy-and-hold, same span {bh_ret * 100:+.2f}%  &quot;
+      f&quot;Sharpe {bh_sh:+.2f}&quot;)
+print(f&quot;  friction paid           ${res[&#x27;friction&#x27;]:,.2f}  &quot;
+      f&quot;({FINAL_CONFIG[&#x27;costs_bps&#x27;]} bps/side, every fill, &quot;
+      &quot;no exceptions)&quot;)
+print(f&quot;  kill switch             {kill_state}&quot;)
+print(f&quot;  pre-flight linter       {lint_fails} of {len(RULES)} &quot;
+      &quot;FAIL (Part 1)&quot;)
+print(&quot;  verdict: the machine ran end to end and every honesty&quot;)
+print(&quot;  device in it fired at least once - clip, rejection,&quot;)
+print(&quot;  kill switch. The edge it found is a whisper and&quot;)
+print(&quot;  buy-and-hold still won the span. Both of those are&quot;)
+print(&quot;  the system working. The deliverable was never this&quot;)
+print(&quot;  P&amp;L - it is a pipeline whose numbers you can trust&quot;)
+print(&quot;  on data whose truth you do not control. That is the&quot;)
+print(&quot;  capstone. Tomorrow: the map of where you stand.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - pre-flight: Day 92&#x27;s linter vs this run&#x27;s config
+    PASS  Day 84  trials counted
+    PASS  Day 85  no lookahead
+    PASS  Day 86  first-touch labels
+    PASS  Day 87  walk-forward split
+    PASS  Day 88  costs charged
+    PASS  Day 90  sizing capped
+    PASS  Day 91  kill switch armed
+    PASS  Day 91  journal on
+    -&gt; 0 of 8 checks FAIL - cleared for paper
+       trading (Day 91: paper first, always). Nothing below runs
+       on a config that grades itself.
+Part 2 - synthetic ACME (Day 88&#x27;s process, seed 119)
+  days 2016  price 98.08 -&gt; 247.83  days in high-vol regime: 953
+  planted reversion KAPPA = 0.10 -&gt; measured lag-1 autocorrelation of returns: -0.082
+  weaker than Day 88&#x27;s draw (-0.127): the signal itself has weather.
+Part 3 - features (Day 85) + triple-barrier labels (Day 86)
+  samples 1987  features [&#x27;ret_1d&#x27;, &#x27;mom_5d&#x27;, &#x27;mom_20d&#x27;, &#x27;vol_5d&#x27;, &#x27;up_frac_14d&#x27;]
+  barriers +/- 1.0 x sigma_20 x sqrt(10), vertical barrier 10 days
+  label balance: up-first 0.555  down/time 0.445  mean holding 8.0 days
+Part 4 - walk-forward (Day 87) + logistic regression by hand
+  fold 1: train 751 rows (purged)  test days 775-900  accuracy 0.4206  payoff b 1.19
+  fold 2: train 878 rows (purged)  test days 901-1026  accuracy 0.4603  payoff b 1.19
+  fold 3: train 1000 rows (purged)  test days 1027-1152  accuracy 0.5794  payoff b 1.13
+  fold 4: train 1127 rows (purged)  test days 1153-1278  accuracy 0.5714  payoff b 1.14
+  fold 5: train 1250 rows (purged)  test days 1279-1404  accuracy 0.5079  payoff b 1.12
+  fold 6: train 1376 rows (purged)  test days 1405-1530  accuracy 0.5079  payoff b 1.13
+  fold 7: train 1502 rows (purged)  test days 1531-1656  accuracy 0.6190  payoff b 1.16
+  fold 8: train 1628 rows (purged)  test days 1657-1782  accuracy 0.3175  payoff b 1.12
+  fold 9: train 1754 rows (purged)  test days 1783-1908  accuracy 0.6508  payoff b 1.10
+  pooled test accuracy 0.5150  majority-class baseline 0.5088
+  final fold&#x27;s weights (z-scored features):
+    ret_1d       -0.012
+    mom_5d       -0.092
+    mom_20d      -0.173
+    vol_5d       -0.022
+    up_frac_14d  +0.238
+Part 5 - the harness runs (Days 90/91): journal excerpts
+  decisions journaled: 258 (approved 126, clipped 1, rejected 4, kill-switch trips 4)
+  first decisions:
+    day  775  BUY              APPROVED qty 74 @ 218.12 - p 0.635, stake 16.3% of equity
+    day  784  SELL             bracket exit - the label&#x27;s own exit, trade return +3.04%
+    day  785  BUY              APPROVED qty 81 @ 225.92 - p 0.657, stake 18.4% of equity
+    day  791  SELL             bracket exit - the label&#x27;s own exit, trade return -4.32%
+    day  792  BUY              APPROVED qty 61 @ 221.48 - p 0.629, stake 13.7% of equity
+    day  802  SELL             bracket exit - the label&#x27;s own exit, trade return -0.94%
+  every kill-switch trip:
+    day  900  KILL SWITCH SELL day P&amp;L $-514 &lt; -$400 - flattened, entries paused tomorrow
+    day  983  KILL SWITCH SELL day P&amp;L $-593 &lt; -$400 - flattened, entries paused tomorrow
+    day 1209  KILL SWITCH SELL day P&amp;L $-519 &lt; -$400 - flattened, entries paused tomorrow
+    day 1552  KILL SWITCH SELL day P&amp;L $-502 &lt; -$400 - flattened, entries paused tomorrow
+Part 6 - the report card (whatever it says, it prints)
+  accuracy vs majority    0.5150 vs 0.5088  edge +0.0062
+  trades taken            127  (largest ask 26.9% of equity - the gate clipped it to 25%)
+  strategy, net of costs  +2.15%  Sharpe +0.28
+  buy-and-hold, same span +8.41%  Sharpe +0.20
+  friction paid           $1,478.80  (7 bps/side, every fill, no exceptions)
+  kill switch             tripped 4x - final state ARMED
+  pre-flight linter       0 of 8 FAIL (Part 1)
+  verdict: the machine ran end to end and every honesty
+  device in it fired at least once - clip, rejection,
+  kill switch. The edge it found is a whisper and
+  buy-and-hold still won the span. Both of those are
+  the system working. The deliverable was never this
+  P&amp;L - it is a pipeline whose numbers you can trust
+  on data whose truth you do not control. That is the
+  capstone. Tomorrow: the map of where you stand.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches the expected output exactly: 8 PASS lines, pooled accuracy 0.5150 over the 0.5088 baseline, 127 trades, the four kill-switch trips on days 900, 983, 1209, and 1552, and a report card that reads +2.15% / +0.28 against buy-and-hold's +8.41% / +0.20. The keeper test: point at any line of Part 6 and name the day that produced it and the honesty device that kept it true &mdash; linter, point-in-time, first-touch, purge, fractional Kelly, gate, journal. If you can do that for all seven lines without notes, you don't just have a capstone. You have the checklist you'll run on every trading system anyone shows you for the rest of your career.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study the diagram, then run the code and read only Part 1 (the eight PASS lines) and Part 6 (the report card). Say the verdict out loud once &mdash; the machine works, the edge is a whisper, buy-and-hold won the span, and both facts are the system working. Parts 2&ndash;5 are the victory lap: machinery you already own, running in formation.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow is Day 100 &mdash; no new machinery. The map: where 100 days leaves you, what you'd show for it, and what the next 100 days should be.</p>
+  </div>
+
+  <div class="footer">Streak: 99 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

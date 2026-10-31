@@ -1,0 +1,79 @@
+<svg viewBox="0 0 680 392" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+  </defs>
+  <text x="340" y="20" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#555">THE CAPSTONE, RUNNING &#8212; EVERY BOX IS A DAY YOU ALREADY BUILT</text>
+
+  <rect x="10" y="30" width="660" height="30" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="340" y="49" text-anchor="middle" font-size="11" fill="#1c1c1e">PRE-FLIGHT &#183; Day 92 &#8212; the linter grades this run's config first: 8 checks, 0 FAIL</text>
+
+  <rect x="10" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="85" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">DATA &#183; Days 83&#8211;88</text>
+  <text x="85" y="112" text-anchor="middle" font-size="10" fill="#555">synthetic ACME, process stated</text>
+  <rect x="180" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">FEATURES &#183; Day 85</text>
+  <text x="255" y="112" text-anchor="middle" font-size="10" fill="#555">five features, as of t</text>
+  <rect x="350" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">LABELS &#183; Day 86</text>
+  <text x="425" y="112" text-anchor="middle" font-size="10" fill="#555">first-touch, exits fixed</text>
+  <rect x="520" y="76" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="96" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">WALK-FWD &#183; Days 87&#8211;88</text>
+  <text x="595" y="112" text-anchor="middle" font-size="10" fill="#555">purged folds, dumb model</text>
+
+  <line x1="161" y1="99" x2="179" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="331" y1="99" x2="349" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="501" y1="99" x2="519" y2="99" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <path d="M170,90 C176,92 178,93 178,96 C178,102 174,106 170,109 C166,106 162,102 162,96 C162,93 164,92 170,90 Z" fill="#22a355"/>
+  <path d="M166.5,98.5 L169,101.5 L174,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="170" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">POINT-IN-TIME</text>
+  <path d="M340,90 C346,92 348,93 348,96 C348,102 344,106 340,109 C336,106 332,102 332,96 C332,93 334,92 340,90 Z" fill="#22a355"/>
+  <path d="M336.5,98.5 L339,101.5 L344,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FIRST-TOUCH</text>
+  <path d="M510,90 C516,92 518,93 518,96 C518,102 514,106 510,109 C506,106 502,102 502,96 C502,93 504,92 510,90 Z" fill="#22a355"/>
+  <path d="M506.5,98.5 L509,101.5 L514,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="128" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">PURGED</text>
+
+  <line x1="595" y1="123" x2="595" y2="152" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <path d="M595,128 C601,130 603,131 603,134 C603,140 599,144 595,147 C591,144 587,140 587,134 C587,131 589,130 595,128 Z" fill="#22a355"/>
+  <path d="M591.5,136.5 L594,139.5 L599,133.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="580" y="141" text-anchor="end" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">NET OF COSTS</text>
+
+  <rect x="520" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">SIZING &#183; Day 90</text>
+  <text x="595" y="190" text-anchor="middle" font-size="10" fill="#555">&#189;-Kelly &#215; vol target</text>
+  <rect x="350" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">RISK GATE &#183; Day 91</text>
+  <text x="425" y="190" text-anchor="middle" font-size="10" fill="#555">clips, vetoes, halts</text>
+  <rect x="180" y="154" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">JOURNAL &#183; Day 91</text>
+  <text x="255" y="190" text-anchor="middle" font-size="10" fill="#555">every decision, replayable</text>
+  <rect x="10" y="154" width="150" height="46" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="85" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">PAPER FILLS</text>
+  <text x="85" y="190" text-anchor="middle" font-size="10" fill="#555">7 bps a side, always</text>
+
+  <line x1="519" y1="177" x2="501" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="349" y1="177" x2="331" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="179" y1="177" x2="161" y2="177" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <path d="M510,168 C516,170 518,171 518,174 C518,180 514,184 510,187 C506,184 502,180 502,174 C502,171 504,170 510,168 Z" fill="#22a355"/>
+  <path d="M506.5,176.5 L509,179.5 L514,173.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="206" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FRACTIONAL KELLY</text>
+  <path d="M340,168 C346,170 348,171 348,174 C348,180 344,184 340,187 C336,184 332,180 332,174 C332,171 334,170 340,168 Z" fill="#22a355"/>
+  <path d="M336.5,176.5 L339,179.5 L344,173.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="206" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">CAN SAY NO</text>
+
+  <rect x="10" y="224" width="660" height="126" rx="8" fill="#f4f7fb" stroke="#0a7aff"/>
+  <text x="340" y="248" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">THE REPORT CARD &#8212; THIS RUN (SEED 119)</text>
+  <text x="30" y="274" font-size="11.5" fill="#1c1c1e">accuracy 0.5150 vs majority 0.5088 &#8212; edge +0.0062</text>
+  <text x="30" y="296" font-size="11.5" fill="#1c1c1e">trades taken 127 &#8212; 1 clipped, 4 rejected at the gate</text>
+  <text x="30" y="318" font-size="11.5" fill="#1c1c1e">friction paid $1,478.80 &#8212; 7 bps/side, every fill</text>
+  <text x="360" y="274" font-size="11.5" fill="#1c1c1e">strategy +2.15% &#183; Sharpe +0.28</text>
+  <text x="360" y="296" font-size="11.5" fill="#1c1c1e">buy-and-hold +8.41% &#183; Sharpe +0.20</text>
+  <text x="360" y="318" font-size="11.5" fill="#1c1c1e">kill switch tripped 4&#215; &#183; final state ARMED</text>
+  <text x="340" y="340" text-anchor="middle" font-size="11" font-style="italic" fill="#555">accuracy is still the least important number on this page</text>
+
+  <text x="340" y="378" text-anchor="middle" font-size="12" font-style="italic" fill="#555">Day 92 drew this system. Day 99 ran it &#8212; the honesty devices are the system.</text>
+</svg>
