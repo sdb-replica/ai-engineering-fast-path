@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequence Modeling Recap: Why Attention Replaced Recurrence — Day 36 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 36 of 100</span>
+  <h1>Sequence Modeling Recap: Why Attention Replaced Recurrence</h1>
+  <p class="outcome">Tonight you'll be able to: name the three structural problems that capped the RNN &mdash; the chain, the fade, and the squeeze &mdash; measure two of them yourself, and state exactly what shape of mechanism a fix has to have.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase C opens with an audit, not a new model. Day 28 gave you the best sequence machine of the pre-2017 world: one recurrent cell whose hidden state <code>h</code> is rewritten at every step, the same weights everywhere. It handled any length and it learned short patterns well. Today we ask the question the field asked in 2017: why did that design hit a wall &mdash; not a &ldquo;needs more tuning&rdquo; wall, a <strong>structural</strong> one? Three reasons, and you will measure two of them yourself.</p>
+<p><strong>Problem 1 &mdash; the chain (sequential).</strong> <code>h<sub>t</sub></code> is built from <code>h<sub>t&minus;1</sub></code>, so step <em>t</em> cannot start until step <em>t&minus;1</em> has finished. It is a linked list, not an array. Remember Day 13: GPUs win when thousands of <em>independent</em> operations run side by side. A chain offers exactly one operation at a time, so most of the machine idles &mdash; and the wait grows linearly with the sequence. For language, where T runs to thousands, the chain <em>is</em> the job.</p>
+<p><strong>Problem 2 &mdash; the fade (distance).</strong> Day 28 measured the <em>gradient</em> arriving about 100&times; weaker after 10 hops back. The forward direction is worse: the summary itself is rewritten at every step, so distant information is not merely hard to learn from &mdash; it is physically overwritten. Part 2 makes it visceral: change <em>only</em> the first token, +1 vs &minus;1, keep everything after it identical, and 19 steps later the final state cannot tell the two pasts apart. Gated cells (LSTM/GRU) were the field&rsquo;s patch &mdash; they protect a memory lane and genuinely help &mdash; but they keep the chain and the squeeze, and the fade still wins at long range.</p>
+<p><strong>Problem 3 &mdash; the squeeze (fixed-size state).</strong> <code>h</code> has a fixed size: 4 numbers in today&rsquo;s toy, maybe 1,024 in a serious RNN &mdash; fixed, while T is not. Everything the model will ever know about a 10,000-token document must be compressed into that one vector, and the compression is lossy in exactly the wrong place: the oldest content has survived the most rewrites. Problem 2 feeds problem 3. It is a fixed-size context header trying to carry an unbounded conversation.</p>
+<p><strong>The fix, specified before it is built.</strong> Write the requirements the way you would spec a system: (1) positions computable <strong>in parallel</strong> &mdash; no chain; (2) any position reachable from any other in <strong>one hop</strong> &mdash; no compounding fade; (3) <strong>no fixed-size summary</strong> &mdash; the whole sequence stays available, and each step looks at the parts it needs. A mechanism with exactly that shape exists, and its name is <strong>attention</strong>. The 2017 paper that swapped recurrence for it is titled, bluntly, <em>Attention Is All You Need</em>. How a step decides what to look at is tomorrow&rsquo;s lesson. One honest note: looking at everything is not free &mdash; a later day prices it. Nothing is free; the question is always what you pay for what you get.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think of recurrence as a request chained through T services: each hop hands the next a <strong>fixed-size context header</strong>, every hop can drop fields, and the last service can only know what survived the header. Latency is the sum of all hops, and hop 1 is reachable only through hops 2&hellip;T. The alternative shape is a shared store: every step writes its record where it stays, and the step that needs the past reads the exact records it wants &mdash; directly, in parallel, nothing dropped in transit.</p>
+<p>Trading version: an <strong>EMA line vs the full tape</strong>. Recurrence reads the market through one rolling summary that each candle rewrites. Attention keeps the whole tape on screen and lets the current candle reach back to the exact earlier candle that matters.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Why recurrence hits a wall -- and the shape of the fix</text>
+<rect x="8" y="44" width="664" height="196" rx="10" fill="#fffdf7" stroke="#d97706" stroke-width="1.5"/>
+<text x="340" y="68" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#9a6b00">RECURRENCE -- one cell, chained</text>
+<rect x="64" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="114" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 1</text>
+<text x="114" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="114" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="180" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="230" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 2</text>
+<text x="230" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="230" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="296" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="346" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 3</text>
+<text x="346" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="346" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="412" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="462" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 4</text>
+<text x="462" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="462" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="528" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="578" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 5</text>
+<text x="578" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="578" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="14" y="97" width="38" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="33" y="117" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">h0</text>
+<line x1="52" y1="113" x2="60" y2="113" stroke="#555555" stroke-width="2"/><path d="M 64 113 L 57 109.5 L 57 116.5 Z" fill="#555555"/>
+<line x1="164" y1="113" x2="176" y2="113" stroke="#555555" stroke-width="2"/><path d="M 180 113 L 173 109.5 L 173 116.5 Z" fill="#555555"/>
+<text x="172.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h1</text>
+<line x1="280" y1="113" x2="292" y2="113" stroke="#555555" stroke-width="2"/><path d="M 296 113 L 289 109.5 L 289 116.5 Z" fill="#555555"/>
+<text x="288.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h2</text>
+<line x1="396" y1="113" x2="408" y2="113" stroke="#555555" stroke-width="2"/><path d="M 412 113 L 405 109.5 L 405 116.5 Z" fill="#555555"/>
+<text x="404.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h3</text>
+<line x1="512" y1="113" x2="524" y2="113" stroke="#555555" stroke-width="2"/><path d="M 528 113 L 521 109.5 L 521 116.5 Z" fill="#555555"/>
+<text x="520.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h4</text>
+<line x1="114" y1="176" x2="114" y2="148" stroke="#555555" stroke-width="2"/><path d="M 114 142 L 110.5 149 L 117.5 149 Z" fill="#555555"/>
+<rect x="76" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="114" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x1 token</text>
+<line x1="230" y1="176" x2="230" y2="148" stroke="#555555" stroke-width="2"/><path d="M 230 142 L 226.5 149 L 233.5 149 Z" fill="#555555"/>
+<rect x="192" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="230" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x2 token</text>
+<line x1="346" y1="176" x2="346" y2="148" stroke="#555555" stroke-width="2"/><path d="M 346 142 L 342.5 149 L 349.5 149 Z" fill="#555555"/>
+<rect x="308" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="346" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x3 token</text>
+<line x1="462" y1="176" x2="462" y2="148" stroke="#555555" stroke-width="2"/><path d="M 462 142 L 458.5 149 L 465.5 149 Z" fill="#555555"/>
+<rect x="424" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="462" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x4 token</text>
+<line x1="578" y1="176" x2="578" y2="148" stroke="#555555" stroke-width="2"/><path d="M 578 142 L 574.5 149 L 581.5 149 Z" fill="#555555"/>
+<rect x="540" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="578" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x5 token</text>
+<text x="340" y="228" text-anchor="middle" font-size="10.5" fill="#666666">Step 5 cannot start until step 4 finishes -- and step 1 is 4 rewrites away from the answer</text>
+<rect x="8" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="116" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">1 - SEQUENTIAL</text>
+<text x="116" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">T chained steps, no parallelism</text>
+<rect x="232" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="340" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">2 - FADING MEMORY</text>
+<text x="340" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">57,860x weaker at 20 steps back</text>
+<rect x="456" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="564" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">3 - THE SQUEEZE</text>
+<text x="564" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">the whole past must fit in one fixed h</text>
+<rect x="8" y="316" width="664" height="172" rx="10" fill="#f4fbf6" stroke="#22a355" stroke-width="1.5"/>
+<text x="340" y="340" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#177245">LOOK AT EVERYTHING AT ONCE -- no chain, no squeeze</text>
+<rect x="64" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="114" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x1</text>
+<rect x="180" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="230" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x2</text>
+<rect x="296" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="346" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x3</text>
+<rect x="412" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="462" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x4</text>
+<rect x="528" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="578" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x5</text>
+<line x1="292" y1="428" x2="114" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 114 392 L 110.5 399 L 117.5 399 Z" fill="#22a355"/>
+<line x1="318" y1="428" x2="230" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 230 392 L 226.5 399 L 233.5 399 Z" fill="#22a355"/>
+<line x1="340" y1="428" x2="346" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 346 392 L 342.5 399 L 349.5 399 Z" fill="#22a355"/>
+<line x1="362" y1="428" x2="462" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 462 392 L 458.5 399 L 465.5 399 Z" fill="#22a355"/>
+<line x1="388" y1="428" x2="578" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 578 392 L 574.5 399 L 581.5 399 Z" fill="#22a355"/>
+<rect x="230" y="428" width="220" height="34" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="340" y="449" text-anchor="middle" font-size="11" font-weight="bold" fill="#177245">the step that needs the past</text>
+<text x="340" y="478" text-anchor="middle" font-size="10.5" fill="#555555">every earlier step is 1 hop away - all reads run in parallel - the whole sequence stays on the table</text>
+</svg>
+    <div class="caption">Top: the recurrent chain &mdash; inputs enter one at a time, the summary h is rewritten at every step, and step 1 sits 4 hops from the answer. Middle: the three structural bills. Bottom: the fix&rsquo;s shape &mdash; every earlier step one direct hop away, read in parallel, nothing squeezed into a summary.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file in <code>~/ai-lab</code>, the same hand-set scalar cell as Day 28 (<code>w_hh</code>=0.8, <code>w_xh</code>=1.0), and <strong>no randomness</strong> &mdash; your numbers should match the expected output digit for digit on CPU or MPS. <strong>Part 1</strong> stretches Day 28&rsquo;s gradient probe from T=10 to T=20. <strong>Part 2</strong> is the new instrument: a forward-pass distance test &mdash; two sequences that differ only at step 1, and a ruler (the gap between their final states) for how much of step 1 survives. <strong>Part 3</strong> counts instead of timing: chain length, hops, and memory at T=4/20/100, RNN vs the look-at-everything shape.</p>
+  <pre><code>"""Day 36 - Sequence Modeling Recap: Why Attention Replaced Recurrence.
+
+Phase B ended with Day 28's recurrent cell as our best sequence
+model:
+
+  h_t = tanh(W_xh @ x_t + W_hh @ h_prev + b),   h_0 = 0
+
+One cell, reused at every step, carrying a fixed-size hidden
+state h -- a lossy running summary of everything seen so far.
+Today we stop adding machinery and instead audit that design,
+the way you would audit a system you inherited. It has three
+structural problems, and none of them is a tuning problem:
+
+  1. SEQUENTIAL. Step t cannot start until step t-1 has
+     finished: the computation is a chain of T dependent steps.
+     Day 13's GPUs win by doing many independent things at
+     once; a chain keeps one lane busy and T-1 lanes idle.
+  2. FADING MEMORY. Day 28 measured the gradient arriving at
+     step 1 about 100x weaker than at step 10. Extend the
+     sequence and the fade compounds -- and it is not only the
+     gradient. The information itself is rewritten away.
+  3. THE SQUEEZE. Everything the model will ever know about
+     the past must fit inside h, whose size is fixed while the
+     sequence is not. A 10,000-step past, compressed into the
+     same fixed number of floats as a 10-step past.
+
+  Part 1  Day 28's gradient probe, stretched from T=10 to
+          T=20: the first step's gradient is now tens of
+          thousands of times weaker than the last step's.
+  Part 2  The distance test, on the forward pass this time.
+          Two sequences that differ ONLY in a marker at step 1
+          (+1.0 vs -1.0), then identical filler. Read the final
+          state: if the marker was 1 hop back, the states are
+          far apart; 19 hops back, they are indistinguishable.
+          Memory does not fade in storage -- it is overwritten.
+  Part 3  The three problems, counted. For T = 4, 20, 100:
+          chained steps, hops from step 1 to the output, and
+          how much the past gets to occupy -- against a design
+          that keeps every step and lets the reader look at
+          all of them at once: 1 parallel step, 1 hop, no
+          squeeze. That design has a name -- attention -- and
+          tomorrow we open the box.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU or MPS, no
+CUDA, no paid APIs, no downloads. No randomness anywhere --
+the same hand-set scalar cell as Day 28 (w_hh = 0.8,
+w_xh = 1.0), so your output should match the expected output
+below digit for digit.
+
+Expected output:
+
+  device: mps
+  Part 1 - the gradient fade, stretched to T=20
+    final h after 20 steps: 0.5822
+    grad wrt x_1: 1.1426e-05
+    grad wrt x_5: 5.4759e-05
+    grad wrt x_10: 1.1396e-03
+    grad wrt x_15: 2.7360e-02
+    grad wrt x_20: 6.6109e-01
+    last step 0.6611 vs first step 1.1426e-05 -- ratio 57,860x
+  Part 2 - the distance test: can the final state still see step 1?
+    marker 1 hop back:   h = +0.6692 (marker +1) vs -0.3879 (marker -1), gap 1.0570
+    marker 9 hops back:  h = +0.5827 (marker +1) vs +0.5654 (marker -1), gap 0.0172
+    marker 19 hops back: h = +0.5822 (marker +1) vs +0.5821 (marker -1), gap 0.000030
+    the marker's fingerprint is 35.3 thousand x weaker at 19 hops than at 1 hop
+  Part 3 - the three problems, counted (hidden size fixed at 4)
+    T=4    RNN:   4 chained steps,  3 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 16 numbers
+    T=20   RNN:  20 chained steps, 19 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 80 numbers
+    T=100  RNN: 100 chained steps, 99 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 400 numbers
+    the chain and the hops grow with T; the state never does
+"""
+import torch
+
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+print("device:", device)
+
+# The Day 28 scalar cell, reused all day: h = tanh(0.8 * h + 1.0 * x)
+
+# ---------- Part 1: the gradient fade, stretched to T=20 ----------
+print("Part 1 - the gradient fade, stretched to T=20")
+x = torch.full((20,), 0.2, requires_grad=True, device=device)
+h = torch.zeros((), device=device)
+for t in range(20):
+    h = torch.tanh(0.8 * h + 1.0 * x[t])   # one chained step; t+1 waits for t
+print(f"  final h after 20 steps: {h.item():.4f}")
+h.backward()                               # blame flows back through all 20 hops
+g = x.grad.tolist()
+for t in (0, 4, 9, 14, 19):
+    print(f"  grad wrt x_{t + 1}: {g[t]:.4e}")
+print(f"  last step {g[-1]:.4f} vs first step {g[0]:.4e}"
+      f" -- ratio {g[-1] / g[0]:,.0f}x")
+
+# ---------- Part 2: the distance test ----------
+print("Part 2 - the distance test: can the final state still see step 1?")
+
+def final_state(marker, fillers):
+    """Run the cell on [marker] + fillers of 0.2; return the final h."""
+    h = torch.zeros((), device=device)
+    with torch.no_grad():
+        for xv in [marker] + [0.2] * fillers:
+            h = torch.tanh(0.8 * h + xv)
+    return h.item()
+
+gaps = {}
+for hops in (1, 9, 19):
+    hp = final_state(1.0, hops)    # step 1 was +1.0, then `hops` filler steps
+    hm = final_state(-1.0, hops)   # step 1 was -1.0, same filler after it
+    gap = abs(hp - hm)
+    gaps[hops] = gap
+    gap_s = f"{gap:.6f}" if hops == 19 else f"{gap:.4f}"
+    label = f"marker {hops} hop{'s' if hops != 1 else ''} back:"
+    print(f"  {label.ljust(21)}h = {hp:+.4f} (marker +1)"
+          f" vs {hm:+.4f} (marker -1), gap {gap_s}")
+print(f"  the marker's fingerprint is {gaps[1] / gaps[19] / 1000:.1f} thousand x"
+      " weaker at 19 hops than at 1 hop")
+
+# ---------- Part 3: the three problems, counted ----------
+print("Part 3 - the three problems, counted (hidden size fixed at 4)")
+H = 4  # the hidden state is 4 numbers, whatever T does
+for T in (4, 20, 100):
+    print("  T=%-4d RNN: %3d chained steps, %2d hops, state = %d numbers"
+          "   all-at-once: 1 step, 1 hop, keeps %d numbers"
+          % (T, T, T - 1, H, T * H))
+print("  the chain and the hops grow with T; the state never does")</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>device: mps
+Part 1 - the gradient fade, stretched to T=20
+  final h after 20 steps: 0.5822
+  grad wrt x_1: 1.1426e-05
+  grad wrt x_5: 5.4759e-05
+  grad wrt x_10: 1.1396e-03
+  grad wrt x_15: 2.7360e-02
+  grad wrt x_20: 6.6109e-01
+  last step 0.6611 vs first step 1.1426e-05 -- ratio 57,860x
+Part 2 - the distance test: can the final state still see step 1?
+  marker 1 hop back:   h = +0.6692 (marker +1) vs -0.3879 (marker -1), gap 1.0570
+  marker 9 hops back:  h = +0.5827 (marker +1) vs +0.5654 (marker -1), gap 0.0172
+  marker 19 hops back: h = +0.5822 (marker +1) vs +0.5821 (marker -1), gap 0.000030
+  the marker's fingerprint is 35.3 thousand x weaker at 19 hops than at 1 hop
+Part 3 - the three problems, counted (hidden size fixed at 4)
+  T=4    RNN:   4 chained steps,  3 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 16 numbers
+  T=20   RNN:  20 chained steps, 19 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 80 numbers
+  T=100  RNN: 100 chained steps, 99 hops, state = 4 numbers   all-at-once: 1 step, 1 hop, keeps 400 numbers
+  the chain and the hops grow with T; the state never does</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when: Part 1 prints <strong>ratio 57,860x</strong> (last step 0.6611 vs first step 1.1426e-05); Part 2 prints gaps <strong>1.0570 / 0.0172 / 0.000030</strong> for the marker 1 / 9 / 19 hops back; Part 3 shows T=100 at 100 chained steps and 99 hops while the state stays stuck at 4 numbers. The bigger test: you can say it cold &mdash; <em>recurrence is sequential, fading, and squeezed; the fix must be parallel, one-hop, and keep the whole sequence on the table.</em> That spec is attention&rsquo;s job description.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run the file once and study Part 2&rsquo;s three lines: the same marker at three distances, fingerprints 1.0570 &rarr; 0.0172 &rarr; 0.000030. If you can explain <em>why</em> the 19-hop gap had to land near zero before you ran it &mdash; every filler step rewrites the summary &mdash; you have the lesson. Then skim Part 3&rsquo;s table for the squeeze.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow we open the box named attention: how one step of a sequence can look back at every earlier step at once &mdash; and decide, on its own, which ones deserve its attention.</p>
+  </div>
+
+  <div class="footer">Day 36 of 100 &middot; Self-paced &mdash; do it when you can. Never miss twice.</div>
+
+</div>
+</body>
+</html>

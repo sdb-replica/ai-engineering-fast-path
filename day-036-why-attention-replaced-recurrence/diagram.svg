@@ -1,0 +1,82 @@
+<svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#1c1c1e">Why recurrence hits a wall -- and the shape of the fix</text>
+<rect x="8" y="44" width="664" height="196" rx="10" fill="#fffdf7" stroke="#d97706" stroke-width="1.5"/>
+<text x="340" y="68" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#9a6b00">RECURRENCE -- one cell, chained</text>
+<rect x="64" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="114" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 1</text>
+<text x="114" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="114" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="180" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="230" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 2</text>
+<text x="230" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="230" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="296" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="346" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 3</text>
+<text x="346" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="346" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="412" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="462" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 4</text>
+<text x="462" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="462" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="528" y="84" width="100" height="58" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+<text x="578" y="106" text-anchor="middle" font-size="11" font-weight="bold" fill="#9a6b00">STEP 5</text>
+<text x="578" y="123" text-anchor="middle" font-size="8.5" fill="#333333">tanh(W.x + W.h + b)</text>
+<text x="578" y="136" text-anchor="middle" font-size="9" fill="#333333">rewrites h</text>
+<rect x="14" y="97" width="38" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="33" y="117" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#0a54c2">h0</text>
+<line x1="52" y1="113" x2="60" y2="113" stroke="#555555" stroke-width="2"/><path d="M 64 113 L 57 109.5 L 57 116.5 Z" fill="#555555"/>
+<line x1="164" y1="113" x2="176" y2="113" stroke="#555555" stroke-width="2"/><path d="M 180 113 L 173 109.5 L 173 116.5 Z" fill="#555555"/>
+<text x="172.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h1</text>
+<line x1="280" y1="113" x2="292" y2="113" stroke="#555555" stroke-width="2"/><path d="M 296 113 L 289 109.5 L 289 116.5 Z" fill="#555555"/>
+<text x="288.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h2</text>
+<line x1="396" y1="113" x2="408" y2="113" stroke="#555555" stroke-width="2"/><path d="M 412 113 L 405 109.5 L 405 116.5 Z" fill="#555555"/>
+<text x="404.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h3</text>
+<line x1="512" y1="113" x2="524" y2="113" stroke="#555555" stroke-width="2"/><path d="M 528 113 L 521 109.5 L 521 116.5 Z" fill="#555555"/>
+<text x="520.0" y="104" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#0a54c2">h4</text>
+<line x1="114" y1="176" x2="114" y2="148" stroke="#555555" stroke-width="2"/><path d="M 114 142 L 110.5 149 L 117.5 149 Z" fill="#555555"/>
+<rect x="76" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="114" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x1 token</text>
+<line x1="230" y1="176" x2="230" y2="148" stroke="#555555" stroke-width="2"/><path d="M 230 142 L 226.5 149 L 233.5 149 Z" fill="#555555"/>
+<rect x="192" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="230" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x2 token</text>
+<line x1="346" y1="176" x2="346" y2="148" stroke="#555555" stroke-width="2"/><path d="M 346 142 L 342.5 149 L 349.5 149 Z" fill="#555555"/>
+<rect x="308" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="346" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x3 token</text>
+<line x1="462" y1="176" x2="462" y2="148" stroke="#555555" stroke-width="2"/><path d="M 462 142 L 458.5 149 L 465.5 149 Z" fill="#555555"/>
+<rect x="424" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="462" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x4 token</text>
+<line x1="578" y1="176" x2="578" y2="148" stroke="#555555" stroke-width="2"/><path d="M 578 142 L 574.5 149 L 581.5 149 Z" fill="#555555"/>
+<rect x="540" y="176" width="76" height="32" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="578" y="196" text-anchor="middle" font-size="10" font-weight="bold" fill="#0a54c2">x5 token</text>
+<text x="340" y="228" text-anchor="middle" font-size="10.5" fill="#666666">Step 5 cannot start until step 4 finishes -- and step 1 is 4 rewrites away from the answer</text>
+<rect x="8" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="116" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">1 - SEQUENTIAL</text>
+<text x="116" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">T chained steps, no parallelism</text>
+<rect x="232" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="340" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">2 - FADING MEMORY</text>
+<text x="340" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">57,860x weaker at 20 steps back</text>
+<rect x="456" y="252" width="216" height="48" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="1.5"/>
+<text x="564" y="272" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7b241c">3 - THE SQUEEZE</text>
+<text x="564" y="289" text-anchor="middle" font-size="9.5" fill="#7b241c">the whole past must fit in one fixed h</text>
+<rect x="8" y="316" width="664" height="172" rx="10" fill="#f4fbf6" stroke="#22a355" stroke-width="1.5"/>
+<text x="340" y="340" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#177245">LOOK AT EVERYTHING AT ONCE -- no chain, no squeeze</text>
+<rect x="64" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="114" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x1</text>
+<rect x="180" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="230" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x2</text>
+<rect x="296" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="346" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x3</text>
+<rect x="412" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="462" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x4</text>
+<rect x="528" y="356" width="100" height="36" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="578" y="379" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0a54c2">x5</text>
+<line x1="292" y1="428" x2="114" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 114 392 L 110.5 399 L 117.5 399 Z" fill="#22a355"/>
+<line x1="318" y1="428" x2="230" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 230 392 L 226.5 399 L 233.5 399 Z" fill="#22a355"/>
+<line x1="340" y1="428" x2="346" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 346 392 L 342.5 399 L 349.5 399 Z" fill="#22a355"/>
+<line x1="362" y1="428" x2="462" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 462 392 L 458.5 399 L 465.5 399 Z" fill="#22a355"/>
+<line x1="388" y1="428" x2="578" y2="398" stroke="#22a355" stroke-width="1.5"/><path d="M 578 392 L 574.5 399 L 581.5 399 Z" fill="#22a355"/>
+<rect x="230" y="428" width="220" height="34" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+<text x="340" y="449" text-anchor="middle" font-size="11" font-weight="bold" fill="#177245">the step that needs the past</text>
+<text x="340" y="478" text-anchor="middle" font-size="10.5" fill="#555555">every earlier step is 1 hop away - all reads run in parallel - the whole sequence stays on the table</text>
+</svg>
