@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inference Serving 1: vLLM &amp; Continuous Batching — Day 64 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 64 of 100</span>
+  <h1>Inference Serving 1: vLLM &amp; Continuous Batching</h1>
+  <p class="outcome">Tonight you'll be able to: explain why a generation server lives or dies by its scheduler &mdash; and prove, with a simulation you can audit by hand, that re-scheduling after <em>every</em> token step instead of every batch nearly doubles throughput on the same GPU.</p>
+
+  <h2>The one idea</h2>
+  <p>Days 47&ndash;49 were about <em>one</em> generation: the autoregressive loop (Day 47), the KV cache that makes each pass cheap (Day 48), and why long context makes each pass pricier (Day 49). A <strong>serving engine</strong> &mdash; <strong>vLLM</strong> is the open-source default &mdash; runs many generations at once on one GPU. The weights are shared; each sequence carries its own KV cache. The scarce resource is the next <strong>step</strong>: one iteration in which the GPU advances a whole batch of sequences by one token each. And since one pass for four sequences costs about the same time as one pass for one (Day 13&rsquo;s throughput machine &mdash; decode reads the weights once per step, and every sequence in the batch rides that read), serving is mostly one problem: <strong>keep the batch full.</strong> That is a scheduling problem.</p>
+<p><strong>Static batching</strong> is the naive schedule, and the pre-vLLM default: collect N requests, run them in lockstep until the <em>longest</em> output finishes, then form the next batch. Two wastes are baked in. First, the <strong>ragged finish</strong>: output lengths vary wildly and are unknown in advance, so a 2-token answer sits in its slot for 11 more steps while a 12-token answer in the same batch finishes &mdash; the slot is occupied, computing padding, producing nothing. Second, <strong>no mid-batch admissions</strong>: a request that arrives one step after a batch forms waits for the entire next batch, however many slots are sitting idle-held.</p>
+<p><strong>Continuous batching</strong> &mdash; vLLM&rsquo;s headline trick, from the Orca paper&rsquo;s <em>iteration-level scheduling</em> &mdash; moves the scheduling decision to where the work actually is: <strong>after every single step</strong>. A sequence that emits its last token is evicted that step; a waiting request takes the freed slot on the very next step. The batch stops being a cohort that lives and dies together and becomes a rolling window over the request stream, its membership changing every iteration. Same model, same GPU, same requests &mdash; only the scheduler changed.</p>
+<p>One paragraph on vLLM&rsquo;s other idea, <strong>PagedAttention</strong>, because it is what lets the batches get big: a sequence&rsquo;s KV cache (Day 48) was traditionally reserved as one contiguous slab sized for the maximum possible length &mdash; mostly never used, and the slabs fragment GPU memory like a heap with no compaction. PagedAttention chops each sequence&rsquo;s KV cache into fixed-size blocks that can live anywhere in GPU memory, with a per-sequence block table mapping logical blocks to physical ones. That is virtual-memory paging, verbatim, applied to KV: waste drops to the last partially-filled block per sequence, far more sequences fit at once, and continuous batching gets a deeper pool to schedule.</p>
+<p>Three numbers to read in the code: <strong>throughput</strong> (output tokens per second &mdash; the business metric), <strong>average latency</strong> (steps from arrival to last token &mdash; the user&rsquo;s metric), and <strong>slot utilization</strong> (useful slot-steps &divide; makespan &times; slots &mdash; the waste metric). Tonight&rsquo;s simulation holds everything constant except the scheduling policy, so any gap between the two runs is the scheduler&rsquo;s fault alone.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You have debugged this exact bug in distributed systems: <strong>the barrier and the straggler</strong>. Static batching is a MapReduce stage with a barrier at the end &mdash; the stage closes when the <em>slowest</em> shard finishes, early finishers idle at the barrier, and the next stage cannot start a minute early. One 12-token request is the straggler task that sets the makespan for three finished workers. Continuous batching is the fix you would reach for there: a <strong>work-stealing event loop</strong>. Every iteration is a scheduling point; a slot is a worker that pulls the next request the instant it frees up. Admissions <strong>coalesce</strong> whatever is waiting into whatever slots are free, each step &mdash; nobody waits to assemble a perfect batch of four. And PagedAttention is your OS course verbatim: fixed-size pages, a page table per process, no contiguous allocation, no external fragmentation &mdash; just pointed at KV cache instead of RAM.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 452" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="452" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<defs><pattern id="hatch64" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#e6e6ea"/><line x1="0" y1="0" x2="0" y2="6" stroke="#a3a3ab" stroke-width="2"/></pattern></defs>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Continuous batching: the scheduler runs every step</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Same 12 requests, 4 slots - dark = prefill steps, blue = decode steps, hatched = finished but slot held</text>
+<text x="52" y="64" text-anchor="start" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - STATIC: batch runs in lockstep until the LONGEST finishes - 36 steps</text>
+<line x1="52" y1="80" x2="52" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="52" y="77" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<line x1="154" y1="80" x2="154" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="154" y="77" text-anchor="middle" font-size="8.5" fill="#666666">6</text>
+<line x1="256" y1="80" x2="256" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="256" y="77" text-anchor="middle" font-size="8.5" fill="#666666">12</text>
+<line x1="358" y1="80" x2="358" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="358" y="77" text-anchor="middle" font-size="8.5" fill="#666666">18</text>
+<line x1="460" y1="80" x2="460" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="460" y="77" text-anchor="middle" font-size="8.5" fill="#666666">24</text>
+<line x1="562" y1="80" x2="562" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="562" y="77" text-anchor="middle" font-size="8.5" fill="#666666">30</text>
+<line x1="664" y1="80" x2="664" y2="84" stroke="#999999" stroke-width="1"/>
+<text x="664" y="77" text-anchor="middle" font-size="8.5" fill="#666666">36</text>
+<text x="46" y="97" text-anchor="end" font-size="9" fill="#555555">slot 1</text>
+<rect x="52" y="86" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="86" width="204" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="162.5" y="97.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R1</text>
+<rect x="273" y="86" width="51" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="324" y="86" width="170" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="383.5" y="97.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R5</text>
+<rect x="494" y="86" width="34" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="528" y="86" width="136" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="579.0" y="97.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R9</text>
+<text x="46" y="120" text-anchor="end" font-size="9" fill="#555555">slot 2</text>
+<rect x="52" y="109" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="109" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="103" y="109" width="170" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="77.5" y="120.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R2</text>
+<rect x="273" y="109" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="290" y="109" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="324" y="109" width="170" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="298.5" y="120.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R6</text>
+<rect x="494" y="109" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="511" y="109" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="545" y="109" width="119" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="519.5" y="120.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R10</text>
+<text x="46" y="143" text-anchor="end" font-size="9" fill="#555555">slot 3</text>
+<rect x="52" y="132" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="132" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="120" y="132" width="153" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="86.0" y="143.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R3</text>
+<rect x="273" y="132" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="290" y="132" width="68" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="358" y="132" width="136" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="315.5" y="143.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R7</text>
+<rect x="494" y="132" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="511" y="132" width="85" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="596" y="132" width="68" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="545.0" y="143.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R11</text>
+<text x="46" y="166" text-anchor="end" font-size="9" fill="#555555">slot 4</text>
+<rect x="52" y="155" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="155" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="103" y="155" width="170" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="77.5" y="166.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R4</text>
+<rect x="273" y="155" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="290" y="155" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="341" y="155" width="153" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="307.0" y="166.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R8</text>
+<rect x="494" y="155" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="511" y="155" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<rect x="562" y="155" width="102" height="15" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="528.0" y="166.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R12</text>
+<line x1="273" y1="82" x2="273" y2="174" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3"/>
+<text x="276" y="180" text-anchor="start" font-size="8.5" fill="#9a6b00">batch 2</text>
+<line x1="494" y1="82" x2="494" y2="174" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="4,3"/>
+<text x="497" y="180" text-anchor="start" font-size="8.5" fill="#9a6b00">batch 3</text>
+<text x="52" y="180" text-anchor="start" font-size="8.5" fill="#9a6b00">batch 1</text>
+<text x="52" y="200" text-anchor="start" font-size="10.5" fill="#22a355" font-weight="bold">B - CONTINUOUS: finished sequences evicted, waiting ones admitted EVERY step - 19 steps</text>
+<line x1="52" y1="216" x2="52" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="52" y="213" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<line x1="154" y1="216" x2="154" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="154" y="213" text-anchor="middle" font-size="8.5" fill="#666666">6</text>
+<line x1="256" y1="216" x2="256" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="256" y="213" text-anchor="middle" font-size="8.5" fill="#666666">12</text>
+<line x1="358" y1="216" x2="358" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="358" y="213" text-anchor="middle" font-size="8.5" fill="#666666">18</text>
+<line x1="460" y1="216" x2="460" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="460" y="213" text-anchor="middle" font-size="8.5" fill="#666666">24</text>
+<line x1="562" y1="216" x2="562" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="562" y="213" text-anchor="middle" font-size="8.5" fill="#666666">30</text>
+<line x1="664" y1="216" x2="664" y2="220" stroke="#999999" stroke-width="1"/>
+<text x="664" y="213" text-anchor="middle" font-size="8.5" fill="#666666">36</text>
+<text x="46" y="233" text-anchor="end" font-size="9" fill="#555555">slot 1</text>
+<rect x="52" y="222" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="222" width="204" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="162.5" y="233.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R1</text>
+<rect x="273" y="222" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="290" y="222" width="85" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="324.0" y="233.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R11</text>
+<text x="46" y="256" text-anchor="end" font-size="9" fill="#555555">slot 2</text>
+<rect x="52" y="245" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="245" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="77.5" y="256.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R2</text>
+<rect x="103" y="245" width="51" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="154" y="245" width="170" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="213.5" y="256.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R5</text>
+<rect x="324" y="245" width="51" height="15" rx="0" fill="#f0f0f2" stroke="#bbbbbb" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="349.5" y="256.5" text-anchor="middle" font-size="8.5" fill="#888888">idle</text>
+<text x="46" y="279" text-anchor="end" font-size="9" fill="#555555">slot 3</text>
+<rect x="52" y="268" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="268" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="86.0" y="279.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R3</text>
+<rect x="120" y="268" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="137" y="268" width="68" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="162.5" y="279.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R7</text>
+<rect x="205" y="268" width="34" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="239" y="268" width="136" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="290.0" y="279.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R9</text>
+<text x="46" y="302" text-anchor="end" font-size="9" fill="#555555">slot 4</text>
+<rect x="52" y="291" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="69" y="291" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="77.5" y="302.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R4</text>
+<rect x="103" y="291" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="120" y="291" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="128.5" y="302.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R6</text>
+<rect x="154" y="291" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="171" y="291" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="188.0" y="302.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R8</text>
+<rect x="222" y="291" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="239" y="291" width="34" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="247.5" y="302.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R10</text>
+<rect x="273" y="291" width="17" height="15" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<rect x="290" y="291" width="51" height="15" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="307.0" y="302.5" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">R12</text>
+<rect x="341" y="291" width="34" height="15" rx="0" fill="#f0f0f2" stroke="#bbbbbb" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="358.0" y="302.5" text-anchor="middle" font-size="8.5" fill="#888888">idle</text>
+<line x1="375" y1="218" x2="375" y2="310" stroke="#22a355" stroke-width="1.4" stroke-dasharray="4,3"/>
+<text x="378" y="320" text-anchor="start" font-size="8.5" fill="#177245">done at 19 - panel A is still on batch 2</text>
+<rect x="52" y="340" width="17" height="11" rx="0" fill="#0a54c2" stroke="none" stroke-width="1.0"/>
+<text x="73" y="349.5" text-anchor="start" font-size="9" fill="#1c1c1e">prefill</text>
+<rect x="118" y="340" width="17" height="11" rx="0" fill="#0a7aff" stroke="none" stroke-width="1.0"/>
+<text x="139" y="349.5" text-anchor="start" font-size="9" fill="#1c1c1e">decode (1 token/step)</text>
+<rect x="270" y="340" width="17" height="11" rx="0" fill="url(#hatch64)" stroke="#a3a3ab" stroke-width="0.6"/>
+<text x="291" y="349.5" text-anchor="start" font-size="9" fill="#1c1c1e">finished, slot held (static only)</text>
+<rect x="480" y="340" width="17" height="11" rx="0" fill="#f0f0f2" stroke="#bbbbbb" stroke-width="0.8" stroke-dasharray="3,2"/>
+<text x="501" y="349.5" text-anchor="start" font-size="9" fill="#1c1c1e">slot empty (tail)</text>
+<rect x="12" y="374" width="656" height="62" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="396" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Same 56 output tokens, same GPU: 36 steps -&gt; 19 steps</text>
+<text x="340" y="415" text-anchor="middle" font-size="9.5" fill="#1c1c1e">throughput 31.1 -&gt; 58.9 tokens/sec (1.89x)  |  avg latency 17.25 -&gt; 9.33 steps</text>
+<text x="340" y="431" text-anchor="middle" font-size="9.5" fill="#0a54c2">slot utilization 49.3% -&gt; 93.4% - no extra work, just no wasted steps</text>
+</svg>
+    <div class="caption">Two Gantt timelines &mdash; same 12 requests, same 4 slots, same step cost. Top (static): three lockstep batches; R2 finishes at step 3 but its slot stays hatched-idle until the batch ends at 13, and batch 3&rsquo;s requests sit fully arrived while batch 2 runs. Bottom (continuous): every slot is refilled the step it frees &mdash; slot 4 serves six requests back to back &mdash; and the whole workload is done at step 19, while the static run is still inside batch 2. All numbers from the simulation below.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>A discrete-event simulation in pure stdlib &mdash; no torch, no GPU, no server: tonight the model <em>is</em> a cost model, stated in the docstring so every number can be audited. Twelve requests with fixed arrivals, prompt sizes, and output lengths (embedded, no randomness); one step = 50 ms; prompts prefill in 128-token chunks; at most 4 sequences hold slots. <strong>Part 1</strong> prints the workload and the slot-step arithmetic. <strong>Part 2</strong> runs static batching and prints each batch&rsquo;s duration and idle-held waste. <strong>Part 3</strong> runs continuous batching and prints each slot&rsquo;s timeline run-length encoded, so you can recount every step by hand. Runs as-is in the <code>~/ai-lab</code> venv: <code>python3 code.py</code>.</p>
+  <pre><code>&quot;&quot;&quot;Day 64 - Inference Serving 1: vLLM &amp; Continuous Batching.
+
+Phase E opens. Day 47: generation is a loop - one forward pass
+per token. Day 48: the KV cache makes each pass cheap. Day 49:
+longer context makes each pass pricier. Tonight the question
+moves up one level: you are not running ONE generation, you
+are running a SERVER - many requests, one GPU, and a scheduler
+deciding which sequences get the next step.
+
+The one concept: generation is iterative, so requests finish
+at different steps. STATIC batching (the old way) forms a
+batch, runs it in lockstep until the LONGEST request finishes,
+and only then starts the next batch: finished sequences keep
+their slot (their remaining steps are padding) and new
+requests cannot join mid-batch. CONTINUOUS batching - the
+vLLM / Orca idea, also called iteration-level scheduling -
+re-runs the scheduler after EVERY step: a sequence that
+finishes is evicted immediately and a waiting request takes
+its slot on the very next step. Same model, same requests,
+radically different utilization.
+
+This is a discrete-event SIMULATION in pure stdlib - no torch,
+no GPU, no server. The workload is a fixed embedded list of
+12 requests (no random anywhere), and the cost model is a toy,
+stated up front so every printed number can be audited by hand:
+
+  COST MODEL
+  - Time moves in steps. One step = one decode iteration of
+    the whole batch = STEP_MS (50 ms) of wall clock, however
+    many sequences are active - the GPU runs the batch in
+    parallel, and up to MAX_BATCH the step cost is flat.
+  - Prefill (Day 48): a prompt is processed in chunks of
+    PREFILL_CHUNK (128) tokens, one chunk per step, inside
+    the sequence&#x27;s own slot. Every prompt below is a multiple
+    of 128, so prefill steps are exact integers.
+  - Decode: one output token per sequence per step. A request
+    therefore needs prefill_steps + output_tokens slot-steps
+    of real work - its &quot;slot-steps&quot; column in Part 1.
+  - At most MAX_BATCH (4) sequences hold slots at any step.
+  - Finish time = the step count at which a request&#x27;s last
+    token lands. Latency = finish - arrival, in steps.
+  - Static policy: batches of MAX_BATCH in arrival order; a
+    batch starts at max(previous batch end, last member&#x27;s
+    arrival) and runs max(slot-steps of its members) steps;
+    every member&#x27;s slot is held until the batch ends.
+  - Continuous policy: at the start of each step, waiting
+    requests (arrival &lt;= now) are admitted FIFO into free
+    slots; every active sequence advances one step; a
+    sequence finishing at the end of a step frees its slot
+    for the next step.
+
+  Part 1  The workload: 12 requests, arrivals, prompt sizes,
+          output lengths, and the slot-step arithmetic.
+  Part 2  Static batching: 3 lockstep batches - per-batch
+          duration and idle-held slot-steps printed so the
+          waste is auditable line by line.
+  Part 3  Continuous batching: the same 12 requests under
+          per-step scheduling - per-slot timelines printed
+          run-length encoded, so you can recount every step.
+  Verdict: throughput (output tokens/sec), average latency,
+          and slot utilization, side by side.
+
+Runs anywhere Python 3.11+ runs - stdlib only, no downloads,
+no paid APIs. On the MacBook: just `python3 code.py` in the
+~/ai-lab venv (torch not even needed tonight).
+
+Expected output:
+
+  Part 1 - the workload: 12 requests, 4 slots, one step = 50 ms
+    req  arrive  prompt  prefill  output  slot-steps
+    R1   0       128     1        12      13
+    R2   0       128     1        2       3
+    R3   0       128     1        3       4
+    R4   0       128     1        2       3
+    R5   0       384     3        10      13
+    R6   0       128     1        2       3
+    R7   0       128     1        4       5
+    R8   0       128     1        3       4
+    R9   1       256     2        8       10
+    R10  3       128     1        2       3
+    R11  6       128     1        5       6
+    R12  10      128     1        3       4
+    totals: 56 output tokens, 71 useful slot-steps of real work
+  Part 2 - STATIC batching: lockstep until the longest finishes
+    batch 1: R1 R2 R3 R4  starts 0  runs 13 steps (longest member)  idle-held 29 slot-steps
+    batch 2: R5 R6 R7 R8  starts 13  runs 13 steps (longest member)  idle-held 27 slot-steps
+    batch 3: R9 R10 R11 R12  starts 26  runs 10 steps (longest member)  idle-held 17 slot-steps
+    makespan: 36 steps = 1.80 s   finish order: R2@3 R4@3 R3@4 R1@13 R6@16 R8@17 R7@18 R5@26 R10@29 R12@30 R11@32 R9@36
+    output tokens: 56   throughput: 31.1 tokens/sec
+    latency (steps): avg 17.25   max 35   (x 50 ms per step)
+    slot-steps: useful 71 of 144 capacity   utilization 49.3%   wasted 73
+  Part 3 - CONTINUOUS batching: re-schedule after every step
+      slot 1: R1 x13  R11 x6
+      slot 2: R2 x3  R5 x13  idle x3
+      slot 3: R3 x4  R7 x5  R9 x10
+      slot 4: R4 x3  R6 x3  R8 x4  R10 x3  R12 x4  idle x2
+    makespan: 19 steps = 0.95 s   finish order: R2@3 R4@3 R3@4 R6@6 R7@9 R8@10 R1@13 R10@13 R5@16 R12@17 R9@19 R11@19
+    output tokens: 56   throughput: 58.9 tokens/sec
+    latency (steps): avg 9.33   max 18   (x 50 ms per step)
+    slot-steps: useful 71 of 76 capacity   utilization 93.4%   wasted 5
+  Verdict - same 12 requests, same model, only the scheduler changed
+    throughput:  31.1 -&gt; 58.9 tokens/sec (1.89x)
+    avg latency: 17.25 -&gt; 9.33 steps
+    utilization: 49.3% -&gt; 93.4% of slot-steps useful
+    the GPU did no extra work - the scheduler just stopped wasting steps
+&quot;&quot;&quot;
+from collections import namedtuple
+
+STEP_MS = 50            # one decode iteration of the batch
+PREFILL_CHUNK = 128     # prompt tokens processed per prefill step
+MAX_BATCH = 4           # sequences (slots) on the GPU at once
+
+Req = namedtuple(&quot;Req&quot;, [&quot;name&quot;, &quot;arrival&quot;, &quot;prompt&quot;, &quot;output&quot;])
+
+
+def prefill_steps(req):
+    assert req.prompt % PREFILL_CHUNK == 0
+    return req.prompt // PREFILL_CHUNK
+
+
+def slot_steps(req):
+    &quot;&quot;&quot;Real work a request needs: prefill steps + decode steps.&quot;&quot;&quot;
+    return prefill_steps(req) + req.output
+
+
+# The workload: a fixed, embedded stream - no randomness.
+# (name, arrival step, prompt tokens, output tokens)
+REQUESTS = [Req(*row) for row in (
+    (&quot;R1&quot;, 0, 128, 12),
+    (&quot;R2&quot;, 0, 128, 2),
+    (&quot;R3&quot;, 0, 128, 3),
+    (&quot;R4&quot;, 0, 128, 2),
+    (&quot;R5&quot;, 0, 384, 10),
+    (&quot;R6&quot;, 0, 128, 2),
+    (&quot;R7&quot;, 0, 128, 4),
+    (&quot;R8&quot;, 0, 128, 3),
+    (&quot;R9&quot;, 1, 256, 8),
+    (&quot;R10&quot;, 3, 128, 2),
+    (&quot;R11&quot;, 6, 128, 5),
+    (&quot;R12&quot;, 10, 128, 3),
+)]
+
+
+def run_static(reqs):
+    &quot;&quot;&quot;Lockstep batches. Returns (makespan, finishes, slots, batches).
+
+    slots[s] = list of (start, req, held_end): the request does
+    its own work on steps [start, start + slot_steps) but the
+    slot is held until held_end (the batch end).&quot;&quot;&quot;
+    order = sorted(reqs, key=lambda r: r.arrival)   # stable: ties keep list order
+    groups = [order[i:i + MAX_BATCH]
+              for i in range(0, len(order), MAX_BATCH)]
+    finishes, slots, batches = {}, [[] for _ in range(MAX_BATCH)], []
+    t = 0
+    for group in groups:
+        start = max(t, max(r.arrival for r in group))
+        dur = max(slot_steps(r) for r in group)
+        for slot_i, r in enumerate(group):
+            finishes[r.name] = start + slot_steps(r)
+            slots[slot_i].append((start, r, start + dur))
+        batches.append((start, group, dur))
+        t = start + dur
+    return t, finishes, slots, batches
+
+
+def run_continuous(reqs):
+    &quot;&quot;&quot;Iteration-level scheduling. Returns (makespan, finishes, slots).
+
+    slots[s] = list of (start, req, end) with end = finish step:
+    no held time - a slot is freed the step its sequence ends.&quot;&quot;&quot;
+    waiting = sorted(reqs, key=lambda r: r.arrival)
+    slots = [[] for _ in range(MAX_BATCH)]
+    finishes = {}
+    active = [None] * MAX_BATCH        # per slot: [req, progress, start]
+    t = 0
+    while len(finishes) &lt; len(reqs):
+        for s in range(MAX_BATCH):     # admit into free slots, FIFO
+            if active[s] is None and waiting and waiting[0].arrival &lt;= t:
+                r = waiting.pop(0)
+                active[s] = [r, 0, t]
+        for s in range(MAX_BATCH):     # one step of work per sequence
+            if active[s] is not None:
+                active[s][1] += 1
+                r, progress, start = active[s]
+                if progress == slot_steps(r):
+                    finishes[r.name] = t + 1
+                    slots[s].append((start, r, t + 1))
+                    active[s] = None
+        t += 1
+    return t, finishes, slots
+
+
+def report(label, reqs, makespan, finishes):
+    useful = sum(slot_steps(r) for r in reqs)
+    capacity = makespan * MAX_BATCH
+    total_out = sum(r.output for r in reqs)
+    seconds = makespan * STEP_MS / 1000
+    lat = [finishes[r.name] - r.arrival for r in reqs]
+    print(f&quot;  makespan: {makespan} steps = {seconds:.2f} s   &quot;
+          f&quot;finish order: &quot; + &quot; &quot;.join(
+              f&quot;{r.name}@{finishes[r.name]}&quot; for r in
+              sorted(reqs, key=lambda r: finishes[r.name])))
+    print(f&quot;  output tokens: {total_out}   &quot;
+          f&quot;throughput: {total_out / seconds:.1f} tokens/sec&quot;)
+    print(f&quot;  latency (steps): avg {sum(lat) / len(lat):.2f}   &quot;
+          f&quot;max {max(lat)}   (x {STEP_MS} ms per step)&quot;)
+    print(f&quot;  slot-steps: useful {useful} of {capacity} capacity   &quot;
+          f&quot;utilization {100 * useful / capacity:.1f}%   &quot;
+          f&quot;wasted {capacity - useful}&quot;)
+    return total_out / seconds, sum(lat) / len(lat), 100 * useful / capacity
+
+
+def rle(slots, makespan):
+    &quot;&quot;&quot;Run-length encode each slot&#x27;s timeline, idles included.&quot;&quot;&quot;
+    lines = []
+    for s, events in enumerate(slots):
+        parts, cursor = [], 0
+        for start, r, end in events:
+            if start &gt; cursor:
+                parts.append(f&quot;idle x{start - cursor}&quot;)
+            parts.append(f&quot;{r.name} x{end - start}&quot;)
+            cursor = end
+        if cursor &lt; makespan:
+            parts.append(f&quot;idle x{makespan - cursor}&quot;)
+        lines.append(f&quot;    slot {s + 1}: &quot; + &quot;  &quot;.join(parts))
+    return lines
+
+
+def main():
+    print(&quot;Part 1 - the workload: 12 requests, 4 slots, &quot;
+          f&quot;one step = {STEP_MS} ms&quot;)
+    print(f&quot;  {&#x27;req&#x27;:&lt;5}{&#x27;arrive&#x27;:&lt;8}{&#x27;prompt&#x27;:&lt;8}{&#x27;prefill&#x27;:&lt;9}&quot;
+          f&quot;{&#x27;output&#x27;:&lt;8}slot-steps&quot;)
+    for r in REQUESTS:
+        print(f&quot;  {r.name:&lt;5}{r.arrival:&lt;8}{r.prompt:&lt;8}&quot;
+              f&quot;{prefill_steps(r):&lt;9}{r.output:&lt;8}{slot_steps(r)}&quot;)
+    total_out = sum(r.output for r in REQUESTS)
+    useful = sum(slot_steps(r) for r in REQUESTS)
+    print(f&quot;  totals: {total_out} output tokens, &quot;
+          f&quot;{useful} useful slot-steps of real work&quot;)
+
+    print(&quot;Part 2 - STATIC batching: lockstep until the longest finishes&quot;)
+    makespan_s, fin_s, slots_s, batches = run_static(REQUESTS)
+    for i, (start, group, dur) in enumerate(batches):
+        idle = sum(dur - slot_steps(r) for r in group)
+        names = &quot; &quot;.join(r.name for r in group)
+        print(f&quot;  batch {i + 1}: {names}  starts {start}  &quot;
+              f&quot;runs {dur} steps (longest member)  &quot;
+              f&quot;idle-held {idle} slot-steps&quot;)
+    static = report(&quot;static&quot;, REQUESTS, makespan_s, fin_s)
+
+    print(&quot;Part 3 - CONTINUOUS batching: re-schedule after every step&quot;)
+    makespan_c, fin_c, slots_c = run_continuous(REQUESTS)
+    for line in rle(slots_c, makespan_c):
+        print(line)
+    cont = report(&quot;continuous&quot;, REQUESTS, makespan_c, fin_c)
+
+    print(&quot;Verdict - same 12 requests, same model, only the scheduler changed&quot;)
+    print(f&quot;  throughput:  {static[0]:.1f} -&gt; {cont[0]:.1f} tokens/sec &quot;
+          f&quot;({cont[0] / static[0]:.2f}x)&quot;)
+    print(f&quot;  avg latency: {static[1]:.2f} -&gt; {cont[1]:.2f} steps&quot;)
+    print(f&quot;  utilization: {static[2]:.1f}% -&gt; {cont[2]:.1f}% of slot-steps useful&quot;)
+    print(&quot;  the GPU did no extra work - the scheduler just stopped &quot;
+          &quot;wasting steps&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the workload: 12 requests, 4 slots, one step = 50 ms
+  req  arrive  prompt  prefill  output  slot-steps
+  R1   0       128     1        12      13
+  R2   0       128     1        2       3
+  R3   0       128     1        3       4
+  R4   0       128     1        2       3
+  R5   0       384     3        10      13
+  R6   0       128     1        2       3
+  R7   0       128     1        4       5
+  R8   0       128     1        3       4
+  R9   1       256     2        8       10
+  R10  3       128     1        2       3
+  R11  6       128     1        5       6
+  R12  10      128     1        3       4
+  totals: 56 output tokens, 71 useful slot-steps of real work
+Part 2 - STATIC batching: lockstep until the longest finishes
+  batch 1: R1 R2 R3 R4  starts 0  runs 13 steps (longest member)  idle-held 29 slot-steps
+  batch 2: R5 R6 R7 R8  starts 13  runs 13 steps (longest member)  idle-held 27 slot-steps
+  batch 3: R9 R10 R11 R12  starts 26  runs 10 steps (longest member)  idle-held 17 slot-steps
+  makespan: 36 steps = 1.80 s   finish order: R2@3 R4@3 R3@4 R1@13 R6@16 R8@17 R7@18 R5@26 R10@29 R12@30 R11@32 R9@36
+  output tokens: 56   throughput: 31.1 tokens/sec
+  latency (steps): avg 17.25   max 35   (x 50 ms per step)
+  slot-steps: useful 71 of 144 capacity   utilization 49.3%   wasted 73
+Part 3 - CONTINUOUS batching: re-schedule after every step
+    slot 1: R1 x13  R11 x6
+    slot 2: R2 x3  R5 x13  idle x3
+    slot 3: R3 x4  R7 x5  R9 x10
+    slot 4: R4 x3  R6 x3  R8 x4  R10 x3  R12 x4  idle x2
+  makespan: 19 steps = 0.95 s   finish order: R2@3 R4@3 R3@4 R6@6 R7@9 R8@10 R1@13 R10@13 R5@16 R12@17 R9@19 R11@19
+  output tokens: 56   throughput: 58.9 tokens/sec
+  latency (steps): avg 9.33   max 18   (x 50 ms per step)
+  slot-steps: useful 71 of 76 capacity   utilization 93.4%   wasted 5
+Verdict - same 12 requests, same model, only the scheduler changed
+  throughput:  31.1 -&gt; 58.9 tokens/sec (1.89x)
+  avg latency: 17.25 -&gt; 9.33 steps
+  utilization: 49.3% -&gt; 93.4% of slot-steps useful
+  the GPU did no extra work - the scheduler just stopped wasting steps</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run reproduces the verdict block &mdash; static: 36 steps, 31.1 tokens/sec, 49.3% utilization; continuous: 19 steps, 58.9 tokens/sec, 93.4% &mdash; and you can point at slot 2 in Part 3 and name the step R5 took over R2&rsquo;s slot (step 3, the step right after R2 finished). The keeper sentence: <strong>batching is a scheduling policy, not a property of the model</strong> &mdash; swap the policy and the same GPU serves ~1.9&times; the tokens. Phase E is open: you now own the serving layer&rsquo;s central idea.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the Gantt diagram until you can explain the hatched bars, then run the code and read only the three Verdict lines. If you can say what the hatched steps cost and why per-step scheduling deletes them, you have the day &mdash; the PagedAttention paragraph is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: serving, part 2 &mdash; the model itself goes on a diet. What happens to speed, memory, and answer quality when the weights stop using full precision?</p>
+  </div>
+
+  <div class="footer">Streak: 64 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
