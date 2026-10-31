@@ -1,0 +1,39 @@
+<svg viewBox="0 0 680 456" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="456" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Anatomy of a structured prompt</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">a prompt is a program: fixed instructions on top, untrusted data fenced at the bottom</text>
+<rect x="16" y="56" width="492" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="30" y="73" font-size="9.0" fill="#0a7aff" font-weight="bold">SYSTEM CONTRACT</text>
+<text x="30" y="89" font-size="10.5" fill="#1c1c1e" font-weight="bold">"You are a precise data-extraction function."</text>
+<text x="30" y="103" font-size="8.5" fill="#555555">one job, stated first - before any data appears</text>
+<rect x="16" y="116" width="492" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="30" y="133" font-size="9.0" fill="#0a7aff" font-weight="bold">RULES + EDGE CASES</text>
+<text x="30" y="149" font-size="10.5" fill="#1c1c1e" font-weight="bold">action in {"buy", "sell"} - price is a number - missing -&gt; null - never invent</text>
+<text x="30" y="163" font-size="8.5" fill="#555555">constraints up front, so the model never has to guess your policy</text>
+<rect x="16" y="176" width="492" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="30" y="193" font-size="9.0" fill="#0a7aff" font-weight="bold">OUTPUT SCHEMA</text>
+<text x="30" y="209" font-size="10.5" fill="#1c1c1e" font-weight="bold">{"ticker": str, "action": "buy"|"sell"|null, "price": number|null}</text>
+<text x="30" y="223" font-size="8.5" fill="#555555">the reply's type signature - a strict parser can grade against it</text>
+<rect x="16" y="236" width="492" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="30" y="253" font-size="9.0" fill="#0a7aff" font-weight="bold">FEW-SHOT EXAMPLES</text>
+<text x="30" y="269" font-size="10.5" fill="#1c1c1e" font-weight="bold">note -&gt; {"ticker": "ABBV", "action": "sell", "price": 148.20}  (x2)</text>
+<text x="30" y="283" font-size="8.5" fill="#555555">the spec shown, not described - examples are in-context unit tests</text>
+<rect x="16" y="296" width="492" height="52" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="30" y="313" font-size="9.0" fill="#d99a00" font-weight="bold">DELIMITERS</text>
+<text x="30" y="329" font-size="10.5" fill="#1c1c1e" font-weight="bold">&lt;&lt;&lt;NOTE  ...  NOTE&gt;&gt;&gt;</text>
+<text x="30" y="343" font-size="8.5" fill="#555555">the fence: everything inside is DATA, never new instructions</text>
+<rect x="16" y="356" width="492" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="30" y="373" font-size="9.0" fill="#22a355" font-weight="bold">INPUT SLOT</text>
+<text x="30" y="389" font-size="10.5" fill="#1c1c1e" font-weight="bold">"Bought 50 AAPL at $182.40 into the close."</text>
+<text x="30" y="403" font-size="8.5" fill="#555555">the one part you do not control - treat it like user input</text>
+<line x1="524" y1="56" x2="524" y2="348" stroke="#0a7aff" stroke-width="1.4"/>
+<text x="536" y="190" font-size="10" fill="#0a54c2" font-weight="bold">YOUR</text>
+<text x="536" y="206" font-size="10" fill="#0a54c2" font-weight="bold">PROGRAM</text>
+<text x="536" y="222" font-size="8.5" fill="#555555">fixed text: versioned,</text>
+<text x="536" y="235" font-size="8.5" fill="#555555">linted, tested</text>
+<line x1="524" y1="356" x2="524" y2="408" stroke="#22a355" stroke-width="1.4"/>
+<text x="536" y="380" font-size="10" fill="#177245" font-weight="bold">UNTRUSTED</text>
+<text x="536" y="396" font-size="10" fill="#177245" font-weight="bold">DATA</text>
+<rect x="16" y="420" width="648" height="28" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340.0" y="438" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Grade it like code: lint the structure (Part 1) + a gold-label test suite (Day 57) - never vibes</text>
+</svg>
