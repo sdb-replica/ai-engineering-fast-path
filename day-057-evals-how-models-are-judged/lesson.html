@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evals: How Anyone Knows a Model Is Good — Day 57 of 100</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 57 of 100</span>
+  <h1>Evals: How Anyone Knows a Model Is Good</h1>
+  <p class="outcome">Tonight you'll be able to: read any benchmark claim like an engineer &mdash; know exactly what the instrument measures, the known ways it lies, and why the sliced report beats the headline number every time.</p>
+
+  <h2>The one idea</h2>
+  <p>Every claim you have ever read &mdash; &ldquo;Model X beats Model Y&rdquo; &mdash; rests on an <strong>eval</strong>: a fixed set of questions, a <strong>runner</strong> that poses them to the model, and a <strong>scorer</strong> that grades the answers. The famous ones are called <strong>benchmarks</strong>: MMLU is roughly 16,000 multiple-choice questions across 57 subjects, and a model&rsquo;s score is plain accuracy &mdash; the fraction it gets right. That is all a benchmark number ever is. Which means an eval is a <em>measurement instrument</em>, and like every instrument you have trusted at 3am, it lies in known ways.</p>
+  <p><strong>Lie 1: contamination.</strong> Benchmark questions live on the public web; pretraining (Day 51) scrapes the public web. When test questions end up in the training data, the model is reciting, not reasoning &mdash; this is Day 8&rsquo;s sin, training on the test set, committed at industry scale and usually by accident. The score inflates silently, and nobody can tell from the number. The defenses are unglamorous: private or freshly-written test sets, and treating any sudden score jump as a contamination suspect first.</p>
+  <p><strong>Lie 2: saturation and Goodhart.</strong> A benchmark is useful only while models spread out along it. Once the leaders bunch at 88&ndash;92%, the remaining differences are noise &mdash; the test has <em>saturated</em>. Worse, Goodhart&rsquo;s law kicks in: when a measure becomes a target, it stops being a good measure. Labs (rationally) optimize for the famous tests, the tests stop measuring general ability, and the field retires them and writes harder ones. The cycle is the history of ML benchmarks in one sentence.</p>
+  <p><strong>Lie 3: the eval is not your deployment.</strong> MMLU&rsquo;s distribution is exam questions. Your distribution is your users&rsquo; prompts, your domain&rsquo;s vocabulary, your required output formats. A model can top every public benchmark and still fail your workload in ways no leaderboard shows &mdash; tonight&rsquo;s code has a model that is a perfect calculator and a total failure at the one thing the job required. The only eval that fully counts is built from <em>your</em> traffic: real prompts (sanitized), grouped into slices that match how the system can actually fail.</p>
+  <p><strong>And the ground truth is vibes.</strong> For open-ended output &mdash; is this answer helpful, well-toned, safe? &mdash; no exact-match scorer exists. The original instrument is a human reading outputs and judging: a <strong>vibes eval</strong>. It is the ground truth everything else approximates, and it does not scale: slow, expensive, two raters disagree. So the field builds approximations &mdash; automatic scorers, model-as-judge setups &mdash; each cheaper and each with its own bias. Knowing which layer of approximation a number came from is most of eval literacy. The engineer&rsquo;s rules compress to three: never trust one number (slice it), know what your scorer rewards, and version your eval set like the test fixture it is.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already run this exact system; it&rsquo;s called monitoring. A benchmark is a <strong>synthetic check</strong>: a canary pinging a fixed endpoint on a fixed schedule. It can be green while a whole region&rsquo;s real users are failing &mdash; because the canary&rsquo;s distribution is not the users&rsquo; distribution. Contamination is the canary accidentally testing the cache-warming path instead of the real one. Saturation is the check that has passed 10,000 times in a row: it carries no information anymore. And the sliced report is the per-service, per-region breakdown you pull the moment the one green SLO number smells wrong. Vibes evals? That&rsquo;s the on-call engineer eyeballing staging and saying &ldquo;looks fine&rdquo; &mdash; genuinely informative, completely unscalable, and the thing every automated check is secretly trying to replace.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 372" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<text x="340.0" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#1c1c1e">The eval harness: dataset -&gt; runner -&gt; scorer -&gt; sliced report</text>
+<rect x="15" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="87.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">EVAL SET</text>
+<text x="87.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">16 fixed questions</text>
+<line x1="164" y1="66.0" x2="179" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="179,62.0 187,66.0 179,70.0" fill="#1c1c1e"/>
+<rect x="183" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="255.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">RUNNER</text>
+<text x="255.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">model(prompt), x16</text>
+<line x1="332" y1="66.0" x2="347" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="347,62.0 355,66.0 347,70.0" fill="#1c1c1e"/>
+<rect x="351" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="423.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">SCORER</text>
+<text x="423.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">exact-match</text>
+<line x1="500" y1="66.0" x2="515" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="515,62.0 523,66.0 515,70.0" fill="#1c1c1e"/>
+<rect x="519" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="591.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">REPORT</text>
+<text x="591.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">overall + slices</text>
+<text x="340.0" y="112" text-anchor="middle" font-size="9.5" fill="#555555">one fixed set of questions, asked the same way, graded the same way - every run, every model</text>
+<text x="340.0" y="146" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">One headline number splits into slices - Showoff, exact-match</text>
+<text x="105" y="216" text-anchor="middle" font-size="30" font-weight="700" fill="#1c1c1e">0.5625</text>
+<text x="105" y="240" text-anchor="middle" font-size="10" fill="#555555">overall accuracy</text>
+<text x="105" y="256" text-anchor="middle" font-size="10" fill="#555555">"mediocre model"</text>
+<text x="312" y="184" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">arithmetic</text>
+<rect x="322" y="168" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="168" width="325" height="22" rx="4" fill="#22a355"/>
+<text x="639" y="184" text-anchor="end" font-size="11" font-weight="700" fill="#ffffff">1.0000</text>
+<text x="312" y="230" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">factual</text>
+<rect x="322" y="214" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="214" width="195" height="22" rx="4" fill="#d99a00"/>
+<text x="525" y="230" text-anchor="start" font-size="11" font-weight="700" fill="#1c1c1e">0.6000</text>
+<text x="312" y="276" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">format</text>
+<rect x="322" y="260" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="260" width="3" height="22" rx="4" fill="#d64545"/>
+<text x="333" y="276" text-anchor="start" font-size="11" font-weight="700" fill="#1c1c1e">0.0000</text>
+<text x="340.0" y="322" text-anchor="middle" font-size="9.5" fill="#555555">the average hid a perfect calculator AND a total format failure in the same model</text>
+<text x="340.0" y="340" text-anchor="middle" font-size="9.5" fill="#555555">Steady: overall 0.8750, no slice below 0.8000 - the slices are the per-service view behind the SLO</text>
+<text x="340.0" y="358" text-anchor="middle" font-size="9.5" fill="#555555">swap the scorer to contains-match and Showoff&#x27;s format slice reads 1.0000 - same answers, different instrument</text>
+</svg>
+    <div class="caption">Top: the harness pipeline &mdash; the same four boxes for a 16-question toy or a 16,000-question benchmark. Bottom: Showoff&rsquo;s headline 0.5625 splits into slices, and the average&rsquo;s &ldquo;mediocre&rdquo; verdict dissolves into one strength and one total failure.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure standard library tonight &mdash; no torch, no APIs, no downloads; this runs anywhere Python does, including your <code>~/ai-lab</code> venv. You build the whole instrument: a 16-question eval set in 3 slices, two fake &ldquo;models&rdquo; as deterministic rule functions (to a harness, a model is just prompt &rarr; response &mdash; swap in a real model call later and nothing else changes), two scorers, and the sliced report. This <code>run_eval()</code> shape is the one you will reuse on Day 96. Watch Part 3: not one answer changes, and a verdict flips anyway.</p>
+  <pre><code>&quot;&quot;&quot;Day 57 - Evals: How Anyone Knows a Model Is Good.
+
+Days 51-56 built the modern stack: pretrain, SFT, LoRA, RLHF,
+DPO, RLVR. Every one of those steps ends with the same question:
+did the model actually get better? The answer comes from an
+EVAL - a fixed set of questions, a runner that asks them, and
+a scorer that grades the answers. An eval is a measurement
+instrument, and like every instrument you have ever trusted
+(or been burned by), it lies in known ways:
+
+  - A benchmark score is accuracy on FIXED questions (MMLU is
+    ~16k multiple-choice questions). It measures performance
+    on that test, not on your users.
+  - Contamination: if the test questions leaked into the
+    training data, the model is reciting, not reasoning -
+    Day 8&#x27;s training-on-the-test-set, at industry scale.
+  - Saturation / Goodhart: once everyone optimizes for a
+    benchmark, scores bunch at the top and the number stops
+    meaning anything. When a measure becomes a target...
+  - The eval-vs-deployment gap: your distribution is not
+    the benchmark&#x27;s distribution. The only eval that fully
+    counts is built from YOUR traffic.
+  - Vibes evals (a human reads outputs and judges) are the
+    unscalable ground truth every automatic scorer is
+    approximating - &quot;looks fine in staging&quot;, formalized.
+
+Tonight you build the instrument itself: a mini eval harness,
+the exact shape you will reuse on Day 96 - dataset, runner,
+scorer, sliced report. Two fake &quot;models&quot; (deterministic rule
+functions) take the same 16-question exam. The headline
+numbers say one model wins. The SLICES say something more
+useful, and swapping the scorer flips a verdict without a
+single answer changing.
+
+  Part 1  The eval set: 16 questions in 3 slices
+          (arithmetic, factual recall, instruction format).
+          A slice is a labeled subset you score separately -
+          the per-service breakdown behind the one SLO number.
+  Part 2  Exact-match run: overall accuracy + per-slice
+          accuracy for both models. Steady wins overall -
+          but Showoff is the better calculator, and its
+          format slice is 0.00. The average hid both facts.
+  Part 3  Same answers, different scorer: contains-match
+          re-grades Showoff&#x27;s format slice 0.00 -&gt; 1.00 and
+          ties the overall score. The instrument changed;
+          the models didn&#x27;t. Choose scorers like you choose
+          alert thresholds: deliberately.
+
+Pure standard library - no torch needed, no APIs, no
+downloads, no RNG. Runs anywhere Python 3.11+ runs,
+including the ~/ai-lab venv on your MacBook.
+
+Expected output:
+
+  Part 1 - the eval set: 16 questions, 3 slices
+    arithmetic: 6 questions
+    factual:    5 questions
+    format:     5 questions
+  Part 2 - exact-match scoring: the headline and the slices
+    Steady   overall 14/16 = 0.8750
+      arithmetic  5/6 = 0.8333
+      factual     4/5 = 0.8000
+      format      5/5 = 1.0000
+    Showoff  overall  9/16 = 0.5625
+      arithmetic  6/6 = 1.0000
+      factual     3/5 = 0.6000
+      format      0/5 = 0.0000
+    headline says: Steady wins by 0.3125
+    slices say: Showoff out-calculates Steady and cannot follow a format instruction at all
+  Part 3 - same answers, different scorer (contains-match)
+    Showoff format slice: exact 0.0000 -&gt; contains 1.0000
+    Showoff overall: exact 0.5625 -&gt; contains 0.8750 (now TIED with Steady)
+    one answer, two verdicts:
+      prompt:   Reply with only the number: how many sides does a triangle have?
+      expected: 3
+      answer:   The answer is 3.
+      exact-match: FAIL   contains-match: PASS
+    verdict: never trust one number - slice it, and know what your scorer actually rewards
+&quot;&quot;&quot;
+
+# ---------- Part 1: the eval set ----------
+# Each item: (slice, prompt, expected). In a real harness this
+# lives in a versioned file - the test fixture of ML.
+EVAL_SET = [
+    # arithmetic - one right answer, machine-checkable
+    (&quot;arithmetic&quot;, &quot;What is 7 + 5?&quot;, &quot;12&quot;),
+    (&quot;arithmetic&quot;, &quot;What is 9 * 3?&quot;, &quot;27&quot;),
+    (&quot;arithmetic&quot;, &quot;What is 48 / 6?&quot;, &quot;8&quot;),
+    (&quot;arithmetic&quot;, &quot;What is 15 - 8?&quot;, &quot;7&quot;),
+    (&quot;arithmetic&quot;, &quot;What is 6 * 7?&quot;, &quot;42&quot;),
+    (&quot;arithmetic&quot;, &quot;What is 100 - 37?&quot;, &quot;63&quot;),
+    # factual recall - one right answer, from memory
+    (&quot;factual&quot;, &quot;What is the capital of France?&quot;, &quot;Paris&quot;),
+    (&quot;factual&quot;, &quot;What is the chemical symbol for water?&quot;, &quot;H2O&quot;),
+    (&quot;factual&quot;, &quot;How many days are in a leap year?&quot;, &quot;366&quot;),
+    (&quot;factual&quot;, &quot;What planet is known as the Red Planet?&quot;, &quot;Mars&quot;),
+    (&quot;factual&quot;, &quot;Who wrote the play Romeo and Juliet?&quot;,
+     &quot;William Shakespeare&quot;),
+    # format - the CONTENT is easy; obeying the instruction is the test
+    (&quot;format&quot;,
+     &quot;Reply with only the number: how many sides does a triangle have?&quot;,
+     &quot;3&quot;),
+    (&quot;format&quot;,
+     &quot;Reply with only the word: what color do you get mixing blue &quot;
+     &quot;and yellow paint?&quot;, &quot;green&quot;),
+    (&quot;format&quot;,
+     &quot;Reply with only the number: how many minutes are in 2 hours?&quot;,
+     &quot;120&quot;),
+    (&quot;format&quot;,
+     &quot;Reply with only the word: what is the opposite of &#x27;hot&#x27;?&quot;,
+     &quot;cold&quot;),
+    (&quot;format&quot;,
+     &quot;Reply with only the number: how many legs does a spider have?&quot;,
+     &quot;8&quot;),
+]
+
+print(&quot;Part 1 - the eval set: 16 questions, 3 slices&quot;)
+_slices = []
+for sl, _, _ in EVAL_SET:
+    if sl not in _slices:
+        _slices.append(sl)
+for sl in _slices:
+    n = sum(1 for s, _, _ in EVAL_SET if s == sl)
+    print(f&quot;  {sl + &#x27;:&#x27;:&lt;12}{n} questions&quot;)
+
+# ---------- the two &quot;models&quot;: deterministic rule functions ----------
+# A model, to a harness, is just prompt -&gt; response. These are
+# lookup tables wearing a function signature - swap in a real
+# model call later and the harness does not change (Day 96).
+STEADY_ANSWERS = {
+    &quot;What is 7 + 5?&quot;: &quot;12&quot;,
+    &quot;What is 9 * 3?&quot;: &quot;27&quot;,
+    &quot;What is 48 / 6?&quot;: &quot;8&quot;,
+    &quot;What is 15 - 8?&quot;: &quot;7&quot;,
+    &quot;What is 6 * 7?&quot;: &quot;42&quot;,
+    &quot;What is 100 - 37?&quot;: &quot;67&quot;,                    # one slip
+    &quot;What is the capital of France?&quot;: &quot;Paris&quot;,
+    &quot;What is the chemical symbol for water?&quot;: &quot;H2O&quot;,
+    &quot;How many days are in a leap year?&quot;: &quot;366&quot;,
+    &quot;What planet is known as the Red Planet?&quot;: &quot;Mars&quot;,
+    &quot;Who wrote the play Romeo and Juliet?&quot;: &quot;Shakespeare&quot;,  # short
+    &quot;Reply with only the number: how many sides does a triangle &quot;
+    &quot;have?&quot;: &quot;3&quot;,
+    &quot;Reply with only the word: what color do you get mixing blue &quot;
+    &quot;and yellow paint?&quot;: &quot;green&quot;,
+    &quot;Reply with only the number: how many minutes are in 2 hours?&quot;:
+        &quot;120&quot;,
+    &quot;Reply with only the word: what is the opposite of &#x27;hot&#x27;?&quot;:
+        &quot;cold&quot;,
+    &quot;Reply with only the number: how many legs does a spider &quot;
+    &quot;have?&quot;: &quot;8&quot;,
+}
+
+SHOWOFF_ANSWERS = {
+    &quot;What is 7 + 5?&quot;: &quot;12&quot;,
+    &quot;What is 9 * 3?&quot;: &quot;27&quot;,
+    &quot;What is 48 / 6?&quot;: &quot;8&quot;,
+    &quot;What is 15 - 8?&quot;: &quot;7&quot;,
+    &quot;What is 6 * 7?&quot;: &quot;42&quot;,
+    &quot;What is 100 - 37?&quot;: &quot;63&quot;,                    # flawless math
+    &quot;What is the capital of France?&quot;: &quot;Paris&quot;,
+    &quot;What is the chemical symbol for water?&quot;: &quot;H2O&quot;,
+    &quot;How many days are in a leap year?&quot;: &quot;365&quot;,   # close, wrong
+    &quot;What planet is known as the Red Planet?&quot;: &quot;Mars&quot;,
+    &quot;Who wrote the play Romeo and Juliet?&quot;: &quot;Shakespeare&quot;,
+    # right content, wrapped in prose the instruction forbade:
+    &quot;Reply with only the number: how many sides does a triangle &quot;
+    &quot;have?&quot;: &quot;The answer is 3.&quot;,
+    &quot;Reply with only the word: what color do you get mixing blue &quot;
+    &quot;and yellow paint?&quot;: &quot;The color is green.&quot;,
+    &quot;Reply with only the number: how many minutes are in 2 hours?&quot;:
+        &quot;That would be 120 minutes.&quot;,
+    &quot;Reply with only the word: what is the opposite of &#x27;hot&#x27;?&quot;:
+        &quot;The opposite is cold.&quot;,
+    &quot;Reply with only the number: how many legs does a spider &quot;
+    &quot;have?&quot;: &quot;A spider has 8 legs.&quot;,
+}
+
+
+def steady(prompt):
+    return STEADY_ANSWERS[prompt]
+
+
+def showoff(prompt):
+    return SHOWOFF_ANSWERS[prompt]
+
+
+# ---------- the scorers ----------
+def exact_match(answer, expected):
+    &quot;&quot;&quot;PASS only if the whole answer IS the expected string
+    (case/space-insensitive). Strict - this is how most
+    benchmark harnesses grade short answers.&quot;&quot;&quot;
+    return answer.strip().lower() == expected.strip().lower()
+
+
+def contains_match(answer, expected):
+    &quot;&quot;&quot;PASS if the expected string appears anywhere in the
+    answer. Lenient - rewards right content in any wrapping.&quot;&quot;&quot;
+    return expected.strip().lower() in answer.strip().lower()
+
+
+# ---------- the harness: dataset -&gt; runner -&gt; scorer -&gt; report ----------
+def run_eval(model, scorer):
+    &quot;&quot;&quot;Returns (n_correct, n_total, {slice: (n_correct, n_total)}).
+    This function IS the deliverable - Day 96 reuses this shape.&quot;&quot;&quot;
+    total_ok, per_slice = 0, {}
+    for sl, prompt, expected in EVAL_SET:
+        ok = scorer(model(prompt), expected)
+        c, n = per_slice.get(sl, (0, 0))
+        per_slice[sl] = (c + int(ok), n + 1)
+        total_ok += int(ok)
+    return total_ok, len(EVAL_SET), per_slice
+
+
+def report(name, model, scorer):
+    ok, n, per_slice = run_eval(model, scorer)
+    print(f&quot;  {name:&lt;9}overall {ok:&gt;2}/{n} = {ok / n:.4f}&quot;)
+    for sl in (&quot;arithmetic&quot;, &quot;factual&quot;, &quot;format&quot;):
+        c, m = per_slice[sl]
+        print(f&quot;    {sl:&lt;11} {c}/{m} = {c / m:.4f}&quot;)
+    return ok / n
+
+
+# ---------- Part 2: exact-match - headline vs slices ----------
+print(&quot;Part 2 - exact-match scoring: the headline and the slices&quot;)
+a_exact = report(&quot;Steady&quot;, steady, exact_match)
+b_exact = report(&quot;Showoff&quot;, showoff, exact_match)
+print(f&quot;  headline says: Steady wins by {a_exact - b_exact:.4f}&quot;)
+print(&quot;  slices say: Showoff out-calculates Steady and cannot &quot;
+      &quot;follow a format instruction at all&quot;)
+
+# ---------- Part 3: same answers, different scorer ----------
+print(&quot;Part 3 - same answers, different scorer (contains-match)&quot;)
+b_ok, _, b_slices = run_eval(showoff, contains_match)
+b_fmt_exact = run_eval(showoff, exact_match)[2][&quot;format&quot;]
+b_fmt_contains = b_slices[&quot;format&quot;]
+print(f&quot;  Showoff format slice: exact &quot;
+      f&quot;{b_fmt_exact[0] / b_fmt_exact[1]:.4f} -&gt; contains &quot;
+      f&quot;{b_fmt_contains[0] / b_fmt_contains[1]:.4f}&quot;)
+print(f&quot;  Showoff overall: exact {b_exact:.4f} -&gt; contains &quot;
+      f&quot;{b_ok / len(EVAL_SET):.4f} (now TIED with Steady)&quot;)
+_p, _exp = EVAL_SET[11][1], EVAL_SET[11][2]
+_ans = showoff(_p)
+print(&quot;  one answer, two verdicts:&quot;)
+print(f&quot;    prompt:   {_p}&quot;)
+print(f&quot;    expected: {_exp}&quot;)
+print(f&quot;    answer:   {_ans}&quot;)
+print(f&quot;    exact-match: &quot;
+      f&quot;{&#x27;PASS&#x27; if exact_match(_ans, _exp) else &#x27;FAIL&#x27;}   &quot;
+      f&quot;contains-match: &quot;
+      f&quot;{&#x27;PASS&#x27; if contains_match(_ans, _exp) else &#x27;FAIL&#x27;}&quot;)
+print(&quot;  verdict: never trust one number - slice it, and know &quot;
+      &quot;what your scorer actually rewards&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the eval set: 16 questions, 3 slices
+  arithmetic: 6 questions
+  factual:    5 questions
+  format:     5 questions
+Part 2 - exact-match scoring: the headline and the slices
+  Steady   overall 14/16 = 0.8750
+    arithmetic  5/6 = 0.8333
+    factual     4/5 = 0.8000
+    format      5/5 = 1.0000
+  Showoff  overall  9/16 = 0.5625
+    arithmetic  6/6 = 1.0000
+    factual     3/5 = 0.6000
+    format      0/5 = 0.0000
+  headline says: Steady wins by 0.3125
+  slices say: Showoff out-calculates Steady and cannot follow a format instruction at all
+Part 3 - same answers, different scorer (contains-match)
+  Showoff format slice: exact 0.0000 -&gt; contains 1.0000
+  Showoff overall: exact 0.5625 -&gt; contains 0.8750 (now TIED with Steady)
+  one answer, two verdicts:
+    prompt:   Reply with only the number: how many sides does a triangle have?
+    expected: 3
+    answer:   The answer is 3.
+    exact-match: FAIL   contains-match: PASS
+  verdict: never trust one number - slice it, and know what your scorer actually rewards</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>You built a working eval harness from scratch &mdash; dataset, runner, two scorers, sliced report &mdash; and used it to catch what a headline number hides: Showoff (overall 0.5625) is a <em>better</em> calculator than Steady (arithmetic 1.0000 vs 0.8333) and a total format failure (0.0000), and re-grading with contains-match ties the race at 0.8750 without a single answer changing. You can now interrogate any benchmark claim: what&rsquo;s the set, what&rsquo;s the scorer, where are the slices, and who checked for contamination?</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Run <code>code.py</code> and read only Part 2&rsquo;s slice table and Part 3&rsquo;s flip. Then skim the three lies &mdash; contamination, saturation/Goodhart, eval-vs-deployment &mdash; and say each one back in monitoring language (canary testing the cache path; the check that always passes; green synthetic, red users). That&rsquo;s the day.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: your best model still can&rsquo;t answer questions about <em>your own documents</em> &mdash; it has simply never seen them. We start fixing that.</p>
+  </div>
+
+  <div class="footer">Day 57 of 100 &middot; Streak: 57 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

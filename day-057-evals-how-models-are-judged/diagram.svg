@@ -1,0 +1,41 @@
+<svg viewBox="0 0 680 372" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<text x="340.0" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#1c1c1e">The eval harness: dataset -&gt; runner -&gt; scorer -&gt; sliced report</text>
+<rect x="15" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="87.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">EVAL SET</text>
+<text x="87.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">16 fixed questions</text>
+<line x1="164" y1="66.0" x2="179" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="179,62.0 187,66.0 179,70.0" fill="#1c1c1e"/>
+<rect x="183" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="255.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">RUNNER</text>
+<text x="255.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">model(prompt), x16</text>
+<line x1="332" y1="66.0" x2="347" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="347,62.0 355,66.0 347,70.0" fill="#1c1c1e"/>
+<rect x="351" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="423.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">SCORER</text>
+<text x="423.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">exact-match</text>
+<line x1="500" y1="66.0" x2="515" y2="66.0" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="515,62.0 523,66.0 515,70.0" fill="#1c1c1e"/>
+<rect x="519" y="44" width="145" height="44" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="591.5" y="63" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">REPORT</text>
+<text x="591.5" y="80" text-anchor="middle" font-size="9.5" fill="#555555">overall + slices</text>
+<text x="340.0" y="112" text-anchor="middle" font-size="9.5" fill="#555555">one fixed set of questions, asked the same way, graded the same way - every run, every model</text>
+<text x="340.0" y="146" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">One headline number splits into slices - Showoff, exact-match</text>
+<text x="105" y="216" text-anchor="middle" font-size="30" font-weight="700" fill="#1c1c1e">0.5625</text>
+<text x="105" y="240" text-anchor="middle" font-size="10" fill="#555555">overall accuracy</text>
+<text x="105" y="256" text-anchor="middle" font-size="10" fill="#555555">"mediocre model"</text>
+<text x="312" y="184" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">arithmetic</text>
+<rect x="322" y="168" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="168" width="325" height="22" rx="4" fill="#22a355"/>
+<text x="639" y="184" text-anchor="end" font-size="11" font-weight="700" fill="#ffffff">1.0000</text>
+<text x="312" y="230" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">factual</text>
+<rect x="322" y="214" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="214" width="195" height="22" rx="4" fill="#d99a00"/>
+<text x="525" y="230" text-anchor="start" font-size="11" font-weight="700" fill="#1c1c1e">0.6000</text>
+<text x="312" y="276" text-anchor="end" font-size="11" font-weight="700" fill="#1c1c1e">format</text>
+<rect x="322" y="260" width="325" height="22" rx="4" fill="#eeeeee"/>
+<rect x="322" y="260" width="3" height="22" rx="4" fill="#d64545"/>
+<text x="333" y="276" text-anchor="start" font-size="11" font-weight="700" fill="#1c1c1e">0.0000</text>
+<text x="340.0" y="322" text-anchor="middle" font-size="9.5" fill="#555555">the average hid a perfect calculator AND a total format failure in the same model</text>
+<text x="340.0" y="340" text-anchor="middle" font-size="9.5" fill="#555555">Steady: overall 0.8750, no slice below 0.8000 - the slices are the per-service view behind the SLO</text>
+<text x="340.0" y="358" text-anchor="middle" font-size="9.5" fill="#555555">swap the scorer to contains-match and Showoff&#x27;s format slice reads 1.0000 - same answers, different instrument</text>
+</svg>
