@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RLVR: Reinforcement Learning With Verifiable Rewards — Day 56 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 56 of 100</span>
+  <h1>RLVR: Reinforcement Learning With Verifiable Rewards</h1>
+  <p class="outcome">Tonight you'll be able to: explain when a reward can be <em>checked</em> instead of judged, run the sample&nbsp;&rarr; check &rarr; group-relative update loop yourself, and read pass@1 chasing pass@4 &mdash; the recipe behind the reasoning-model jump.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase D so far has run on <strong>judgment</strong>. RLHF (Day 54) trains a reward model to imitate human preferences &mdash; a learned judge. DPO (Day 55) skips the judge but still learns from preferred-vs-rejected pairs. Either way the signal is somebody&rsquo;s opinion, and opinions can be flattered: a model that learns to <em>look</em> right to the judge scores like a model that <em>is</em> right. That failure has a name you know from metrics work &mdash; Goodhart: once the proxy becomes the target, it stops measuring the thing.</p>
+<p><strong>RLVR &mdash; reinforcement learning with verifiable rewards</strong> &mdash; asks a prior question: for this task, can correctness be <em>checked</em> by a program? If yes, skip the judge entirely. The answer to a math problem either matches or it doesn&rsquo;t. The code either passes its unit tests or it doesn&rsquo;t. The proof either verifies or it doesn&rsquo;t. The reward is a deterministic checker returning 1 or 0 &mdash; no learned model, no taste, nothing to sweet-talk. A wrong answer in a confident tone scores exactly the same as a wrong answer in a humble one: zero.</p>
+<p>The loop is four steps, and tonight&rsquo;s code runs all four. <strong>(1) Sample K attempts</strong> per prompt from the current policy &mdash; K chances, deliberately, because one greedy attempt hides what the policy can already do. <strong>(2) Check each attempt</strong> &mdash; reward 1 or 0, from the checker, recomputed fresh. <strong>(3) Score each attempt against its own group:</strong> advantage = reward &minus; group mean. In a group of four with one pass, the pass gets +0.75 and each fail gets &minus;0.25. <strong>(4) Update:</strong> push up the log-probability of each sampled answer in proportion to its advantage &mdash; passes become more likely, fails less, and the arithmetic guarantees the pushes and pulls balance inside the group.</p>
+<p><strong>GRPO, in one paragraph:</strong> that group-relative advantage <em>is</em> GRPO (Group Relative Policy Optimization), the algorithm DeepSeek used for its math and reasoning models. Classic policy gradient needs a second network &mdash; a critic &mdash; to estimate &ldquo;how good is average here?&rdquo; and subtract it as a baseline. GRPO deletes the critic: sample a group, and let the group&rsquo;s own mean be the baseline. (Some versions also divide by the group&rsquo;s standard deviation.) Simpler, cheaper, and the recipe behind the recent reasoning jump: models trained this way on math and code, where answers verify, learned to produce long chains of working-out that end in checkable &mdash; and increasingly correct &mdash; answers.</p>
+<p><strong>Why it works is in tonight&rsquo;s first numbers:</strong> pass@1 vs pass@k. Your toy policy&rsquo;s single-sample pass rate starts at 0.2081, but give it 4 samples and it passes 0.6034 of the time &mdash; and its greedy top pick is right on <em>zero</em> of six prompts. The capability is already in there, just unreliable. RLVR is a machine for converting &ldquo;sometimes right&rdquo; into &ldquo;usually right&rdquo;: every pass the sampler stumbles into gets reinforced, every fail gets taxed, and pass@1 climbs toward pass@4. No new knowledge is injected &mdash; the distribution is reshaped around what already verifies.</p>
+<p><strong>Honest limits, three.</strong> First, scope: no checker, no RLVR &mdash; essays, bedside manner, and strategy have no unit test, which is why judgment-based methods aren&rsquo;t going away. Second, sparsity: a group where all K attempts fail (or all pass) has advantage exactly zero for everyone &mdash; <em>no contrast, no gradient</em>. Tonight 40 of 240 groups are dead that way; at real scale it&rsquo;s why prompt difficulty has to be matched to the model, neither hopeless nor trivial. Third, the checker itself becomes the spec: a model can learn to pass the tests as written &mdash; hardcode the expected outputs, exploit the harness &mdash; so the checker has to actually <em>be</em> the requirement, not a sketch of it. Sound familiar? It&rsquo;s the same discipline as writing tests you&rsquo;d trust in prod.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already live in both worlds. <strong>RLHF is a code review by vibes:</strong> a senior reviewer scores your diff on how it reads &mdash; and every engineer learns, consciously or not, to write code that <em>reviews</em> well. <strong>RLVR is CI:</strong> the test suite does not care how the code reads, who wrote it, or how confident the commit message sounds. It runs, and it passes or it fails. Your LeetCode drills work the same way &mdash; the judge accepts or it doesn&rsquo;t, and there is no partial credit for an elegant almost-solution. And in trading terms: a guru&rsquo;s rating is a judgment; a recomputed, checkable backtest statistic is a verification. RLVR only trains where the second kind exists &mdash; and where it exists, it trusts nothing else.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 512" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="512" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold" >RLVR: sample K attempts, let a CHECKER score them, reinforce the passes</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666" font-weight="normal" >no learned judge - reward = 1 if it verifies, 0 if it doesn&#x27;t</text>
+<rect x="12" y="56" width="656" height="238" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold" >A - THE LOOP (one prompt, one round, K = 4)</text>
+<rect x="28" y="120" width="118" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="87" y="146" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold" >POLICY</text>
+<text x="87" y="164" text-anchor="middle" font-size="9" fill="#555555" font-weight="normal" >prompt: 47 + 38</text>
+<rect x="196" y="96" width="104" height="28" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="248" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >try 1: 75</text>
+<line x1="148" y1="152" x2="192" y2="110" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,110 185,106 185,114" fill="#0a7aff"/>
+<rect x="196" y="132" width="104" height="28" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="248" y="150" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >try 2: 95</text>
+<line x1="148" y1="152" x2="192" y2="146" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,146 185,142 185,150" fill="#0a7aff"/>
+<rect x="196" y="168" width="104" height="28" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="248" y="186" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >try 3: 85</text>
+<line x1="148" y1="152" x2="192" y2="182" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,182 185,178 185,186" fill="#0a7aff"/>
+<rect x="196" y="204" width="104" height="28" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="248" y="222" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >try 4: 75</text>
+<line x1="148" y1="152" x2="192" y2="218" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="192,218 185,214 185,222" fill="#0a7aff"/>
+<text x="248" y="86" text-anchor="middle" font-size="9" fill="#0a54c2" font-weight="normal" >sample K = 4</text>
+<rect x="348" y="120" width="128" height="64" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="412" y="146" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold" >CHECKER</text>
+<text x="412" y="164" text-anchor="middle" font-size="9" fill="#555555" font-weight="normal" >recompute 47+38</text>
+<line x1="304" y1="110" x2="344" y2="140" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="344,140 337,136 337,144" fill="#0a7aff"/>
+<line x1="304" y1="146" x2="344" y2="152" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="344,152 337,148 337,156" fill="#0a7aff"/>
+<line x1="304" y1="182" x2="344" y2="164" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="344,164 337,160 337,168" fill="#0a7aff"/>
+<line x1="304" y1="218" x2="344" y2="176" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="344,176 337,172 337,180" fill="#0a7aff"/>
+<rect x="524" y="96" width="124" height="32" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="586" y="116" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >85: PASS - r = 1</text>
+<rect x="524" y="140" width="124" height="32" rx="8" fill="#fdecec" stroke="#d33" stroke-width="1.2"/>
+<text x="586" y="160" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold" >75, 95: FAIL - r = 0</text>
+<line x1="480" y1="140" x2="520" y2="112" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="520,112 513,108 513,116" fill="#22a355"/>
+<line x1="480" y1="164" x2="520" y2="156" stroke="#cc3333" stroke-width="1.6"/>
+<polygon points="520,156 513,152 513,160" fill="#cc3333"/>
+<rect x="170" y="246" width="340" height="34" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="267" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold" >advantage = reward - group mean 0.25:  +0.75 / -0.25</text>
+<line x1="586" y1="176" x2="586" y2="224" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="586,224 579,220 579,228" fill="#7a5cff"/>
+<line x1="586" y1="224" x2="490" y2="224" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="490,224 497,220 497,228" fill="#7a5cff"/>
+<path d="M340,284 L340,300 L60,300 L60,188" fill="none" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="60,188 56,195 64,195" fill="#7a5cff"/>
+<text x="200" y="294" text-anchor="start" font-size="8.5" fill="#5a3fd4" font-weight="normal" >update: logits up x advantage on passes, down on fails - repeat</text>
+<rect x="12" y="318" width="656" height="150" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="338" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold" >B - WHAT TRAINING DOES: pass@1 chases pass@4 (code, Part 3)</text>
+<line x1="70" y1="452" x2="630" y2="452" stroke="#999" stroke-width="1"/>
+<line x1="70" y1="334" x2="70" y2="452" stroke="#999" stroke-width="1"/>
+<text x="70" y="347" text-anchor="middle" font-size="8.5" fill="#666666" font-weight="normal" >1.0</text>
+<text x="70" y="455" text-anchor="middle" font-size="8.5" fill="#666666" font-weight="normal" >0</text>
+<path d="M70.0,380.8 L140.0,368.8 L210.0,357.6 L280.0,345.9 L350.0,339.0 L420.0,335.7 L490.0,334.6 L560.0,334.2 L630.0,334.1" fill="none" stroke="#22a355" stroke-width="1.8" stroke-dasharray="5,3"/>
+<path d="M70.0,427.4 L140.0,420.4 L210.0,411.6 L280.0,398.6 L350.0,385.3 L420.0,372.6 L490.0,363.9 L560.0,356.1 L630.0,352.1" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="70.0" cy="427.4" r="3" fill="#0a7aff"/>
+<circle cx="630.0" cy="352.1" r="3" fill="#0a7aff"/>
+<circle cx="70.0" cy="380.8" r="3" fill="#22a355"/>
+<circle cx="630.0" cy="334.1" r="3" fill="#22a355"/>
+<text x="70.0" y="417.4442" text-anchor="middle" font-size="9" fill="#0a54c2" font-weight="bold" >0.21</text>
+<text x="624.0" y="342.1248" text-anchor="end" font-size="9" fill="#0a54c2" font-weight="bold" >pass@1 0.85</text>
+<text x="70.0" y="370.7988" text-anchor="middle" font-size="9" fill="#177245" font-weight="bold" >0.60</text>
+<text x="624.0" y="350.0826" text-anchor="end" font-size="9" fill="#177245" font-weight="bold" >pass@4 1.00</text>
+<text x="70" y="466" text-anchor="middle" font-size="8.5" fill="#666666" font-weight="normal" >round 0</text>
+<text x="630" y="466" text-anchor="end" font-size="8.5" fill="#666666" font-weight="normal" >round 40</text>
+<text x="340" y="494" text-anchor="middle" font-size="9.5" fill="#9a6b00" font-weight="bold" >dead groups teach nothing: all-pass or all-fail - advantage 0 - no gradient (40 of 240 in the code)</text>
+</svg>
+    <div class="caption">Panel A: the loop on one prompt &mdash; the policy samples K = 4 attempts, the checker recomputes 47 + 38 and gates each attempt to reward 1 or 0, and the group mean turns rewards into advantages (+0.75 for the pass, &minus;0.25 per fail) that scale the update before the next round. Panel B: the code&rsquo;s real training curves &mdash; pass@4 starts far above pass@1 (the capability is already there, unreliably), and 40 rounds of group-relative updates pull pass@1 up toward it.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, zero RNG &mdash; sampling uses fixed listed draws (a hash formula), so every digit below is exact on any machine. The policy is a hand-set softmax over four candidate answers for each of six two-digit additions; the checker stores no labels, it recomputes <code>a + b</code>. <strong>Part 1</strong> measures the headroom: pass@1 vs pass@4 vs the greedy pick. <strong>Part 2</strong> works one group by hand &mdash; samples, rewards, group mean, advantages. <strong>Part 3</strong> runs 40 rounds of the GRPO-style update (SGD on <code>&minus;A &middot; log p(sample)</code>) and prints the pass rates climbing, dead groups counted.</p>
+  <pre><code>&quot;&quot;&quot;Day 56 - RLVR: Reinforcement Learning With Verifiable Rewards.
+
+Days 54-55 taught rewards that come from JUDGMENT: RLHF trains
+a reward model on human preferences, DPO learns from preferred
+vs rejected pairs. A judge can be flattered, gamed, Goodharted.
+Tonight the reward comes from a CHECKER instead:
+
+    reward = 1 if the answer verifies, 0 if it doesn&#x27;t.
+
+Math answer exact-matches, code passes its unit tests, a proof
+verifies - no learned judge in the loop, nothing to sweet-talk.
+Sample K attempts per prompt, score each 1/0, and push up the
+probability of the ones that pass. The baseline is the group
+itself: advantage = reward - group mean (GRPO&#x27;s trick - the K
+samples replace the critic network entirely).
+
+  Part 1  The checker IS the reward. Six two-digit additions,
+          four candidate answers each, a hand-set softmax
+          policy. The checker stores no labels - it recomputes
+          a + b and compares. pass@1 is 0.2081 but pass@4 is
+          0.6034: the policy already passes SOMETIMES. That gap
+          is the fuel RLVR burns.
+  Part 2  One group, worked by hand: prompt 47 + 38, K = 4
+          samples 75, 95, 85, 75 -&gt; rewards 0, 0, 1, 0 -&gt; group
+          mean 0.25 -&gt; advantages -0.25, -0.25, +0.75, -0.25.
+          The passing sample gets pushed up 3x harder than
+          each failing one gets pushed down.
+  Part 3  Forty rounds of group-relative updates (SGD on the
+          policy gradient -A * log p(sample)). pass@1 climbs
+          0.2081 -&gt; 0.8464, greedy goes 0/6 -&gt; 6/6. And 40 of
+          240 groups are DEAD - all-pass or all-fail, advantage
+          exactly zero, no gradient: no contrast, no lesson.
+
+Sampling uses FIXED listed draws (a hash formula, no RNG), so
+every number below is exact and reproducible on any machine.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU or MPS,
+no CUDA, no paid APIs, no downloads.
+
+Expected output:
+
+  Part 1 - the checker is the reward: no judge, just a + b
+    47 + 38 = 85: choices 75, 85, 95, 84   p(correct) 0.2004
+    26 + 49 = 75: choices 75, 65, 76, 85   p(correct) 0.2004
+    58 + 27 = 85: choices 95, 84, 85, 75   p(correct) 0.1563
+    39 + 44 = 83: choices 73, 93, 82, 83   p(correct) 0.2094
+    64 + 18 = 82: choices 82, 72, 92, 81   p(correct) 0.2558
+    35 + 57 = 92: choices 82, 102, 92, 91   p(correct) 0.2265
+    pass@1 (expected over 1 sample):  0.2081
+    pass@4 (expected over 4 samples): 0.6034
+    greedy argmax correct: 0/6 - sampling finds passes the top pick misses
+  Part 2 - one group, worked: prompt 47 + 38, round 0, K = 4 samples
+    sampled answers: 75, 95, 85, 75
+    checker rewards: 0, 0, 1, 0   group mean 0.25
+    advantages (reward - mean): -0.25, -0.25, +0.75, -0.25
+    the +0.75 sample gets pushed UP, the -0.25 samples DOWN
+  Part 3 - group-relative training: 40 rounds, K = 4 per prompt, lr = 2.0
+    round  0: pass@1 0.2081  pass@4 0.6034  greedy 0/6
+    round  5: pass@1 0.2674  pass@4 0.7053  greedy 1/6
+    round 10: pass@1 0.3424  pass@4 0.7997  greedy 4/6
+    round 15: pass@1 0.4523  pass@4 0.8991  greedy 6/6
+    round 20: pass@1 0.5656  pass@4 0.9574  greedy 6/6
+    round 25: pass@1 0.6732  pass@4 0.9857  greedy 6/6
+    round 30: pass@1 0.7463  pass@4 0.9952  greedy 6/6
+    round 35: pass@1 0.8131  pass@4 0.9986  greedy 6/6
+    round 40: pass@1 0.8464  pass@4 0.9993  greedy 6/6
+    dead groups (all-pass or all-fail, zero advantage): 40 of 240
+    final: pass@1 0.8464  pass@4 0.9993  greedy 6/6
+    verdict: nobody judged style - a checker counted passes, and &#x27;sometimes&#x27; became &#x27;usually&#x27;
+&quot;&quot;&quot;
+import torch
+
+# Six verifiable prompts: two-digit addition. The checker
+# recomputes a + b - there is no label file to leak or game.
+PROMPTS = [(47, 38), (26, 49), (58, 27), (39, 44), (64, 18), (35, 57)]
+CHOICES = torch.tensor([[75, 85, 95, 84], [75, 65, 76, 85],
+                        [95, 84, 85, 75], [73, 93, 82, 83],
+                        [82, 72, 92, 81], [82, 102, 92, 91]])
+# Hand-set starting policy: the correct answer is never the
+# argmax, but it always has real probability mass (~0.16-0.26).
+LOGITS0 = torch.tensor([[0.8, 0.2, 0.5, 0.0], [0.3, 0.9, 0.1, 0.6],
+                        [0.7, 0.4, 0.1, 0.9], [0.2, 0.8, 0.5, 0.3],
+                        [0.4, 0.7, 0.2, 0.1], [0.9, 0.3, 0.5, 0.6]])
+CORRECT = [int((CHOICES[i] == PROMPTS[i][0] + PROMPTS[i][1])
+               .nonzero()[0]) for i in range(len(PROMPTS))]
+K, ROUNDS, LR = 4, 40, 2.0
+P = len(PROMPTS)
+
+
+def checker(p, a):
+    &quot;&quot;&quot;The whole reward model: recompute and compare. 1 or 0.&quot;&quot;&quot;
+    return int(CHOICES[p, a].item() == PROMPTS[p][0] + PROMPTS[p][1])
+
+
+def draw_u(r, p, k):
+    &quot;&quot;&quot;Fixed listed draws - a hash, not an RNG. Same on every
+    machine, every run, so the numbers below are exact.&quot;&quot;&quot;
+    return ((r * 2654435761 + p * 40503 + k * 65599 + 12345)
+            % 100000) / 100000.0
+
+
+def sample_group(probs_p, r, p):
+    &quot;&quot;&quot;Draw K answers from the policy by inverse-CDF on the
+    fixed uniforms; score each with the checker.&quot;&quot;&quot;
+    cum = probs_p.cumsum(0)
+    idxs = [min(int((cum &lt;= draw_u(r, p, k)).sum().item()), 3)
+            for k in range(K)]
+    return idxs, [checker(p, a) for a in idxs]
+
+
+def metrics(logits):
+    probs = torch.softmax(logits, dim=1)
+    pc = probs[torch.arange(P), torch.tensor(CORRECT)]
+    pass1 = pc.mean().item()
+    passk = (1 - (1 - pc) ** K).mean().item()
+    greedy = int((logits.argmax(dim=1)
+                  == torch.tensor(CORRECT)).sum().item())
+    return probs, pass1, passk, greedy
+
+
+# ---------- Part 1: the checker is the reward ----------
+print(&quot;Part 1 - the checker is the reward: no judge, just a + b&quot;)
+logits = LOGITS0.clone()
+probs, pass1, passk, greedy = metrics(logits)
+for p in range(P):
+    a, b = PROMPTS[p]
+    ch = &quot;, &quot;.join(str(int(v)) for v in CHOICES[p])
+    print(f&quot;  {a} + {b} = {a + b}: choices {ch}   &quot;
+          f&quot;p(correct) {probs[p, CORRECT[p]].item():.4f}&quot;)
+print(f&quot;  pass@1 (expected over 1 sample):  {pass1:.4f}&quot;)
+print(f&quot;  pass@{K} (expected over {K} samples): {passk:.4f}&quot;)
+print(f&quot;  greedy argmax correct: {greedy}/6 - sampling finds &quot;
+      &quot;passes the top pick misses&quot;)
+
+# ---------- Part 2: one group, worked ----------
+print(&quot;Part 2 - one group, worked: prompt 47 + 38, round 0, &quot;
+      &quot;K = 4 samples&quot;)
+idxs, rews = sample_group(probs[0].detach(), 0, 0)
+mean = sum(rews) / K
+adv = [r - mean for r in rews]
+vals = &quot;, &quot;.join(str(int(CHOICES[0, a])) for a in idxs)
+print(f&quot;  sampled answers: {vals}&quot;)
+print(f&quot;  checker rewards: {&#x27;, &#x27;.join(str(r) for r in rews)}   &quot;
+      f&quot;group mean {mean:.2f}&quot;)
+print(f&quot;  advantages (reward - mean): &quot;
+      f&quot;{&#x27;, &#x27;.join(f&#x27;{v:+.2f}&#x27; for v in adv)}&quot;)
+print(&quot;  the +0.75 sample gets pushed UP, the -0.25 samples DOWN&quot;)
+
+# ---------- Part 3: group-relative training ----------
+print(f&quot;Part 3 - group-relative training: {ROUNDS} rounds, &quot;
+      f&quot;K = {K} per prompt, lr = {LR}&quot;)
+logits = LOGITS0.clone().requires_grad_(True)
+opt = torch.optim.SGD([logits], lr=LR)
+dead = 0
+for r in range(ROUNDS + 1):
+    with torch.no_grad():
+        probs, pass1, passk, greedy = metrics(logits)
+    if r % 5 == 0:
+        print(f&quot;  round {r:2d}: pass@1 {pass1:.4f}  &quot;
+              f&quot;pass@{K} {passk:.4f}  greedy {greedy}/6&quot;)
+    if r == ROUNDS:
+        break
+    logp = torch.log_softmax(logits, dim=1)
+    terms = []
+    for p in range(P):
+        idxs, rews = sample_group(probs[p], r, p)
+        if all(v == rews[0] for v in rews):
+            dead += 1                      # no contrast, no signal
+        mean = sum(rews) / K
+        for k in range(K):
+            adv = rews[k] - mean           # group-relative advantage
+            terms.append(-adv * logp[p, idxs[k]])
+    loss = torch.stack(terms).mean()       # -A * log p(sample)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+print(f&quot;  dead groups (all-pass or all-fail, zero advantage): &quot;
+      f&quot;{dead} of {ROUNDS * P}&quot;)
+print(f&quot;  final: pass@1 {pass1:.4f}  pass@{K} {passk:.4f}  &quot;
+      f&quot;greedy {greedy}/6&quot;)
+print(&quot;  verdict: nobody judged style - a checker counted &quot;
+      &quot;passes, and &#x27;sometimes&#x27; became &#x27;usually&#x27;&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the checker is the reward: no judge, just a + b
+  47 + 38 = 85: choices 75, 85, 95, 84   p(correct) 0.2004
+  26 + 49 = 75: choices 75, 65, 76, 85   p(correct) 0.2004
+  58 + 27 = 85: choices 95, 84, 85, 75   p(correct) 0.1563
+  39 + 44 = 83: choices 73, 93, 82, 83   p(correct) 0.2094
+  64 + 18 = 82: choices 82, 72, 92, 81   p(correct) 0.2558
+  35 + 57 = 92: choices 82, 102, 92, 91   p(correct) 0.2265
+  pass@1 (expected over 1 sample):  0.2081
+  pass@4 (expected over 4 samples): 0.6034
+  greedy argmax correct: 0/6 - sampling finds passes the top pick misses
+Part 2 - one group, worked: prompt 47 + 38, round 0, K = 4 samples
+  sampled answers: 75, 95, 85, 75
+  checker rewards: 0, 0, 1, 0   group mean 0.25
+  advantages (reward - mean): -0.25, -0.25, +0.75, -0.25
+  the +0.75 sample gets pushed UP, the -0.25 samples DOWN
+Part 3 - group-relative training: 40 rounds, K = 4 per prompt, lr = 2.0
+  round  0: pass@1 0.2081  pass@4 0.6034  greedy 0/6
+  round  5: pass@1 0.2674  pass@4 0.7053  greedy 1/6
+  round 10: pass@1 0.3424  pass@4 0.7997  greedy 4/6
+  round 15: pass@1 0.4523  pass@4 0.8991  greedy 6/6
+  round 20: pass@1 0.5656  pass@4 0.9574  greedy 6/6
+  round 25: pass@1 0.6732  pass@4 0.9857  greedy 6/6
+  round 30: pass@1 0.7463  pass@4 0.9952  greedy 6/6
+  round 35: pass@1 0.8131  pass@4 0.9986  greedy 6/6
+  round 40: pass@1 0.8464  pass@4 0.9993  greedy 6/6
+  dead groups (all-pass or all-fail, zero advantage): 40 of 240
+  final: pass@1 0.8464  pass@4 0.9993  greedy 6/6
+  verdict: nobody judged style - a checker counted passes, and &#x27;sometimes&#x27; became &#x27;usually&#x27;</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches the expected output on the numbers that matter: Part 1 pass@1 <code>0.2081</code> vs pass@4 <code>0.6034</code> with greedy at <code>0/6</code>; Part 2&rsquo;s advantages <code>-0.25, -0.25, +0.75, -0.25</code>; Part 3 ending at pass@1 <code>0.8464</code>, pass@4 <code>0.9993</code>, greedy <code>6/6</code>, with <code>40 of 240</code> dead groups. The keeper test, in plain words: given any task, you can say whether its reward is checkable or judged &mdash; and if it&rsquo;s checkable, sketch the four-step loop and name why the group mean replaces the critic.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study Panel A of the diagram until you can trace one attempt through it. Run the code and look at only two lines: Part 1&rsquo;s pass@1 vs pass@4 gap, and Part 3&rsquo;s round-40 line. If you can say out loud why a checker can&rsquo;t be flattered and why an all-fail group teaches nothing, you have RLVR &mdash; Part 2&rsquo;s hand-worked group is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: if a checker only exists for some tasks, how does anyone grade a model on the rest &mdash; what benchmarks actually measure, and where they quietly stop measuring it.</p>
+  </div>
+
+  <div class="footer">Streak: 56 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
