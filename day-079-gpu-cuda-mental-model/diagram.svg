@@ -1,0 +1,137 @@
+<svg viewBox="0 0 680 540" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="540" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The GPU: many small cores, one memory ladder</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">a kernel = a grid of thread blocks - a block lives on one SM - speed = which rung its data sits on</text>
+<rect x="12" y="56" width="252" height="330" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="138" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ONE GPU DIE (H100-class)</text>
+<text x="138" y="92" text-anchor="middle" font-size="8.5" fill="#555555">132 SMs: an array of small compute tiles</text>
+<rect x="24" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="40" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="62" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="78" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="100" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="116" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="138" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="154" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="176" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="192" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="214" y="104" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="230" y="124" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="24" y="142" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="40" y="162" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="62" y="142" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="78" y="162" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="100" y="142" width="32" height="32" rx="4" fill="#ffe1a8" stroke="#d99a00" stroke-width="1.6"/>
+<text x="116" y="162" text-anchor="middle" font-size="8" fill="#1c1c1e" font-weight="bold">SM</text>
+<rect x="138" y="142" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="154" y="162" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="176" y="142" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="192" y="162" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="214" y="142" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="230" y="162" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="24" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="40" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="62" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="78" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="100" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="116" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="138" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="154" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="176" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="192" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="214" y="180" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="230" y="200" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="24" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="40" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="62" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="78" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="100" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="116" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="138" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="154" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="176" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="192" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<rect x="214" y="218" width="32" height="32" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="230" y="238" text-anchor="middle" font-size="8" fill="#555555">SM</text>
+<text x="138" y="272" text-anchor="middle" font-size="8.5" fill="#1c1c1e">every SM carries its own registers</text>
+<text x="138" y="286" text-anchor="middle" font-size="8.5" fill="#1c1c1e">&amp; shared memory - no sharing across SMs</text>
+<text x="138" y="308" text-anchor="middle" font-size="8.5" fill="#555555">HBM stacks sit beside the die:</text>
+<rect x="24" y="316" width="52" height="26" rx="4" fill="#dbe9ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="50" y="333" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">HBM</text>
+<rect x="82" y="316" width="52" height="26" rx="4" fill="#dbe9ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="108" y="333" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">HBM</text>
+<rect x="140" y="316" width="52" height="26" rx="4" fill="#dbe9ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="166" y="333" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">HBM</text>
+<rect x="198" y="316" width="52" height="26" rx="4" fill="#dbe9ff" stroke="#0a7aff" stroke-width="1.0"/>
+<text x="224" y="333" text-anchor="middle" font-size="8.5" fill="#0a54c2" font-weight="bold">HBM</text>
+<text x="138" y="362" text-anchor="middle" font-size="8.5" fill="#1c1c1e">all SMs read/write the same HBM -</text>
+<text x="138" y="376" text-anchor="middle" font-size="8.5" fill="#1c1c1e">that shared trip is the expensive one</text>
+<line x1="132" y1="158" x2="288" y2="120" stroke="#d99a00" stroke-width="1.4" stroke-dasharray="5,4"/>
+<rect x="276" y="56" width="176" height="330" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="364" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONE SM, ZOOMED</text>
+<text x="364" y="92" text-anchor="middle" font-size="8.5" fill="#555555">one block's whole world</text>
+<rect x="288" y="104" width="152" height="36" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="364" y="120" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">warp schedulers</text>
+<text x="364" y="133" text-anchor="middle" font-size="7.5" fill="#555555">hands warps of 32 threads to cores</text>
+<rect x="288" y="148" width="152" height="48" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="364" y="168" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">128 CUDA cores</text>
+<text x="364" y="183" text-anchor="middle" font-size="7.5" fill="#555555">simple ALUs - one add/mul</text>
+<text x="364" y="192" text-anchor="middle" font-size="7.5" fill="#555555">per core per clock, no brains</text>
+<rect x="288" y="204" width="152" height="42" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="364" y="222" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">registers</text>
+<text x="364" y="237" text-anchor="middle" font-size="7.5" fill="#555555">per-thread - the fastest there is</text>
+<rect x="288" y="254" width="152" height="52" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="364" y="274" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">shared memory</text>
+<text x="364" y="289" text-anchor="middle" font-size="7.5" fill="#555555">per-block scratchpad - the block's</text>
+<text x="364" y="300" text-anchor="middle" font-size="7.5" fill="#555555">threads cooperate through it</text>
+<text x="364" y="330" text-anchor="middle" font-size="8.5" fill="#1c1c1e">a thread block never leaves its SM,</text>
+<text x="364" y="344" text-anchor="middle" font-size="8.5" fill="#1c1c1e">so this panel is all its threads</text>
+<text x="364" y="358" text-anchor="middle" font-size="8.5" fill="#1c1c1e">can reach fast - everything else</text>
+<text x="364" y="372" text-anchor="middle" font-size="8.5" fill="#1c1c1e">is a trip down the ladder</text>
+<rect x="464" y="56" width="204" height="330" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="566" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE MEMORY LADDER</text>
+<text x="566" y="92" text-anchor="middle" font-size="8.5" fill="#555555">top = small &amp; instant, bottom = huge &amp; far</text>
+<polygon points="524,96 608,96 614,136 518,136" fill="#f1efff" stroke="#7a5cff" stroke-width="1.1"/>
+<text x="566" y="113" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">registers</text>
+<text x="566" y="127" text-anchor="middle" font-size="7.5" fill="#444444">~256 KB/SM - ~zero wait</text>
+<polygon points="512,148 620,148 626,188 506,188" fill="#e6e1ff" stroke="#7a5cff" stroke-width="1.1"/>
+<text x="566" y="165" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">shared memory</text>
+<text x="566" y="179" text-anchor="middle" font-size="7.5" fill="#444444">to ~228 KB/SM - on-chip</text>
+<polygon points="500,200 632,200 638,240 494,240" fill="#d9d2ff" stroke="#7a5cff" stroke-width="1.1"/>
+<text x="566" y="217" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">HBM (global memory)</text>
+<text x="566" y="231" text-anchor="middle" font-size="7.5" fill="#444444">80 GB - 3.35 TB/s</text>
+<polygon points="488,252 644,252 650,292 482,292" fill="#ccc2ff" stroke="#7a5cff" stroke-width="1.1"/>
+<text x="566" y="269" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">host RAM</text>
+<text x="566" y="283" text-anchor="middle" font-size="7.5" fill="#444444">100s of GB - via PCIe / NVLink</text>
+<text x="566" y="316" text-anchor="middle" font-size="8.5" fill="#1c1c1e">every step down: bigger, slower,</text>
+<text x="566" y="330" text-anchor="middle" font-size="8.5" fill="#1c1c1e">farther from the cores</text>
+<text x="566" y="354" text-anchor="middle" font-size="8.5" fill="#5a3fd4" font-weight="bold">a kernel is fast exactly when its</text>
+<text x="566" y="368" text-anchor="middle" font-size="8.5" fill="#5a3fd4" font-weight="bold">hot data lives on the top rungs</text>
+<rect x="12" y="398" width="656" height="118" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="416" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">D - THE ROOFLINE IN ONE LINE:  intensity = FLOPs / byte moved  -  ridge = 989 TFLOPS / 3.35 TB/s = 295</text>
+<line x1="80" y1="478" x2="640" y2="478" stroke="#999999" stroke-width="1.2"/>
+<line x1="116.631" y1="474" x2="116.631" y2="482" stroke="#999999" stroke-width="1.2"/>
+<text x="116.631" y="494" text-anchor="middle" font-size="8" fill="#666666">0.1</text>
+<line x1="238.315" y1="474" x2="238.315" y2="482" stroke="#999999" stroke-width="1.2"/>
+<text x="238.315" y="494" text-anchor="middle" font-size="8" fill="#666666">1</text>
+<line x1="360" y1="474" x2="360" y2="482" stroke="#999999" stroke-width="1.2"/>
+<text x="360" y="494" text-anchor="middle" font-size="8" fill="#666666">10</text>
+<line x1="481.685" y1="474" x2="481.685" y2="482" stroke="#999999" stroke-width="1.2"/>
+<text x="481.685" y="494" text-anchor="middle" font-size="8" fill="#666666">100</text>
+<line x1="603.369" y1="474" x2="603.369" y2="482" stroke="#999999" stroke-width="1.2"/>
+<text x="603.369" y="494" text-anchor="middle" font-size="8" fill="#666666">1000</text>
+<text x="340" y="508" text-anchor="middle" font-size="8" fill="#666666">arithmetic intensity (FLOP/byte, log scale)</text>
+<line x1="106.784" y1="458" x2="106.784" y2="478" stroke="#c22f2f" stroke-width="1.6"/>
+<circle cx="106.784" cy="478" r="4" fill="#c22f2f"/>
+<text x="106.784" y="448" text-anchor="middle" font-size="8.5" fill="#c22f2f" font-weight="bold">add 0.08</text>
+<line x1="238.315" y1="458" x2="238.315" y2="478" stroke="#c22f2f" stroke-width="1.6"/>
+<circle cx="238.315" cy="478" r="4" fill="#c22f2f"/>
+<text x="238.315" y="448" text-anchor="middle" font-size="8.5" fill="#c22f2f" font-weight="bold">decode 1.0</text>
+<line x1="538.855" y1="458" x2="538.855" y2="478" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="4,3"/>
+<circle cx="538.855" cy="478" r="4" fill="#d99a00"/>
+<text x="538.855" y="448" text-anchor="middle" font-size="8.5" fill="#d99a00" font-weight="bold">RIDGE 295</text>
+<line x1="619.813" y1="458" x2="619.813" y2="478" stroke="#177245" stroke-width="1.6"/>
+<circle cx="619.813" cy="478" r="4" fill="#177245"/>
+<text x="619.813" y="448" text-anchor="middle" font-size="8.5" fill="#177245" font-weight="bold">matmul 1365</text>
+<text x="340" y="432" text-anchor="middle" font-size="8.5" fill="#555555">left of the ridge: memory-bound (bandwidth decides)  -  right of it: compute-bound (FLOPs decide)</text>
+</svg>
