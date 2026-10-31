@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 272" width="680" height="272" role="img" aria-label="The capstone pipeline: features, labels, validation, baseline model, sizing, risk gate, journal, paper fills - a shield (honesty device) at every joint, standing on the Day 83-84 ground rules">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+  </defs>
+  <text x="340" y="20" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1" fill="#555">THE CAPSTONE SYSTEM — AN HONESTY DEVICE AT EVERY JOINT</text>
+
+  <!-- Row 1: features -> labels -> validation -> baseline -->
+  <rect x="10" y="36" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="85" y="56" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">FEATURES · Day 85</text>
+  <text x="85" y="72" text-anchor="middle" font-size="10" fill="#555">bars in, rows as of t out</text>
+
+  <rect x="180" y="36" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="56" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">LABELS · Day 86</text>
+  <text x="255" y="72" text-anchor="middle" font-size="10" fill="#555">first-touch labels</text>
+
+  <rect x="350" y="36" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="56" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">VALIDATION · Day 87</text>
+  <text x="425" y="72" text-anchor="middle" font-size="10" fill="#555">train past, test future</text>
+
+  <rect x="520" y="36" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="56" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">BASELINE · Days 88–89</text>
+  <text x="595" y="72" text-anchor="middle" font-size="10" fill="#555">the dumb model, first</text>
+
+  <line x1="161" y1="59" x2="179" y2="59" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="331" y1="59" x2="349" y2="59" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="501" y1="59" x2="519" y2="59" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- shields on row 1 joints -->
+  <path d="M170,50 C176,52 178,53 178,56 C178,62 174,66 170,69 C166,66 162,62 162,56 C162,53 164,52 170,50 Z" fill="#22a355"/>
+  <path d="M166.5,58.5 L169,61.5 L174,55.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="170" y="86" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">POINT-IN-TIME</text>
+
+  <path d="M340,50 C346,52 348,53 348,56 C348,62 344,66 340,69 C336,66 332,62 332,56 C332,53 334,52 340,50 Z" fill="#22a355"/>
+  <path d="M336.5,58.5 L339,61.5 L344,55.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="86" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FIRST-TOUCH</text>
+
+  <path d="M510,50 C516,52 518,53 518,56 C518,62 514,66 510,69 C506,66 502,62 502,56 C502,53 504,52 510,50 Z" fill="#22a355"/>
+  <path d="M506.5,58.5 L509,61.5 L514,55.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="86" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">WALK-FORWARD</text>
+
+  <!-- down-connector: baseline -> sizing -->
+  <line x1="595" y1="83" x2="595" y2="116" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <path d="M595,90 C601,92 603,93 603,96 C603,102 599,106 595,109 C591,106 587,102 587,96 C587,93 589,92 595,90 Z" fill="#22a355"/>
+  <path d="M591.5,98.5 L594,101.5 L599,95.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="580" y="100" text-anchor="end" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">NET OF COSTS</text>
+
+  <!-- Row 2 (right to left): sizing -> risk gate -> journal -> paper fills -->
+  <rect x="520" y="118" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="595" y="138" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">SIZING · Day 90</text>
+  <text x="595" y="154" text-anchor="middle" font-size="10" fill="#555">bets sized by risk</text>
+
+  <rect x="350" y="118" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="425" y="138" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">RISK GATE · Day 91</text>
+  <text x="425" y="154" text-anchor="middle" font-size="10" fill="#555">veto power, always on</text>
+
+  <rect x="180" y="118" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff"/>
+  <text x="255" y="138" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">JOURNAL · Day 91</text>
+  <text x="255" y="154" text-anchor="middle" font-size="10" fill="#555">what the model saw</text>
+
+  <rect x="10" y="118" width="150" height="46" rx="8" fill="#e9f9ee" stroke="#22a355"/>
+  <text x="85" y="138" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">PAPER FILLS</text>
+  <text x="85" y="154" text-anchor="middle" font-size="10" fill="#555">paper first, always</text>
+
+  <line x1="519" y1="141" x2="501" y2="141" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="349" y1="141" x2="331" y2="141" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="179" y1="141" x2="161" y2="141" stroke="#bbb" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- shields on row 2 joints -->
+  <path d="M510,132 C516,134 518,135 518,138 C518,144 514,148 510,151 C506,148 502,144 502,138 C502,135 504,134 510,132 Z" fill="#22a355"/>
+  <path d="M506.5,140.5 L509,143.5 L514,137.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="510" y="162" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">FRACTIONAL</text>
+  <text x="510" y="172" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">KELLY</text>
+
+  <path d="M340,132 C346,134 348,135 348,138 C348,144 344,148 340,151 C336,148 332,144 332,138 C332,135 334,134 340,132 Z" fill="#22a355"/>
+  <path d="M336.5,140.5 L339,143.5 L344,137.5" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <text x="340" y="162" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">CAN SAY</text>
+  <text x="340" y="172" text-anchor="middle" font-size="8.5" font-weight="700" letter-spacing="0.5" fill="#177245">NO</text>
+
+  <!-- foundation: the ground rules -->
+  <rect x="10" y="196" width="660" height="36" rx="8" fill="#fff8e6" stroke="#d99a00"/>
+  <text x="340" y="218" text-anchor="middle" font-size="11" fill="#1c1c1e">GROUND RULES · Days 83–84 — the market is mostly noise, and every trial gets counted</text>
+
+  <text x="340" y="258" text-anchor="middle" font-size="12" font-style="italic" fill="#555">the whole pipeline stands on the ground rules — and accuracy is the least important number in it</text>
+</svg>
