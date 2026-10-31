@@ -1,0 +1,167 @@
+<svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Positional encodings: every seat gets a fingerprint</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">PE(pos) over 8 dims - each sin/cos pair is a clock hand turning at its own speed</text>
+<text x="176" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 6 · fast hand</text>
+<text x="292" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 63</text>
+<text x="408" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 628</text>
+<text x="524" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 6,283 · glacial</text>
+<text x="147" y="80" text-anchor="middle" font-size="8" fill="#555555">d0 sin</text>
+<text x="205" y="80" text-anchor="middle" font-size="8" fill="#555555">d1 cos</text>
+<text x="263" y="80" text-anchor="middle" font-size="8" fill="#555555">d2 sin</text>
+<text x="321" y="80" text-anchor="middle" font-size="8" fill="#555555">d3 cos</text>
+<text x="379" y="80" text-anchor="middle" font-size="8" fill="#555555">d4 sin</text>
+<text x="437" y="80" text-anchor="middle" font-size="8" fill="#555555">d5 cos</text>
+<text x="495" y="80" text-anchor="middle" font-size="8" fill="#555555">d6 sin</text>
+<text x="553" y="80" text-anchor="middle" font-size="8" fill="#555555">d7 cos</text>
+<text x="112" y="111" text-anchor="end" font-size="9" fill="#1c1c1e">pos 0</text>
+<rect x="120" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="178" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="236" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="294" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="352" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="410" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="145" text-anchor="end" font-size="9" fill="#1c1c1e">pos 1</text>
+<rect x="120" y="126" width="54" height="30" rx="4" fill="#2e6baa" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+0.84</text>
+<rect x="178" y="126" width="54" height="30" rx="4" fill="#769dc6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.54</text>
+<rect x="236" y="126" width="54" height="30" rx="4" fill="#dfe6ee" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.10</text>
+<rect x="294" y="126" width="54" height="30" rx="4" fill="#09529c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="352" y="126" width="54" height="30" rx="4" fill="#f5f5f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="410" y="126" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="126" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="126" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="179" text-anchor="end" font-size="9" fill="#1c1c1e">pos 2</text>
+<rect x="120" y="160" width="54" height="30" rx="4" fill="#1e60a4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+0.91</text>
+<rect x="178" y="160" width="54" height="30" rx="4" fill="#e59a9c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">-0.42</text>
+<rect x="236" y="160" width="54" height="30" rx="4" fill="#c8d6e5" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.20</text>
+<rect x="294" y="160" width="54" height="30" rx="4" fill="#0d549e" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+0.98</text>
+<rect x="352" y="160" width="54" height="30" rx="4" fill="#f2f4f5" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.02</text>
+<rect x="410" y="160" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="160" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="160" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="213" text-anchor="end" font-size="9" fill="#1c1c1e">pos 3</text>
+<rect x="120" y="194" width="54" height="30" rx="4" fill="#d5e0ea" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.14</text>
+<rect x="178" y="194" width="54" height="30" rx="4" fill="#cb1a1f" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="213" text-anchor="middle" font-size="9" fill="#ffffff">-0.99</text>
+<rect x="236" y="194" width="54" height="30" rx="4" fill="#b0c6dc" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.30</text>
+<rect x="294" y="194" width="54" height="30" rx="4" fill="#1358a0" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+0.96</text>
+<rect x="352" y="194" width="54" height="30" rx="4" fill="#f0f2f4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.03</text>
+<rect x="410" y="194" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="194" width="54" height="30" rx="4" fill="#f6f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="194" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="247" text-anchor="end" font-size="9" fill="#1c1c1e">pos 4</text>
+<rect x="120" y="228" width="54" height="30" rx="4" fill="#d64e52" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="247" text-anchor="middle" font-size="9" fill="#ffffff">-0.76</text>
+<rect x="178" y="228" width="54" height="30" rx="4" fill="#da6569" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="247" text-anchor="middle" font-size="9" fill="#ffffff">-0.65</text>
+<rect x="236" y="228" width="54" height="30" rx="4" fill="#9ab6d4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.39</text>
+<rect x="294" y="228" width="54" height="30" rx="4" fill="#1b5ea3" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+0.92</text>
+<rect x="352" y="228" width="54" height="30" rx="4" fill="#edf0f3" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.04</text>
+<rect x="410" y="228" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="228" width="54" height="30" rx="4" fill="#f6f6f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="228" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="281" text-anchor="end" font-size="9" fill="#1c1c1e">pos 5</text>
+<rect x="120" y="262" width="54" height="30" rx="4" fill="#cd2126" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="281" text-anchor="middle" font-size="9" fill="#ffffff">-0.96</text>
+<rect x="178" y="262" width="54" height="30" rx="4" fill="#b3c8dd" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.28</text>
+<rect x="236" y="262" width="54" height="30" rx="4" fill="#84a7cb" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.48</text>
+<rect x="294" y="262" width="54" height="30" rx="4" fill="#2565a7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+0.88</text>
+<rect x="352" y="262" width="54" height="30" rx="4" fill="#ebeff2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.05</text>
+<rect x="410" y="262" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="262" width="54" height="30" rx="4" fill="#f6f6f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="262" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="315" text-anchor="end" font-size="9" fill="#1c1c1e">pos 6</text>
+<rect x="120" y="296" width="54" height="30" rx="4" fill="#ebb9ba" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">-0.28</text>
+<rect x="178" y="296" width="54" height="30" rx="4" fill="#1258a0" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.96</text>
+<rect x="236" y="296" width="54" height="30" rx="4" fill="#7099c4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.56</text>
+<rect x="294" y="296" width="54" height="30" rx="4" fill="#326eac" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.83</text>
+<rect x="352" y="296" width="54" height="30" rx="4" fill="#e9edf2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.06</text>
+<rect x="410" y="296" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="296" width="54" height="30" rx="4" fill="#f6f6f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="526" y="296" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="349" text-anchor="end" font-size="9" fill="#1c1c1e">pos 7</text>
+<rect x="120" y="330" width="54" height="30" rx="4" fill="#5a8abb" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.66</text>
+<rect x="178" y="330" width="54" height="30" rx="4" fill="#437ab2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.75</text>
+<rect x="236" y="330" width="54" height="30" rx="4" fill="#5d8cbc" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.64</text>
+<rect x="294" y="330" width="54" height="30" rx="4" fill="#4078b1" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.76</text>
+<rect x="352" y="330" width="54" height="30" rx="4" fill="#e6ebf1" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="349" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.07</text>
+<rect x="410" y="330" width="54" height="30" rx="4" fill="#09519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="330" width="54" height="30" rx="4" fill="#f5f6f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="349" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="526" y="330" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="120" y="380" font-size="8.5" fill="#666666">blue = positive, red = negative, deeper = closer to ±1 · read a ROW: that seat's whole fingerprint</text>
+<rect x="12" y="396" width="176" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="100" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">token embedding</text>
+<text x="100" y="433" text-anchor="middle" font-size="8.5" fill="#555555">the WHAT - Day 15</text>
+<rect x="214" y="396" width="216" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="322" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">position fingerprint PE(p)</text>
+<text x="322" y="433" text-anchor="middle" font-size="8.5" fill="#555555">the WHERE - stamped by seat</text>
+<rect x="456" y="396" width="212" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="562" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">what the block sees</text>
+<text x="562" y="433" text-anchor="middle" font-size="8.5" fill="#555555">token + PE, into Day 40's block</text>
+<text x="197" y="426" text-anchor="middle" font-size="16" fill="#1c1c1e" font-weight="bold">+</text>
+<text x="441" y="426" text-anchor="middle" font-size="16" fill="#1c1c1e" font-weight="bold">=</text>
+<text x="340.0" y="466" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Same token, different seat → different fingerprint → a different vector. Order is finally in the data.</text>
+<text x="340.0" y="484" text-anchor="middle" font-size="9.0" fill="#666666">The slow hands barely move across 8 seats - that is what keeps fingerprints unique thousands of seats out.</text>
+</svg>

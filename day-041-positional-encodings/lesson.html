@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Positional Encodings: Giving the Model a Sense of Order — Day 41 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 41 of 100</span>
+  <h1>Positional Encodings: Giving the Model a Sense of Order</h1>
+  <p class="outcome">Tonight you'll be able to: prove attention on its own is order-blind &mdash; shuffle the tokens and the outputs just shuffle with them &mdash; then fix it by stamping every seat with a sinusoidal fingerprint, and read that fingerprint table as a row of clock hands turning at different speeds.</p>
+
+  <h2>The one idea</h2>
+  <p><strong>The flaw first.</strong> Look back at Day 38&rsquo;s recipe: a token&rsquo;s output is a <em>weighted sum over all the tokens</em>, weights from dot products. A sum has no order &mdash; reorder the terms and the total is identical, term for term. Position is never a variable anywhere in the formula, so Day 40&rsquo;s block inherits the blindness: shuffle the input tokens and every output follows its token, unchanged (you will measure this in Part 1: max diff <code>0.000000</code>). To a bare transformer, <em>&ldquo;dog bites man&rdquo;</em> and <em>&ldquo;man bites dog&rdquo;</em> are literally the same input. The RNN of Day 28 got order for free &mdash; it <em>consumes</em> tokens one at a time. Attention traded that recurrence away for parallelism (Day 36), so order has to be bought back, explicitly, and injected into the only thing the block ever sees: the vectors.</p>
+<p><strong>The fix is one addition.</strong> Before the first block, each token vector gets its seat&rsquo;s fingerprint added to it: <code>input = token embedding + PE(pos)</code>. Added, not glued on &mdash; same dimension, so the token now carries <em>what it is</em> and <em>where it sits</em> in a single vector, and every downstream dot product mixes content with position. One detail matters enormously, and Part 2 is built around it: the fingerprint belongs to the <strong>seat</strong>, not the token. Token A moved to seat 1 gets seat 1&rsquo;s fingerprint &mdash; so after a reorder it is a genuinely different input, and its output moves (tonight: by <code>0.2751</code>).</p>
+<p><strong>How to build the fingerprint &mdash; option 1: learned.</strong> Keep a table, one trainable row per seat (<code>nn.Embedding(max_len, d)</code> &mdash; Day 15&rsquo;s lookup, but indexed by position instead of by token). GPT-style models do this: simple, and the model learns whatever position code it likes. The costs: parameters (Part 3 prices a toy table at 4,096; real ones are far bigger) and a hard ceiling &mdash; seat 10,000 has no row if you only trained 1,024.</p>
+<p><strong>Option 2: sinusoidal &mdash; tonight&rsquo;s build.</strong> No table, no parameters: a formula. Pair up the dimensions; each pair is <strong>one clock hand</strong>, and seat <code>p</code> reads that hand&rsquo;s angle as <code>(sin, cos)</code>: <code>PE(p, 2i) = sin(p / 10000<sup>2i/d</sup>)</code>, <code>PE(p, 2i+1) = cos(p / 10000<sup>2i/d</sup>)</code>. In tonight&rsquo;s <code>d = 8</code> toy the four hands complete a full turn every ~6, ~63, ~628 and ~6,283 seats (a real <code>d = 512</code> model has 256 hands, the slowest needing tens of thousands of seats per turn). Three properties fall out, all measured in Part 3: every seat&rsquo;s combined reading is <strong>unique</strong> (the slow hands disambiguate what the fast hand repeats); <strong>nearby seats overlap heavily</strong> &mdash; cosine similarity from seat 0 falls 0.8838 &rarr; 0.6409 &rarr; 0.4912 across seats 1, 2, 3 &mdash; so &ldquo;close together&rdquo; is a smooth, learnable signal rather than a cliff; and because each hand advances by a <strong>fixed angle per seat</strong>, seat <code>p + k</code>&rsquo;s fingerprint is seat <code>p</code>&rsquo;s with every hand turned by the same extra amount &mdash; a fixed offset looks the same wherever it occurs, which is exactly the relative-position signal attention needs. And since it is a formula, it prices any seat, trained-for or not.</p>
+<p><strong>One honest paragraph on the modern variant: RoPE.</strong> Most current open models (the Llama family and descendants) do not add a fingerprint to the embeddings at all. Instead, <em>rotary positional embeddings</em> rotate each query/key pair (Day 37) by an angle proportional to its seat, inside attention itself &mdash; the same clock hands, applied to Q and K rather than to the input, so scores end up depending on <em>relative</em> distance directly. Tonight you are not learning RoPE&rsquo;s mechanics; just file the name: if an interviewer says &ldquo;rotary embeddings,&rdquo; it is this lesson&rsquo;s clock, moved one layer deeper.</p>
+<p>Two practical notes before the code. The fingerprint is added <strong>once</strong>, at the input &mdash; not re-stamped at every block. And tonight it runs at full strength (every fingerprint row has norm 2.0000, against the toy tokens&rsquo; ~1.4) so the effect is impossible to miss; a trained model learns input/output scales that balance the two signals. The mechanism is the lesson, not the ratio.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already refuse to build systems this way. Hand a consumer the same set of Kafka records <em>as an unordered bag</em> and it cannot reconstruct what happened &mdash; that is why every record carries an <strong>offset stamped by its position in the log</strong>, not by anything in its payload. TCP does the same with sequence numbers: the bytes are the content, the sequence number is the seat. Attention without positional encodings is a consumer reading payloads with the offsets stripped; <code>PE(pos)</code> is you stamping the offset back on, in a format (a vector) the model can compute with.</p><p>Trading version, one line: the same five candles, shuffled, are a different market &mdash; a hammer candle <em>after</em> a flush means something its twin <em>before</em> the flush does not, because the exchange stamps every candle with its time. Order is data. Tonight you give the model its timestamps.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="500" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Positional encodings: every seat gets a fingerprint</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">PE(pos) over 8 dims - each sin/cos pair is a clock hand turning at its own speed</text>
+<text x="176" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 6 · fast hand</text>
+<text x="292" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 63</text>
+<text x="408" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 628</text>
+<text x="524" y="64" text-anchor="middle" font-size="8.5" fill="#0a54c2">λ≈ 6,283 · glacial</text>
+<text x="147" y="80" text-anchor="middle" font-size="8" fill="#555555">d0 sin</text>
+<text x="205" y="80" text-anchor="middle" font-size="8" fill="#555555">d1 cos</text>
+<text x="263" y="80" text-anchor="middle" font-size="8" fill="#555555">d2 sin</text>
+<text x="321" y="80" text-anchor="middle" font-size="8" fill="#555555">d3 cos</text>
+<text x="379" y="80" text-anchor="middle" font-size="8" fill="#555555">d4 sin</text>
+<text x="437" y="80" text-anchor="middle" font-size="8" fill="#555555">d5 cos</text>
+<text x="495" y="80" text-anchor="middle" font-size="8" fill="#555555">d6 sin</text>
+<text x="553" y="80" text-anchor="middle" font-size="8" fill="#555555">d7 cos</text>
+<text x="112" y="111" text-anchor="end" font-size="9" fill="#1c1c1e">pos 0</text>
+<rect x="120" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="178" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="236" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="294" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="352" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="410" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="92" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="111" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="92" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="111" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="145" text-anchor="end" font-size="9" fill="#1c1c1e">pos 1</text>
+<rect x="120" y="126" width="54" height="30" rx="4" fill="#2e6baa" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+0.84</text>
+<rect x="178" y="126" width="54" height="30" rx="4" fill="#769dc6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.54</text>
+<rect x="236" y="126" width="54" height="30" rx="4" fill="#dfe6ee" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.10</text>
+<rect x="294" y="126" width="54" height="30" rx="4" fill="#09529c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="352" y="126" width="54" height="30" rx="4" fill="#f5f5f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="410" y="126" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="126" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="145" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="126" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="145" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="179" text-anchor="end" font-size="9" fill="#1c1c1e">pos 2</text>
+<rect x="120" y="160" width="54" height="30" rx="4" fill="#1e60a4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+0.91</text>
+<rect x="178" y="160" width="54" height="30" rx="4" fill="#e59a9c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">-0.42</text>
+<rect x="236" y="160" width="54" height="30" rx="4" fill="#c8d6e5" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.20</text>
+<rect x="294" y="160" width="54" height="30" rx="4" fill="#0d549e" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+0.98</text>
+<rect x="352" y="160" width="54" height="30" rx="4" fill="#f2f4f5" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.02</text>
+<rect x="410" y="160" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="160" width="54" height="30" rx="4" fill="#f7f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="179" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="160" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="179" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="213" text-anchor="end" font-size="9" fill="#1c1c1e">pos 3</text>
+<rect x="120" y="194" width="54" height="30" rx="4" fill="#d5e0ea" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.14</text>
+<rect x="178" y="194" width="54" height="30" rx="4" fill="#cb1a1f" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="213" text-anchor="middle" font-size="9" fill="#ffffff">-0.99</text>
+<rect x="236" y="194" width="54" height="30" rx="4" fill="#b0c6dc" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.30</text>
+<rect x="294" y="194" width="54" height="30" rx="4" fill="#1358a0" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+0.96</text>
+<rect x="352" y="194" width="54" height="30" rx="4" fill="#f0f2f4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.03</text>
+<rect x="410" y="194" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="194" width="54" height="30" rx="4" fill="#f6f7f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="213" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="194" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="213" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="247" text-anchor="end" font-size="9" fill="#1c1c1e">pos 4</text>
+<rect x="120" y="228" width="54" height="30" rx="4" fill="#d64e52" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="247" text-anchor="middle" font-size="9" fill="#ffffff">-0.76</text>
+<rect x="178" y="228" width="54" height="30" rx="4" fill="#da6569" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="247" text-anchor="middle" font-size="9" fill="#ffffff">-0.65</text>
+<rect x="236" y="228" width="54" height="30" rx="4" fill="#9ab6d4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.39</text>
+<rect x="294" y="228" width="54" height="30" rx="4" fill="#1b5ea3" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+0.92</text>
+<rect x="352" y="228" width="54" height="30" rx="4" fill="#edf0f3" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.04</text>
+<rect x="410" y="228" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="228" width="54" height="30" rx="4" fill="#f6f6f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="247" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="228" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="247" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="281" text-anchor="end" font-size="9" fill="#1c1c1e">pos 5</text>
+<rect x="120" y="262" width="54" height="30" rx="4" fill="#cd2126" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="281" text-anchor="middle" font-size="9" fill="#ffffff">-0.96</text>
+<rect x="178" y="262" width="54" height="30" rx="4" fill="#b3c8dd" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.28</text>
+<rect x="236" y="262" width="54" height="30" rx="4" fill="#84a7cb" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.48</text>
+<rect x="294" y="262" width="54" height="30" rx="4" fill="#2565a7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+0.88</text>
+<rect x="352" y="262" width="54" height="30" rx="4" fill="#ebeff2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.05</text>
+<rect x="410" y="262" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="262" width="54" height="30" rx="4" fill="#f6f6f7" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="281" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.00</text>
+<rect x="526" y="262" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="281" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="315" text-anchor="end" font-size="9" fill="#1c1c1e">pos 6</text>
+<rect x="120" y="296" width="54" height="30" rx="4" fill="#ebb9ba" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">-0.28</text>
+<rect x="178" y="296" width="54" height="30" rx="4" fill="#1258a0" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.96</text>
+<rect x="236" y="296" width="54" height="30" rx="4" fill="#7099c4" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.56</text>
+<rect x="294" y="296" width="54" height="30" rx="4" fill="#326eac" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+0.83</text>
+<rect x="352" y="296" width="54" height="30" rx="4" fill="#e9edf2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.06</text>
+<rect x="410" y="296" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="296" width="54" height="30" rx="4" fill="#f6f6f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="315" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="526" y="296" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="315" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="112" y="349" text-anchor="end" font-size="9" fill="#1c1c1e">pos 7</text>
+<rect x="120" y="330" width="54" height="30" rx="4" fill="#5a8abb" stroke="#dddddd" stroke-width="0.5"/>
+<text x="147" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.66</text>
+<rect x="178" y="330" width="54" height="30" rx="4" fill="#437ab2" stroke="#dddddd" stroke-width="0.5"/>
+<text x="205" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.75</text>
+<rect x="236" y="330" width="54" height="30" rx="4" fill="#5d8cbc" stroke="#dddddd" stroke-width="0.5"/>
+<text x="263" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.64</text>
+<rect x="294" y="330" width="54" height="30" rx="4" fill="#4078b1" stroke="#dddddd" stroke-width="0.5"/>
+<text x="321" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+0.76</text>
+<rect x="352" y="330" width="54" height="30" rx="4" fill="#e6ebf1" stroke="#dddddd" stroke-width="0.5"/>
+<text x="379" y="349" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.07</text>
+<rect x="410" y="330" width="54" height="30" rx="4" fill="#09519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="437" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<rect x="468" y="330" width="54" height="30" rx="4" fill="#f5f6f6" stroke="#dddddd" stroke-width="0.5"/>
+<text x="495" y="349" text-anchor="middle" font-size="9" fill="#1c1c1e">+0.01</text>
+<rect x="526" y="330" width="54" height="30" rx="4" fill="#08519c" stroke="#dddddd" stroke-width="0.5"/>
+<text x="553" y="349" text-anchor="middle" font-size="9" fill="#ffffff">+1.00</text>
+<text x="120" y="380" font-size="8.5" fill="#666666">blue = positive, red = negative, deeper = closer to ±1 · read a ROW: that seat's whole fingerprint</text>
+<rect x="12" y="396" width="176" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="100" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">token embedding</text>
+<text x="100" y="433" text-anchor="middle" font-size="8.5" fill="#555555">the WHAT - Day 15</text>
+<rect x="214" y="396" width="216" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="322" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">position fingerprint PE(p)</text>
+<text x="322" y="433" text-anchor="middle" font-size="8.5" fill="#555555">the WHERE - stamped by seat</text>
+<rect x="456" y="396" width="212" height="48" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="562" y="417" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">what the block sees</text>
+<text x="562" y="433" text-anchor="middle" font-size="8.5" fill="#555555">token + PE, into Day 40's block</text>
+<text x="197" y="426" text-anchor="middle" font-size="16" fill="#1c1c1e" font-weight="bold">+</text>
+<text x="441" y="426" text-anchor="middle" font-size="16" fill="#1c1c1e" font-weight="bold">=</text>
+<text x="340.0" y="466" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Same token, different seat → different fingerprint → a different vector. Order is finally in the data.</text>
+<text x="340.0" y="484" text-anchor="middle" font-size="9.0" fill="#666666">The slow hands barely move across 8 seats - that is what keeps fingerprints unique thousands of seats out.</text>
+</svg>
+    <div class="caption">The sinusoidal fingerprint table for seats 0&ndash;7 at <code>d = 8</code>. Read across a row: that seat&rsquo;s full fingerprint. Read down a pair of columns: one clock hand &mdash; the fast hand (dims 0&ndash;1, wavelength &asymp; 6 seats) has already swung through most of a turn, the &asymp; 63 and &asymp; 628 hands have visibly crept, and the glacial hand (dims 6&ndash;7, &asymp; 6,283) still reads &asymp; 0 / +1.00: it exists for seats in the thousands, where the fast hands have repeated themselves thousands of times and only the slow hands can tell two far-apart seats apart. Bottom: the one addition that fixes Day 40&rsquo;s block &mdash; token (the what) + fingerprint (the where) = the vector the block actually sees.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three measurements, every vector hand-set or formula-built &mdash; no RNG, every digit exact. <strong>Part 1</strong> runs Day 38&rsquo;s attention with the Q/K/V projections stripped to identity (isolating the pure set-average) on four toy tokens, then permutes the input to <code>[C, A, D, B]</code> and compares outputs row-by-row: the flaw, as a number. <strong>Part 2</strong> stamps the sinusoidal fingerprint on each seat <em>after</em> permuting &mdash; the pipeline a real model runs &mdash; and re-measures: the same comparison, plus a minimal A&harr;B swap that moves token A&rsquo;s own output. <strong>Part 3</strong> prints the fingerprint table itself: rows 0&ndash;3, every row&rsquo;s norm, cosine similarity vs distance, and the learned table&rsquo;s price tag for comparison.</p>
+  <pre><code>&quot;&quot;&quot;Day 41 - Positional Encodings: Giving the Model a Sense of Order.
+
+Day 38&#x27;s attention has a quiet flaw, and Day 40&#x27;s block
+inherited it: attention is a weighted average over a SET.
+Every output is a sum over token pairs, and a sum does not
+care about the order of its terms - so shuffle the input
+and each output simply follows its token, unchanged.
+&#x27;dog bites man&#x27; and &#x27;man bites dog&#x27; are the same bag of
+words. The block cannot see order until order is put INTO
+the vectors themselves.
+
+The fix is one addition, before the block:
+
+    input at seat p  =  token embedding  +  PE(p)
+
+Two ways to build PE(p), the position fingerprint:
+
+  Learned - an nn.Embedding table, one trainable row per
+  seat (what GPT-style models use). Flexible, but the
+  table only has as many rows as you trained for.
+
+  Sinusoidal - tonight&#x27;s build. A formula, zero params.
+  Each dimension pair is one clock hand and seat p reads
+  the hand&#x27;s angle as (sin, cos):
+
+      PE(p, 2i)   = sin(p / 10000^(2i/d))
+      PE(p, 2i+1) = cos(p / 10000^(2i/d))
+
+  With d = 8 the four hands complete a turn every ~6,
+  ~63, ~628 and ~6,283 seats. Every seat&#x27;s 8-number
+  fingerprint is unique, nearby seats&#x27; fingerprints
+  overlap heavily, and each hand advances by a fixed
+  angle per seat - so a fixed OFFSET between two seats
+  always looks the same to the model, wherever it sits.
+
+  Part 1  The flaw, measured. Day 38 attention with the
+          Q/K/V projections stripped to identity, on four
+          hand-set tokens; then permute the input to
+          [C, A, D, B] and re-run: the outputs are the
+          same rows, shuffled - max diff 0.000000.
+  Part 2  The fix, measured. Stamp PE on each SEAT after
+          permuting, and the same permutation no longer
+          commutes: max diff 0.5367. Even a two-token
+          swap moves token A&#x27;s own output by 0.2751 -
+          the same token, a different seat, a different
+          input vector.
+  Part 3  The fingerprint table itself. Rows 0-3 printed:
+          the fast hand spins, the slow hands barely
+          crawl. Every row&#x27;s norm is 2.0000, cosine
+          similarity from seat 0 falls with distance
+          (0.8838, 0.6409, 0.4912), and the learned
+          alternative costs 4,096 params for 512 seats
+          where the formula costs 0.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data, exact digits), no CUDA, no paid
+APIs, no downloads. Every vector is hand-set or built
+by the formula - no RNG anywhere in this lesson.
+
+Expected output:
+
+  Part 1 - attention alone (identity Q/K/V): a weighted average over a set
+    A: 0.3451, 0.2423, 0.2423, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+    B: 0.2423, 0.3451, 0.2423, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+    C: 0.2423, 0.2423, 0.3451, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+    D: 0.2260, 0.2260, 0.2260, 0.3219, 0.6781, 0.0000, 0.0000, 0.0000
+    permuted input [C, A, D, B]: max diff vs the same rows re-shuffled: 0.000000
+    verdict: no position anywhere in the math - attention sees a set, not a sequence
+  Part 2 - add PE(p) to each seat BEFORE attention
+    same permutation [C, A, D, B], PE stamped by seat after permuting:
+    max diff vs the same rows re-shuffled: 0.5367
+    token A in seat 0: 0.8234, 0.6982, 0.2988, 1.1064, 0.8937, 0.9999, 0.0011, 1.0000
+    token A in seat 1 (A&lt;-&gt;B swap - same set of tokens): 1.0907, 0.4231, 0.3489, 1.1042, 0.8965, 0.9999, 0.0013, 1.0000
+    A&#x27;s own output moved by: max diff 0.2751
+    verdict: PE is stamped on the SEAT, not the token - reorder, and every output changes
+  Part 3 - the sinusoidal fingerprint table (d = 8, base 10000)
+    pos 0: 0.0000, 1.0000, 0.0000, 1.0000, 0.0000, 1.0000, 0.0000, 1.0000
+    pos 1: 0.8415, 0.5403, 0.0998, 0.9950, 0.0100, 0.9999, 0.0010, 1.0000
+    pos 2: 0.9093, -0.4161, 0.1987, 0.9801, 0.0200, 0.9998, 0.0020, 1.0000
+    pos 3: 0.1411, -0.9900, 0.2955, 0.9553, 0.0300, 0.9996, 0.0030, 1.0000
+    every row&#x27;s norm: 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000
+    cos(pos 0, pos 1) = 0.8838   cos(pos 0, pos 2) = 0.6409   cos(pos 0, pos 3) = 0.4912
+    nearby seats look alike, distant seats don&#x27;t - order is now IN the vectors
+    learned table for 512 seats x 8 dims: 4096 trainable params - sinusoidal: 0 (a formula)
+&quot;&quot;&quot;
+import math
+
+import torch
+
+D = 8
+# Four hand-set token embeddings (labels A-D). Each owns one
+# dimension and shares dimension 4, so attention has something
+# to mix - but nothing anywhere encodes WHO CAME FIRST.
+X = torch.tensor([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],   # A
+                  [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],   # B
+                  [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],   # C
+                  [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]])  # D
+LABELS = (&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;D&quot;)
+PERM = torch.tensor([2, 0, 3, 1])          # seat order becomes C, A, D, B
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+
+def attention(x):
+    &quot;&quot;&quot;Day 38&#x27;s scaled dot-product attention, Q/K/V projections
+    set to identity on purpose: the pure set-average, isolated.&quot;&quot;&quot;
+    scores = x @ x.T / math.sqrt(x.size(-1))
+    return torch.softmax(scores, dim=-1) @ x
+
+
+def sinusoidal(n_pos, d_model):
+    &quot;&quot;&quot;PE(p, 2i) = sin(p / 10000^(2i/d)), PE(p, 2i+1) = cos(...).
+    Row p is seat p&#x27;s fingerprint; each column pair is one clock
+    hand, and hand i turns 10000^(2i/d) times slower than hand 0.&quot;&quot;&quot;
+    pos = torch.arange(n_pos, dtype=torch.float32).unsqueeze(1)
+    div = 10000.0 ** (torch.arange(0, d_model, 2).float() / d_model)
+    ang = pos / div                                    # (n_pos, d/2)
+    pe = torch.zeros(n_pos, d_model)
+    pe[:, 0::2] = torch.sin(ang)
+    pe[:, 1::2] = torch.cos(ang)
+    return pe
+
+
+PE = sinusoidal(8, D)                      # seats 0..7, built once
+
+# ---------- Part 1: attention alone is order-blind ----------
+print(&quot;Part 1 - attention alone (identity Q/K/V): &quot;
+      &quot;a weighted average over a set&quot;)
+out = attention(X)
+for lab, row in zip(LABELS, out):
+    print(f&quot;  {lab}: {fmt(row)}&quot;)
+out_perm = attention(X[PERM])
+diff = (out_perm - out[PERM]).abs().max().item()
+print(f&quot;  permuted input [C, A, D, B]: max diff vs the same rows &quot;
+      f&quot;re-shuffled: {diff:.6f}&quot;)
+print(&quot;  verdict: no position anywhere in the math - &quot;
+      &quot;attention sees a set, not a sequence&quot;)
+
+# ---------- Part 2: stamp the seat, break the symmetry ----------
+print(&quot;Part 2 - add PE(p) to each seat BEFORE attention&quot;)
+out_pe = attention(X + PE[:4])
+out_perm_pe = attention(X[PERM] + PE[:4])  # PE stamped AFTER permuting:
+diff2 = (out_perm_pe - out_pe[PERM]).abs().max().item()   # by seat, always
+print(&quot;  same permutation [C, A, D, B], PE stamped by seat &quot;
+      &quot;after permuting:&quot;)
+print(f&quot;  max diff vs the same rows re-shuffled: {diff2:.4f}&quot;)
+swap = torch.tensor([1, 0, 2, 3])          # A&lt;-&gt;B, same set of tokens
+out_swap = attention(X[swap] + PE[:4])
+a_moved = (out_pe[0] - out_swap[1]).abs().max().item()
+print(f&quot;  token A in seat 0: {fmt(out_pe[0])}&quot;)
+print(&quot;  token A in seat 1 (A&lt;-&gt;B swap - same set of tokens): &quot;
+      f&quot;{fmt(out_swap[1])}&quot;)
+print(f&quot;  A&#x27;s own output moved by: max diff {a_moved:.4f}&quot;)
+print(&quot;  verdict: PE is stamped on the SEAT, not the token - &quot;
+      &quot;reorder, and every output changes&quot;)
+
+# ---------- Part 3: read the fingerprint table ----------
+print(&quot;Part 3 - the sinusoidal fingerprint table (d = 8, base 10000)&quot;)
+for p in range(4):
+    print(f&quot;  pos {p}: {fmt(PE[p])}&quot;)
+print(f&quot;  every row&#x27;s norm: {fmt(PE.norm(dim=-1))}&quot;)
+
+
+def cos(a, b):
+    return (a @ b / (a.norm() * b.norm())).item()
+
+
+print(f&quot;  cos(pos 0, pos 1) = {cos(PE[0], PE[1]):.4f}   &quot;
+      f&quot;cos(pos 0, pos 2) = {cos(PE[0], PE[2]):.4f}   &quot;
+      f&quot;cos(pos 0, pos 3) = {cos(PE[0], PE[3]):.4f}&quot;)
+print(&quot;  nearby seats look alike, distant seats don&#x27;t - &quot;
+      &quot;order is now IN the vectors&quot;)
+print(f&quot;  learned table for 512 seats x {D} dims: {512 * D} &quot;
+      &quot;trainable params - sinusoidal: 0 (a formula)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - attention alone (identity Q/K/V): a weighted average over a set
+  A: 0.3451, 0.2423, 0.2423, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+  B: 0.2423, 0.3451, 0.2423, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+  C: 0.2423, 0.2423, 0.3451, 0.1702, 0.8298, 0.0000, 0.0000, 0.0000
+  D: 0.2260, 0.2260, 0.2260, 0.3219, 0.6781, 0.0000, 0.0000, 0.0000
+  permuted input [C, A, D, B]: max diff vs the same rows re-shuffled: 0.000000
+  verdict: no position anywhere in the math - attention sees a set, not a sequence
+Part 2 - add PE(p) to each seat BEFORE attention
+  same permutation [C, A, D, B], PE stamped by seat after permuting:
+  max diff vs the same rows re-shuffled: 0.5367
+  token A in seat 0: 0.8234, 0.6982, 0.2988, 1.1064, 0.8937, 0.9999, 0.0011, 1.0000
+  token A in seat 1 (A&lt;-&gt;B swap - same set of tokens): 1.0907, 0.4231, 0.3489, 1.1042, 0.8965, 0.9999, 0.0013, 1.0000
+  A&#x27;s own output moved by: max diff 0.2751
+  verdict: PE is stamped on the SEAT, not the token - reorder, and every output changes
+Part 3 - the sinusoidal fingerprint table (d = 8, base 10000)
+  pos 0: 0.0000, 1.0000, 0.0000, 1.0000, 0.0000, 1.0000, 0.0000, 1.0000
+  pos 1: 0.8415, 0.5403, 0.0998, 0.9950, 0.0100, 0.9999, 0.0010, 1.0000
+  pos 2: 0.9093, -0.4161, 0.1987, 0.9801, 0.0200, 0.9998, 0.0020, 1.0000
+  pos 3: 0.1411, -0.9900, 0.2955, 0.9553, 0.0300, 0.9996, 0.0030, 1.0000
+  every row&#x27;s norm: 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000, 2.0000
+  cos(pos 0, pos 1) = 0.8838   cos(pos 0, pos 2) = 0.6409   cos(pos 0, pos 3) = 0.4912
+  nearby seats look alike, distant seats don&#x27;t - order is now IN the vectors
+  learned table for 512 seats x 8 dims: 4096 trainable params - sinusoidal: 0 (a formula)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three numbers: Part 1&rsquo;s permutation diff of exactly <code>0.000000</code> (attention alone provably cannot see order), Part 2&rsquo;s <code>0.5367</code> for the same permutation once fingerprints are stamped by seat &mdash; and token A&rsquo;s own output moving <code>0.2751</code> under a mere A&harr;B swap &mdash; and Part 3&rsquo;s cosine ladder <code>0.8838 &rarr; 0.6409 &rarr; 0.4912</code> (nearby seats alike, distant seats not). The keeper test, no notes allowed: explain why the fingerprint must belong to the seat and not the token, state the learned-vs-sinusoidal trade (parameters + a length ceiling vs a formula that prices any seat), and say in one sentence what RoPE changes.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram row by row until you can see the four clock hands&rsquo; speeds, then run only Part 1 and Part 3. If you can say out loud why a shuffled input fools bare attention and why seat 3&rsquo;s fingerprint sits between seat 0&rsquo;s and seat 7&rsquo;s, you have the concept &mdash; Part 2 is the confirmation lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the assembly you have been building toward since Day 36 &mdash; Day 40&rsquo;s block, today&rsquo;s fingerprints, and a pile of plain text go in one end, and a tiny transformer starts predicting what comes next.</p>
+  </div>
+
+  <div class="footer">Streak: 41 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
