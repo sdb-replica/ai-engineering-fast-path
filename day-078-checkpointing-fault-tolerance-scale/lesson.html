@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkpointing &amp; Fault Tolerance at Scale — Day 78 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 78 of 100</span>
+  <h1>Checkpointing &amp; Fault Tolerance at Scale</h1>
+  <p class="outcome">Tonight you'll be able to: read a cluster&rsquo;s failure rate straight off its size, price a training checkpoint in seconds, pick the interval that wastes the least of a six-week run &mdash; and prove, on Day 7&rsquo;s line, that a crashed run resumed from a checksummed checkpoint lands on exactly the uninterrupted answer.</p>
+
+  <h2>The one idea</h2>
+  <p>Everything since Day 73 assumed the machines keep running. They don&rsquo;t &mdash; not at the scale Phase F lives at. A frontier training run is a weeks-long mutation of one enormous state, spread over thousands of GPUs, and hardware fails during it as a matter of arithmetic, not bad luck. State the assumption plainly (Part 1): one accelerator &mdash; GPU plus its share of host, NIC, and power &mdash; fails on average every ~3 years, which makes a single GPU a rock. But failure rates add: at 16,384 GPUs the cluster MTBF (mean time between failures &mdash; the average gap from one failure to the next) is 26,298 &divide; 16,384 ≈ 1.6 hours. Expect ~15 interruptions a day, ~900 over a 60-day run, before a single software bug is counted. Meta&rsquo;s Llama 3 report is the reality check: 466 interruptions in 54 days on 16,384 H100s. That run still finished &mdash; because it was built to be interrupted.</p>
+<p>A checkpoint is the full training state, snapshotted to durable storage: the fp32 master weights; the optimizer state &mdash; Adam&rsquo;s m and v (Day 18&rsquo;s two running averages), two more arrays the size of the weights themselves; the RNG state, so dropout and data shuffling resume on the same random stream; and the dataloader position, which samples the next step should see. Skip any piece and the resume still runs &mdash; it just silently becomes a different run. For the 70B model from Day 73 the resumable payload is 840 GB (gradients are the one thing left out: the next step recomputes them). That number &mdash; not the 140 GB of bf16 inference weights &mdash; is what your storage system has to swallow, over and over, for weeks.</p>
+<p>So checkpointing is an interval choice, and both directions cost you. Checkpoint every T seconds. Each write costs C seconds of progress: 840 GB &divide; your aggregate write bandwidth &mdash; 42 s at a stated 20 GB/s, a full 7 minutes through one 2 GB/s stream. Failures arrive every M seconds, and each one throws away on average half an interval of work, because the crash lands uniformly inside the interval: expected loss T/2. Total waste ≈ C/T + T/(2M) &mdash; the first term falls as you space checkpoints out, the second rises. Minimizing it (one derivative, taken at face value &mdash; this is the Young/Daly result) gives T* = sqrt(2CM): here sqrt(2 &times; 42 &times; 5,778) ≈ 697 s, a checkpoint every ~11.6 minutes, wasting ≈ 12% of the run. At the optimum the two taxes are exactly equal &mdash; 6.03% each &mdash; which is how you know you&rsquo;re there. Drift to hourly checkpoints and the replay tax alone eats a third of the cluster (Part 2&rsquo;s table).</p>
+<p>Two engineering moves keep C small and the snapshots honest. Writes are sharded and asynchronous: every GPU writes its own slice of the state in parallel to fast local storage &mdash; that is how you reach 20 GB/s aggregate instead of one stream&rsquo;s 2 &mdash; and the copy-out to durable object storage finishes in the background while training resumes, so the run pays the fast write, not the slow archive. And every checkpoint carries a checksum manifest, verified on load (Day 68&rsquo;s registry rule): a silently corrupted checkpoint &mdash; bitrot, a torn write &mdash; is worse than none, because the resume trusts it. Recovery is then mechanical: detect the failure, restart the job, load the last checkpoint whose hash verifies, replay forward. Keep the last few checkpoints, not just the latest, so one bad snapshot never strands the run. In PyTorch this ships as torch.save of a dict &mdash; model state_dict (Day 24), optimizer state_dict, RNG state, step &mdash; or torch.distributed.checkpoint for the sharded version. The API is boring, which is the point.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>This is your system. Conveyor&rsquo;s DRS assumes disks lie, die, and silently corrupt &mdash; so it scrubs checksums and repairs from good copies before anyone notices. Training checkpointing is the same three moves pointed at a different mutable object: the snapshot is replication of the run&rsquo;s state to durable storage, the sha256 manifest is the scrub, and rollback-plus-replay is the repair &mdash; except the &ldquo;corruption&rdquo; is usually a dead node, and the repair replays compute instead of copying bytes. Even the tuning dial is the one you already know: scrub cadence trades I/O overhead against exposure window, and Young/Daly is that tradeoff with the derivative taken. Trading version, one line: it&rsquo;s a stop-loss for compute &mdash; you pre-commit to losing at most T/2 per failure, and you pay a small, known premium (C per interval) for the insurance.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 556" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="556" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Checkpointing: the run WILL fail - snapshot it, checksum it, replay the gap</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Phase F - a checkpoint is DRS for training state: snapshot + scrub + repair</text>
+<rect x="12" y="56" width="656" height="172" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="77" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ONE FAILURE, ONE INTERVAL: ROLL BACK, REPLAY, RESUME</text>
+<text x="632" y="100" text-anchor="end" font-size="9" fill="#666666">run time -&gt;</text>
+<text x="500" y="98" text-anchor="middle" font-size="10" fill="#c22f2f" font-weight="bold">GPU DIES</text>
+<line x1="493" y1="104" x2="507" y2="118" stroke="#c22f2f" stroke-width="2.2"/>
+<line x1="507" y1="104" x2="493" y2="118" stroke="#c22f2f" stroke-width="2.2"/>
+<line x1="48" y1="128" x2="636" y2="128" stroke="#1c1c1e" stroke-width="1.6"/>
+<line x1="48" y1="128" x2="636" y2="128" stroke="#22a355" stroke-width="3"/>
+<line x1="438" y1="128" x2="500" y2="128" stroke="#d99a00" stroke-width="5" opacity="0.55"/>
+<polygon points="78,120 85,128 78,136 71,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="168,120 175,128 168,136 161,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="258,120 265,128 258,136 251,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="348,120 355,128 348,136 341,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="438,120 445,128 438,136 431,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="528,120 535,128 528,136 521,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<polygon points="618,120 625,128 618,136 611,128" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<circle cx="438" cy="128" r="11" fill="none" stroke="#d99a00" stroke-width="1.6"/>
+<text x="48" y="147" text-anchor="middle" font-size="8.5" fill="#555555">step 0</text>
+<text x="78" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">ckpt</text>
+<text x="438" y="152" text-anchor="middle" font-size="8.5" fill="#9a6b00" font-weight="bold">last good</text>
+<path d="M 500 136 C 497 166, 443 166, 439.5 137" stroke="#d99a00" stroke-width="1.6" fill="none"/>
+<polygon points="438,129 432.5,140 444,140" fill="#d99a00"/>
+<text x="469" y="186" text-anchor="middle" font-size="9.5" fill="#9a6b00">roll back to last good checkpoint - replay the gap (expected loss: T/2)</text>
+<text x="340.0" y="212" text-anchor="middle" font-size="9" fill="#1c1c1e">every diamond = weights + optimizer + RNG + data position, sha256 attached - verified on load (Part 3)</text>
+<rect x="12" y="244" width="656" height="302" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="265" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE WASTE CURVE: WASTE(T) = C/T + T/(2M)   (C = 42 s, M = 5,778 s)</text>
+<text x="86" y="288" font-size="9" fill="#666666">waste (% of run)</text>
+<line x1="86" y1="420.3" x2="636" y2="420.3" stroke="#e5e5e5" stroke-width="1"/>
+<text x="80" y="423.3" text-anchor="end" font-size="9" fill="#666666">10</text>
+<line x1="86" y1="370.6" x2="636" y2="370.6" stroke="#e5e5e5" stroke-width="1"/>
+<text x="80" y="373.6" text-anchor="end" font-size="9" fill="#666666">20</text>
+<line x1="86" y1="320.9" x2="636" y2="320.9" stroke="#e5e5e5" stroke-width="1"/>
+<text x="80" y="323.9" text-anchor="end" font-size="9" fill="#666666">30</text>
+<line x1="86.0" y1="470" x2="86.0" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="86.0" y="488" text-anchor="middle" font-size="9" fill="#666666">0</text>
+<line x1="170.6" y1="470" x2="170.6" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="170.6" y="488" text-anchor="middle" font-size="9" fill="#666666">10</text>
+<line x1="255.2" y1="470" x2="255.2" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="255.2" y="488" text-anchor="middle" font-size="9" fill="#666666">20</text>
+<line x1="339.8" y1="470" x2="339.8" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="339.8" y="488" text-anchor="middle" font-size="9" fill="#666666">30</text>
+<line x1="424.5" y1="470" x2="424.5" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="424.5" y="488" text-anchor="middle" font-size="9" fill="#666666">40</text>
+<line x1="509.1" y1="470" x2="509.1" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="509.1" y="488" text-anchor="middle" font-size="9" fill="#666666">50</text>
+<line x1="593.7" y1="470" x2="593.7" y2="475" stroke="#999999" stroke-width="1"/>
+<text x="593.7" y="488" text-anchor="middle" font-size="9" fill="#666666">60</text>
+<line x1="86" y1="296" x2="86" y2="470" stroke="#999999" stroke-width="1"/>
+<line x1="86" y1="470" x2="636" y2="470" stroke="#999999" stroke-width="1"/>
+<text x="80" y="473" text-anchor="end" font-size="9" fill="#666666">0</text>
+<polyline points="111.4,346.3 119.8,372.7 128.3,387.5 136.8,396.5 145.2,402.2 153.7,405.9 162.2,408.1 170.6,409.4 179.1,410.0 187.5,410.0 196.0,409.7 204.5,409.0 212.9,408.1 221.4,407.0 229.8,405.7 238.3,404.2 246.8,402.6 255.2,401.0 263.7,399.2 272.2,397.4 280.6,395.5 289.1,393.6 297.5,391.6 306.0,389.5 314.5,387.4 322.9,385.3 331.4,383.1 339.8,381.0 348.3,378.8 356.8,376.5 365.2,374.3 373.7,372.0 382.2,369.7 390.6,367.4 399.1,365.1 407.5,362.8 416.0,360.4 424.5,358.1 432.9,355.7 441.4,353.3 449.8,350.9 458.3,348.5 466.8,346.1 475.2,343.7 483.7,341.3 492.2,338.9 500.6,336.4 509.1,334.0 517.5,331.5 526.0,329.1 534.5,326.6 542.9,324.2 551.4,321.7 559.8,319.2 568.3,316.8 576.8,314.3 585.2,311.8 593.7,309.3 602.2,306.9 610.6,304.4 619.1,301.9 627.5,299.4 636.0,296.9" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<line x1="184.3" y1="410.1" x2="184.3" y2="470" stroke="#d99a00" stroke-width="1" stroke-dasharray="4 3"/>
+<line x1="86" y1="410.1" x2="184.3" y2="410.1" stroke="#d99a00" stroke-width="1" stroke-dasharray="4 3"/>
+<circle cx="184.3" cy="410.1" r="5" fill="#fff8e6" stroke="#d99a00" stroke-width="2"/>
+<line x1="190" y1="370" x2="185" y2="403" stroke="#d99a00" stroke-width="1" stroke-dasharray="2 3"/>
+<text x="196" y="352" font-size="10" fill="#1c1c1e" font-weight="bold">Young/Daly optimum: sqrt(2CM)</text>
+<text x="196" y="366" font-size="9.5" fill="#555555">T* ~ 11.6 min, waste 12.06% - both taxes equal</text>
+<text x="361" y="506" text-anchor="middle" font-size="9.5" fill="#666666">checkpoint interval (min)</text>
+<text x="340.0" y="528" text-anchor="middle" font-size="9.5" fill="#1c1c1e">left of the dot the write tax rules - right of it the replay tax rules - the optimum is where they meet</text>
+</svg>
+    <div class="caption">Top: one failure inside one interval &mdash; roll back to the last verified checkpoint and replay the gap; the expected loss is half the interval, and the amber stretch is the work computed twice. Bottom: Part 2&rsquo;s waste curve &mdash; the write tax (C/T) falling, the replay tax (T/2M) rising, and the Young/Daly minimum where the two are equal.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure stdlib again &mdash; tonight is arithmetic plus one honest file. Part 1 divides one MTBF by three cluster sizes. Part 2 prices the 70B checkpoint and sweeps the interval through the waste formula. Part 3 is the whole idea at toy scale: Day 7&rsquo;s regression (same data, same lr 0.05 as Days 31/67) trained straight through, then trained again with a checkpoint at epoch 12, a simulated crash, a hash check &mdash; and a corrupted copy that gets rejected &mdash; before resuming. It writes to a temp dir and cleans up after itself.</p>
+  <pre><code>&quot;&quot;&quot;Day 78 - Checkpointing &amp; Fault Tolerance at Scale.
+
+You wrote the Data Reliability Service for an exabyte-scale
+object store, so tonight&#x27;s idea is one you already own,
+pointed at a new kind of state: a training run IS a weeks-
+long mutation of one giant object, and the hardware under
+it fails on a schedule. Checkpointing is the snapshot +
+checksum + repair loop you know from storage, run against
+weights + optimizer state instead of objects.
+
+    A checkpoint = the FULL training state (fp32 master
+    weights + Adam m and v + RNG state + dataloader
+    position), written with a checksum, often enough that
+    the expected loss per failure - half an interval -
+    plus the write cost is minimized. That minimum has a
+    name: the Young/Daly interval, sqrt(2 * C * M).
+
+  Part 1  Failure arithmetic. Stated assumption: one
+          accelerator (GPU + its share of host, NIC, power)
+          fails every ~3 years on average. One GPU is a
+          rock. Divide that MTBF by 1,000 / 10,000 / 16,384
+          devices and failure stops being an accident - it
+          becomes a rate you plan around.
+  Part 2  The tradeoff curve. A resumable 70B checkpoint
+          is 840 GB (Day 73&#x27;s bill minus the gradients,
+          which the next step recomputes anyway). Writing
+          it sharded at a stated 20 GB/s aggregate costs
+          C = 42 s. Waste(T) = C/T (the writes tax) +
+          T/(2M) (the expected replay), and Young/Daly
+          picks the interval where the two terms meet.
+  Part 3  The toy version, exact. Day 7&#x27;s line, lr 0.05:
+          train 30 epochs straight vs train 12, checkpoint
+          (step + w + b + sha256) to a temp file, &quot;crash&quot;,
+          verify the hash, resume for 18 more. Floats
+          round-trip through JSON exactly, so the resumed
+          run must land on the uninterrupted answer to
+          the last bit - IF the state was complete. A
+          corrupted copy is rejected by its hash first
+          (Day 68&#x27;s rule: verify on load).
+
+Pure Python standard library - no torch, no GPU, no
+downloads, no APIs. Runs on the ~/ai-lab venv in
+milliseconds. The temp checkpoint deletes itself.
+
+Expected output:
+
+  Part 1 - failure arithmetic: one GPU is a rock, 16,384 are a weather system
+    stated assumption: one accelerator (GPU + its host share) fails every ~26,298 h (3 years)
+      1,000 GPUs: cluster MTBF  26.30 h -&gt; expect  0.91 failures/day
+     10,000 GPUs: cluster MTBF   2.63 h -&gt; expect  9.13 failures/day
+     16,384 GPUs: cluster MTBF   1.61 h -&gt; expect 14.95 failures/day
+    a 60-day run at 16,384 GPUs expects ~897 interruptions - before software faults are counted
+    reality check: Meta&#x27;s Llama 3 report counted 466 interruptions in 54 days
+    on 16,384 H100s (~8.6/day) - same order of magnitude, and that run finished
+  Part 2 - the tradeoff: write too often, the disk eats the run; too rarely, the replay does
+    checkpoint payload: fp32 master 280 GB + Adam m 280 GB + Adam v 280 GB = 840 GB
+    (gradients not saved - the next step recomputes them; RNG + dataloader position ride along, ~KB)
+    write time: one stream at 2 GB/s = 420 s (7.0 min)  |  sharded at 20 GB/s = 42 s
+    cluster MTBF M = 5,778 s (1.61 h), checkpoint cost C = 42 s
+      interval  write tax  replay tax  total waste
+         5 min     14.00%       2.60%       16.60%
+        10 min      7.00%       5.19%       12.19%
+      11.6 min      6.03%       6.03%       12.06%  &lt;- Young/Daly
+        20 min      3.50%      10.38%       13.88%
+        30 min      2.33%      15.58%       17.91%
+        60 min      1.17%      31.15%       32.32%
+    optimum: sqrt(2*C*M) = 697 s (11.6 min), waste 12.06% - the two taxes are equal there,
+    which is the signature of every optimum: at the best interval, both failure modes cost the same
+  Part 3 - save, crash, resume: complete state in, identical run out
+    uninterrupted: 30 epochs -&gt; w=2.4895 b=-0.9576  train loss 0.0020
+    crashed run: checkpoint at epoch 12 (w=2.2196 b=-0.7176), sha256 4033c6ad7b81..., 148 bytes on disk
+    integrity: sha256 verified on load - resuming from step 12 (a real loop also restores RNG state + dataloader index)
+    corrupted copy: rejected - sha256 mismatch - checkpoint corrupt, refusing to resume from it
+    resumed: epochs 13-30 -&gt; w=2.4895 b=-0.9576  train loss 0.0020
+    identical to uninterrupted: True (max diff 0.0) - resume is exact IF the state is complete
+    temp checkpoint cleaned up: True
+    verdict: checkpoint the FULL state, checksum it, and set the interval where the two taxes meet
+&quot;&quot;&quot;
+import hashlib
+import json
+import math
+import shutil
+import tempfile
+from pathlib import Path
+
+# ---------- Part 1: failure is a rate, not an accident ----------
+print(&quot;Part 1 - failure arithmetic: one GPU is a rock, &quot;
+      &quot;16,384 are a weather system&quot;)
+PER_GPU_MTBF_H = 3 * 365.25 * 24      # stated assumption: ~3 years
+print(f&quot;  stated assumption: one accelerator (GPU + its host &quot;
+      f&quot;share) fails every ~{PER_GPU_MTBF_H:,.0f} h (3 years)&quot;)
+for n in (1_000, 10_000, 16_384):
+    mtbf_h = PER_GPU_MTBF_H / n
+    per_day = 24 / mtbf_h
+    print(f&quot;  {n:&gt;7,} GPUs: cluster MTBF {mtbf_h:6.2f} h &quot;
+          f&quot;-&gt; expect {per_day:5.2f} failures/day&quot;)
+per_day_16k = 24 / (PER_GPU_MTBF_H / 16_384)
+print(f&quot;  a 60-day run at 16,384 GPUs expects &quot;
+      f&quot;~{per_day_16k * 60:,.0f} interruptions - before software &quot;
+      &quot;faults are counted&quot;)
+print(&quot;  reality check: Meta&#x27;s Llama 3 report counted 466 &quot;
+      &quot;interruptions in 54 days&quot;)
+print(&quot;  on 16,384 H100s (~8.6/day) - same order of magnitude, &quot;
+      &quot;and that run finished&quot;)
+
+# ---------- Part 2: price the checkpoint, find the interval ----------
+print(&quot;Part 2 - the tradeoff: write too often, the disk eats &quot;
+      &quot;the run; too rarely, the replay does&quot;)
+PARAMS = 70e9                          # the 70B run from Day 73
+STATE_GB = PARAMS * (4 + 4 + 4) / 1e9  # master + Adam m + v
+print(f&quot;  checkpoint payload: fp32 master 280 GB + Adam m &quot;
+      f&quot;280 GB + Adam v 280 GB = {STATE_GB:.0f} GB&quot;)
+print(&quot;  (gradients not saved - the next step recomputes &quot;
+      &quot;them; RNG + dataloader position ride along, ~KB)&quot;)
+SLOW, FAST = 2.0, 20.0                 # GB/s, stated assumptions
+print(f&quot;  write time: one stream at {SLOW:.0f} GB/s = &quot;
+      f&quot;{STATE_GB / SLOW:.0f} s ({STATE_GB / SLOW / 60:.1f} min)&quot;
+      f&quot;  |  sharded at {FAST:.0f} GB/s = {STATE_GB / FAST:.0f} s&quot;)
+C = STATE_GB / FAST                    # checkpoint cost, seconds
+M = PER_GPU_MTBF_H / 16_384 * 3600     # cluster MTBF, seconds
+T_STAR = math.sqrt(2 * C * M)          # Young/Daly optimum
+
+
+def waste(t_s):
+    &quot;&quot;&quot;Fraction of the run wasted at interval t_s:
+    C/T pays the writes, T/(2M) pays the expected replay.&quot;&quot;&quot;
+    return C / t_s + t_s / (2 * M)
+
+
+print(f&quot;  cluster MTBF M = {M:,.0f} s ({M / 3600:.2f} h), &quot;
+      f&quot;checkpoint cost C = {C:.0f} s&quot;)
+print(f&quot;  {&#x27;interval&#x27;:&gt;10} {&#x27;write tax&#x27;:&gt;10} {&#x27;replay tax&#x27;:&gt;11}&quot;
+      f&quot; {&#x27;total waste&#x27;:&gt;12}&quot;)
+rows = [(300, &quot;&quot;), (600, &quot;&quot;), (T_STAR, &quot;  &lt;- Young/Daly&quot;),
+        (1200, &quot;&quot;), (1800, &quot;&quot;), (3600, &quot;&quot;)]
+for t_s, tag in rows:
+    label = f&quot;{t_s / 60:.1f} min&quot; if tag else f&quot;{t_s / 60:.0f} min&quot;
+    print(f&quot;  {label:&gt;10} {C / t_s:&gt;10.2%} &quot;
+          f&quot;{t_s / (2 * M):&gt;11.2%} {waste(t_s):&gt;12.2%}{tag}&quot;)
+print(f&quot;  optimum: sqrt(2*C*M) = {T_STAR:,.0f} s &quot;
+      f&quot;({T_STAR / 60:.1f} min), waste {waste(T_STAR):.2%} - &quot;
+      &quot;the two taxes are equal there,&quot;)
+print(&quot;  which is the signature of every optimum: at the best &quot;
+      &quot;interval, both failure modes cost the same&quot;)
+
+# ---------- Part 3: save, crash, resume - exact ----------
+print(&quot;Part 3 - save, crash, resume: complete state in, &quot;
+      &quot;identical run out&quot;)
+X_TRAIN = [-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+Y_TRAIN = [2.5 * x - 1.0 for x in X_TRAIN]     # Day 7&#x27;s line
+
+
+def step(w, b, lr=0.05):
+    &quot;&quot;&quot;One full-batch gradient step (Day 6&#x27;s hand math).&quot;&quot;&quot;
+    n = len(X_TRAIN)
+    dw = sum(2 * (w * x + b - y) * x
+             for x, y in zip(X_TRAIN, Y_TRAIN)) / n
+    db = sum(2 * (w * x + b - y)
+             for x, y in zip(X_TRAIN, Y_TRAIN)) / n
+    return w - lr * dw, b - lr * db
+
+
+def mse(w, b):
+    return sum((w * x + b - y) ** 2
+               for x, y in zip(X_TRAIN, Y_TRAIN)) / len(X_TRAIN)
+
+
+def save_ckpt(path, state):
+    payload = json.dumps(state, sort_keys=True)
+    digest = hashlib.sha256(payload.encode()).hexdigest()
+    record = {&quot;state&quot;: state, &quot;sha256&quot;: digest}
+    path.write_text(json.dumps(record, sort_keys=True))
+    return digest
+
+
+def load_ckpt(path):
+    record = json.loads(path.read_text())
+    payload = json.dumps(record[&quot;state&quot;], sort_keys=True)
+    digest = hashlib.sha256(payload.encode()).hexdigest()
+    if digest != record[&quot;sha256&quot;]:
+        raise ValueError(&quot;sha256 mismatch - checkpoint corrupt, &quot;
+                         &quot;refusing to resume from it&quot;)
+    return record[&quot;state&quot;]
+
+
+EPOCHS, CKPT_AT = 30, 12
+w_a = b_a = 0.0
+for _ in range(EPOCHS):                        # the lucky run
+    w_a, b_a = step(w_a, b_a)
+print(f&quot;  uninterrupted: {EPOCHS} epochs -&gt; w={w_a:.4f} &quot;
+      f&quot;b={b_a:.4f}  train loss {mse(w_a, b_a):.4f}&quot;)
+
+tmp = Path(tempfile.mkdtemp(prefix=&quot;day78-&quot;))
+ckpt = tmp / &quot;ckpt-step12.json&quot;
+w = b = 0.0
+for _ in range(CKPT_AT):                       # the unlucky run
+    w, b = step(w, b)
+digest = save_ckpt(ckpt, {&quot;step&quot;: CKPT_AT, &quot;w&quot;: w, &quot;b&quot;: b})
+print(f&quot;  crashed run: checkpoint at epoch {CKPT_AT} &quot;
+      f&quot;(w={w:.4f} b={b:.4f}), sha256 {digest[:12]}..., &quot;
+      f&quot;{ckpt.stat().st_size} bytes on disk&quot;)
+w = b = None                                   # the crash: state gone
+state = load_ckpt(ckpt)                        # verify, then resume
+print(f&quot;  integrity: sha256 verified on load - resuming from &quot;
+      f&quot;step {state[&#x27;step&#x27;]} (a real loop also restores RNG &quot;
+      &quot;state + dataloader index)&quot;)
+bad = tmp / &quot;ckpt-corrupt.json&quot;
+bad.write_text(ckpt.read_text().replace(&#x27;&quot;step&quot;: 12&#x27;,
+                                        &#x27;&quot;step&quot;: 13&#x27;))
+try:
+    load_ckpt(bad)
+    print(&quot;  corrupted copy: ACCEPTED - this line never prints&quot;)
+except ValueError as e:
+    print(f&quot;  corrupted copy: rejected - {e}&quot;)
+w, b = state[&quot;w&quot;], state[&quot;b&quot;]
+for _ in range(EPOCHS - state[&quot;step&quot;]):
+    w, b = step(w, b)
+print(f&quot;  resumed: epochs {state[&#x27;step&#x27;] + 1}-{EPOCHS} -&gt; &quot;
+      f&quot;w={w:.4f} b={b:.4f}  train loss {mse(w, b):.4f}&quot;)
+print(f&quot;  identical to uninterrupted: {w == w_a and b == b_a} &quot;
+      f&quot;(max diff {max(abs(w - w_a), abs(b - b_a)):.1f}) - &quot;
+      &quot;resume is exact IF the state is complete&quot;)
+shutil.rmtree(tmp)
+print(f&quot;  temp checkpoint cleaned up: {not tmp.exists()}&quot;)
+print(&quot;  verdict: checkpoint the FULL state, checksum it, &quot;
+      &quot;and set the interval where the two taxes meet&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - failure arithmetic: one GPU is a rock, 16,384 are a weather system
+  stated assumption: one accelerator (GPU + its host share) fails every ~26,298 h (3 years)
+    1,000 GPUs: cluster MTBF  26.30 h -&gt; expect  0.91 failures/day
+   10,000 GPUs: cluster MTBF   2.63 h -&gt; expect  9.13 failures/day
+   16,384 GPUs: cluster MTBF   1.61 h -&gt; expect 14.95 failures/day
+  a 60-day run at 16,384 GPUs expects ~897 interruptions - before software faults are counted
+  reality check: Meta&#x27;s Llama 3 report counted 466 interruptions in 54 days
+  on 16,384 H100s (~8.6/day) - same order of magnitude, and that run finished
+Part 2 - the tradeoff: write too often, the disk eats the run; too rarely, the replay does
+  checkpoint payload: fp32 master 280 GB + Adam m 280 GB + Adam v 280 GB = 840 GB
+  (gradients not saved - the next step recomputes them; RNG + dataloader position ride along, ~KB)
+  write time: one stream at 2 GB/s = 420 s (7.0 min)  |  sharded at 20 GB/s = 42 s
+  cluster MTBF M = 5,778 s (1.61 h), checkpoint cost C = 42 s
+    interval  write tax  replay tax  total waste
+       5 min     14.00%       2.60%       16.60%
+      10 min      7.00%       5.19%       12.19%
+    11.6 min      6.03%       6.03%       12.06%  &lt;- Young/Daly
+      20 min      3.50%      10.38%       13.88%
+      30 min      2.33%      15.58%       17.91%
+      60 min      1.17%      31.15%       32.32%
+  optimum: sqrt(2*C*M) = 697 s (11.6 min), waste 12.06% - the two taxes are equal there,
+  which is the signature of every optimum: at the best interval, both failure modes cost the same
+Part 3 - save, crash, resume: complete state in, identical run out
+  uninterrupted: 30 epochs -&gt; w=2.4895 b=-0.9576  train loss 0.0020
+  crashed run: checkpoint at epoch 12 (w=2.2196 b=-0.7176), sha256 4033c6ad7b81..., 148 bytes on disk
+  integrity: sha256 verified on load - resuming from step 12 (a real loop also restores RNG state + dataloader index)
+  corrupted copy: rejected - sha256 mismatch - checkpoint corrupt, refusing to resume from it
+  resumed: epochs 13-30 -&gt; w=2.4895 b=-0.9576  train loss 0.0020
+  identical to uninterrupted: True (max diff 0.0) - resume is exact IF the state is complete
+  temp checkpoint cleaned up: True
+  verdict: checkpoint the FULL state, checksum it, and set the interval where the two taxes meet</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows Part 1&rsquo;s 14.95 failures/day at 16,384 GPUs, Part 2&rsquo;s table bottoming out at the Young/Daly row (11.6 min, 12.06% total, both taxes 6.03%), and Part 3&rsquo;s three proofs: checkpoint sha256 4033c6ad7b81…, the corrupted copy rejected, and resumed == uninterrupted (identical: True, max diff 0.0). The keeper sentence: a checkpoint is only as good as its state completeness and its checksum &mdash; and its interval is an optimization, not a habit.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can sketch the waste curve and mark its minimum, then run only Part 3 and watch the crash/resume land on the identical weights. If you can say why Adam&rsquo;s state doubles the checkpoint payload and why the optimum has both taxes equal, you have Day 78.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: we open the black box under every number this week &mdash; just enough of the GPU&rsquo;s insides (SMs, warps, and the memory hierarchy) to see why bandwidth, not FLOPs, runs your world.</p>
+  </div>
+
+  <div class="footer">Streak: 78 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
