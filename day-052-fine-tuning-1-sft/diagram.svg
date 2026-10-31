@@ -1,0 +1,70 @@
+<svg viewBox="0 0 680 384" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="384" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">SFT: train on the answer, mask the question</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">one example, token by token - then the pipeline that turns a base model into a chat model</text>
+<rect x="12" y="56" width="656" height="158" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ONE EXAMPLE AS THE MODEL SEES IT:  &lt;user&gt; say hello &lt;asst&gt; hello there &lt;eos&gt;</text>
+<rect x="15" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="58.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><user></text>
+<text x="58.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 0</text>
+<text x="58.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="58.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="109" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="152.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">say</text>
+<text x="152.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 3</text>
+<text x="152.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="152.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="203" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="246.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">hello</text>
+<text x="246.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 4</text>
+<text x="246.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="246.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="297" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><asst></text>
+<text x="340.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 1</text>
+<text x="340.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="340.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="391" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="434.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">hello</text>
+<text x="434.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 4</text>
+<text x="434.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 4</text>
+<text x="434.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<rect x="485" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="528.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">there</text>
+<text x="528.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 5</text>
+<text x="528.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 5</text>
+<text x="528.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<rect x="579" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="622.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><eos></text>
+<text x="622.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 2</text>
+<text x="622.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 2</text>
+<text x="622.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<text x="340.0" y="190" text-anchor="middle" font-size="9.0" fill="#1c1c1e">3 of 7 tokens carry loss (0.4286) - the model learns to PRODUCE the right side, never to generate the user&#x27;s</text>
+<text x="340.0" y="206" text-anchor="middle" font-size="9.0" fill="#0a54c2">-100 is ignore_index: cross-entropy skips those positions entirely - no loss, no gradient</text>
+<rect x="12" y="228" width="656" height="140" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="248" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE PIPELINE:  SAME LOOP, NEW DATA, ONE MASK</text>
+<rect x="20" y="268" width="150" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="95.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Base model</text>
+<text x="95.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">Day 51: predicts text,</text>
+<text x="95.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">follows nothing</text>
+<line x1="172" y1="293" x2="188" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="188,293 181,289 181,297" fill="#22a355"/>
+<rect x="190" y="268" width="150" height="50" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="265.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">SFT data</text>
+<text x="265.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">(prompt, response) pairs</text>
+<text x="265.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">10K - 1M examples</text>
+<line x1="342" y1="293" x2="358" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="358,293 351,289 351,297" fill="#22a355"/>
+<rect x="360" y="268" width="150" height="50" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="435.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Masked training</text>
+<text x="435.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">Day 7 loop, loss only</text>
+<text x="435.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">on response tokens</text>
+<line x1="512" y1="293" x2="528" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="528,293 521,289 521,297" fill="#22a355"/>
+<rect x="530" y="268" width="150" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="605.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Chat model</text>
+<text x="605.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">same weights, now</text>
+<text x="605.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">answers instructions</text>
+<text x="340.0" y="342" text-anchor="middle" font-size="9.0" fill="#1c1c1e">pretraining: trillions of tokens, months - SFT: thousands of pairs, hours-to-days on the same weights</text>
+<text x="340.0" y="360" text-anchor="middle" font-size="9.0" fill="#177245">nothing about the architecture changes - SFT is a data recipe plus a mask</text>
+</svg>

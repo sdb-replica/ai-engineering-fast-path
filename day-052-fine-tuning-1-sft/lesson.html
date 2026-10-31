@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fine-Tuning 1: Supervised Fine-Tuning (SFT) — Day 52 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 52 of 100</span>
+  <h1>Fine-Tuning 1: Supervised Fine-Tuning (SFT)</h1>
+  <p class="outcome">Tonight you'll be able to: explain how supervised fine-tuning turns Day 51&rsquo;s text predictor into an instruction-follower &mdash; and compute its masked loss by hand, showing exactly which tokens train and which are invisible.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 51 left you with a base model: a superb next-token predictor trained on trillions of tokens of raw text. Ask it a question and it does the most document-like thing &mdash; it might answer, or it might generate three more questions, because in its training data questions are usually followed by more text, not by obedience. It has the knowledge; it does not have the <em>job</em>. <strong>Supervised fine-tuning (SFT)</strong> is how it gets the job: keep training the same weights, with the same loop, on examples that show the desired behavior &mdash; a prompt and the response you <em>wish</em> the model had given.</p>
+<p><strong>The data shape.</strong> An SFT example is a pair &mdash; instruction in, desired response out &mdash; wrapped in a <strong>chat template</strong>: special marker tokens that delimit who is speaking (<code>&lt;user&gt;</code> &hellip; <code>&lt;asst&gt;</code> &hellip; <code>&lt;eos&gt;</code> in tonight&rsquo;s toy version; production templates do the same job with their own marker strings). The markers matter: they turn &ldquo;some text&rdquo; into a turn structure the model can condition on, so at serving time the same template frames the user&rsquo;s message and the model continues in the assistant&rsquo;s slot. Datasets are <em>curated</em>, not scraped &mdash; humans or strong teacher models write responses worth imitating. That curation is the whole point: pretraining data taught the model what text looks like; SFT data teaches it what <em>its</em> text should look like.</p>
+<p><strong>The mask &mdash; tonight&rsquo;s load-bearing mechanic.</strong> The training loss is computed <strong>only on the response tokens</strong>. Mechanically: labels are a copy of the input ids, except every prompt position is overwritten with <code>-100</code>, which is PyTorch&rsquo;s <code>ignore_index</code> &mdash; cross-entropy skips those positions entirely, no loss and no gradient. (The model internally shifts labels by one, Day 42-style: the position before a token predicts it, so the first response token is trained from the <code>&lt;asst&gt;</code> marker exactly as it should be.) Why mask? Because an unmasked loss would spend half its gradient teaching the model to <em>generate the user&rsquo;s side</em> &mdash; to imitate questions, typos and all &mdash; and would dilute the signal that actually shapes behavior. The prompt is context to read; the response is the curriculum. One deliberate exception: the closing <code>&lt;eos&gt;</code> keeps its label, so the model learns when to <em>stop</em> &mdash; an assistant that never ends its turn was never trained to.</p>
+<p><strong>Scale honesty.</strong> Next to pretraining, SFT is tiny: typically <strong>thousands to a few million examples</strong> (against trillions of pretraining tokens), a few passes over the set, at a modest learning rate, finishing in hours to days instead of months. That smallness is informative: SFT mostly does not pour in new knowledge &mdash; there isn&rsquo;t enough data for that. It teaches format, tone, and task shape; it <em>surfaces</em> what pretraining already put in. Which is exactly why tomorrow&rsquo;s question even makes sense: if the change is this shallow, maybe you don&rsquo;t need to rewrite every weight to make it.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Onboarding, not education. Pretraining (Day 51) is the new hire who somehow read the entire internet before day one &mdash; brilliant, knowledgeable, and with no idea how your team answers a ticket. SFT is their first week with the runbook: you hand them a stack of real requests, each paired with <em>the reply a senior would have sent</em>, and you grade only their replies. You would never grade them on reproducing the customer&rsquo;s email &mdash; that&rsquo;s context, not performance. The <code>-100</code> mask is that grading policy written in code: loss lands on the response payload only; the request headers are read, never scored.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 384" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="384" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">SFT: train on the answer, mask the question</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">one example, token by token - then the pipeline that turns a base model into a chat model</text>
+<rect x="12" y="56" width="656" height="158" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ONE EXAMPLE AS THE MODEL SEES IT:  &lt;user&gt; say hello &lt;asst&gt; hello there &lt;eos&gt;</text>
+<rect x="15" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="58.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><user></text>
+<text x="58.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 0</text>
+<text x="58.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="58.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="109" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="152.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">say</text>
+<text x="152.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 3</text>
+<text x="152.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="152.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="203" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="246.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">hello</text>
+<text x="246.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 4</text>
+<text x="246.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="246.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="297" y="92" width="86" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><asst></text>
+<text x="340.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 1</text>
+<text x="340.0" y="154" text-anchor="middle" font-size="9.0" fill="#888888">label -100</text>
+<text x="340.0" y="168" text-anchor="middle" font-size="9.0" fill="#888888" font-weight="bold">loss OFF</text>
+<rect x="391" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="434.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">hello</text>
+<text x="434.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 4</text>
+<text x="434.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 4</text>
+<text x="434.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<rect x="485" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="528.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">there</text>
+<text x="528.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 5</text>
+<text x="528.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 5</text>
+<text x="528.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<rect x="579" y="92" width="86" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="622.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold"><eos></text>
+<text x="622.0" y="127" text-anchor="middle" font-size="8.5" fill="#555555">id 2</text>
+<text x="622.0" y="154" text-anchor="middle" font-size="9.0" fill="#177245">label = 2</text>
+<text x="622.0" y="168" text-anchor="middle" font-size="9.0" fill="#177245" font-weight="bold">loss ON</text>
+<text x="340.0" y="190" text-anchor="middle" font-size="9.0" fill="#1c1c1e">3 of 7 tokens carry loss (0.4286) - the model learns to PRODUCE the right side, never to generate the user&#x27;s</text>
+<text x="340.0" y="206" text-anchor="middle" font-size="9.0" fill="#0a54c2">-100 is ignore_index: cross-entropy skips those positions entirely - no loss, no gradient</text>
+<rect x="12" y="228" width="656" height="140" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="248" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE PIPELINE:  SAME LOOP, NEW DATA, ONE MASK</text>
+<rect x="20" y="268" width="150" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="95.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Base model</text>
+<text x="95.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">Day 51: predicts text,</text>
+<text x="95.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">follows nothing</text>
+<line x1="172" y1="293" x2="188" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="188,293 181,289 181,297" fill="#22a355"/>
+<rect x="190" y="268" width="150" height="50" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="265.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">SFT data</text>
+<text x="265.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">(prompt, response) pairs</text>
+<text x="265.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">10K - 1M examples</text>
+<line x1="342" y1="293" x2="358" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="358,293 351,289 351,297" fill="#22a355"/>
+<rect x="360" y="268" width="150" height="50" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="435.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Masked training</text>
+<text x="435.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">Day 7 loop, loss only</text>
+<text x="435.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">on response tokens</text>
+<line x1="512" y1="293" x2="528" y2="293" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="528,293 521,289 521,297" fill="#22a355"/>
+<rect x="530" y="268" width="150" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="605.0" y="287" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Chat model</text>
+<text x="605.0" y="301" text-anchor="middle" font-size="8.5" fill="#555555">same weights, now</text>
+<text x="605.0" y="313" text-anchor="middle" font-size="8.5" fill="#555555">answers instructions</text>
+<text x="340.0" y="342" text-anchor="middle" font-size="9.0" fill="#1c1c1e">pretraining: trillions of tokens, months - SFT: thousands of pairs, hours-to-days on the same weights</text>
+<text x="340.0" y="360" text-anchor="middle" font-size="9.0" fill="#177245">nothing about the architecture changes - SFT is a data recipe plus a mask</text>
+</svg>
+    <div class="caption">Top: one SFT example as a token row &mdash; the prompt side (blue) is labeled <code>-100</code>, so its loss gates are OFF: the model reads it but is never trained to produce it. The response side (green) keeps its ids as labels, gates ON &mdash; including &lt;eos&gt;, which teaches stopping. Bottom: the pipeline &mdash; same weights, same Day 7 loop; only the data (curated pairs) and the mask are new.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, a 30-token toy vocab &mdash; small enough that every number is hand-checkable, structured exactly like the real pipeline. <strong>Part 1</strong> builds 8 instruction pairs, wraps them in the chat template, and prints example 1&rsquo;s full masked label row plus the dataset-wide fraction of tokens that carry loss. <strong>Part 2</strong> computes masked cross-entropy by hand on hand-set logits and matches <code>F.cross_entropy(ignore_index=-100)</code> to the digit &mdash; including how the mask changes the denominator. <strong>Part 3</strong> proves the mask is a wall: perturb a prompt-side logit and the loss cannot see it; perturb a response-side logit and it jumps.</p>
+  <pre><code>&quot;&quot;&quot;Day 52 - Fine-Tuning 1: Supervised Fine-Tuning (SFT).
+
+Day 51&#x27;s base model predicts text; it does not follow
+instructions. SFT is the recipe that closes that gap: keep
+training the SAME weights on (prompt, desired response)
+pairs, so next-token prediction quietly becomes
+instruction-following. No new architecture, no new loop -
+the Day 7 training loop on new data.
+
+The load-bearing mechanic is the MASK. Each example is one
+token row: chat markers + prompt + response. The labels are
+the input ids with every prompt position overwritten by
+-100, PyTorch&#x27;s ignore_index. Cross-entropy skips -100
+positions entirely - no loss, no gradient - because you
+want the model to learn to PRODUCE the assistant&#x27;s side,
+never to generate the user&#x27;s side. The prompt is context;
+only the answer is curriculum.
+
+  Part 1  Build a tiny instruction dataset (8 prompt /
+          response pairs), tokenize it with a 30-token word
+          vocab plus three chat markers (&lt;user&gt;, &lt;asst&gt;,
+          &lt;eos&gt;), and construct input_ids + labels. Example 1
+          prints its full masked row: 3 of 7 tokens carry
+          loss. Across all 8 examples only 20 of 58 tokens
+          (0.3448) train anything at all.
+  Part 2  Masked cross-entropy, by hand vs the library.
+          Hand-set logits for 5 positions, labels with two
+          -100s: sum the per-token CE over the 3 live
+          positions and divide by 3 - F.cross_entropy with
+          ignore_index=-100 matches exactly. Divide by all 5
+          instead and the number lies: the mask sets the
+          denominator too.
+  Part 3  Prove the mask is a wall. Add +5.0 to a prompt
+          position&#x27;s logit: the masked loss does not move
+          (diff 0.000000). Add it to a response position:
+          the loss jumps. Then the scale honesty: real SFT
+          is thousands-to-millions of pairs - a rounding
+          error next to pretraining&#x27;s trillions of tokens -
+          which is why SFT takes hours-to-days, not months.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data, exact digits), no CUDA, no paid APIs,
+no downloads. Everything is hand-set - no RNG anywhere.
+
+Expected output:
+
+  Part 1 - build the SFT dataset: (prompt, response) -&gt; input_ids + masked labels
+    vocab: 30 tokens (3 chat markers + 27 words)
+    example 1: prompt &#x27;say hello&#x27;  response &#x27;hello there&#x27;
+      tokens:    &lt;user&gt; say hello &lt;asst&gt; hello there &lt;eos&gt;
+      input_ids: [0, 3, 4, 1, 4, 5, 2]
+      labels:    [-100, -100, -100, -100, 4, 5, 2]
+      loss tokens: 3 of 7 = 0.4286 of this example
+    all 8 examples: 58 tokens total, 20 carry loss = 0.3448 (34.48%)
+    the remaining 65.52% is the user&#x27;s side - read as context, never trained on
+  Part 2 - masked cross-entropy, by hand vs F.cross_entropy(ignore_index=-100)
+    labels: [-100, -100, 2, 1, 4]  (the first two positions are &#x27;prompt&#x27;)
+    per-token CE, reduction=&#x27;none&#x27;: [0.0000, 0.0000, 0.6196, 0.6479, 0.6196]
+    by hand over the 3 live positions: (0.6196 + 0.6479 + 0.6196) / 3 = 0.6290
+    F.cross_entropy (masked mean): 0.6290   max diff vs by-hand 0.000000
+    the same sum over all 5 positions would read 0.3774 - the mask sets the denominator too
+  Part 3 - prove the mask is a wall: perturb a logit, watch the loss
+    base masked loss:         0.6290
+    +5.0 on a PROMPT logit:   0.6290  (diff 0.000000 - invisible to the loss)
+    +5.0 on a RESPONSE logit: 1.6052  (the loss moves - this side is what learns)
+    scale check: real SFT runs on 10K-1M examples like these; Day 51&#x27;s pretraining ran on trillions of tokens
+    verdict: SFT = the pretraining loop + instruction pairs + a mask that trains only the answer
+&quot;&quot;&quot;
+import torch
+import torch.nn.functional as F
+
+# ---------- Part 1: the dataset, the tokens, the mask ----------
+print(&quot;Part 1 - build the SFT dataset: (prompt, response) &quot;
+      &quot;-&gt; input_ids + masked labels&quot;)
+PAIRS = [
+    (&quot;say hello&quot;, &quot;hello there&quot;),
+    (&quot;say bye&quot;, &quot;bye now&quot;),
+    (&quot;add two three&quot;, &quot;five&quot;),
+    (&quot;what color sky&quot;, &quot;blue&quot;),
+    (&quot;name first planet&quot;, &quot;mercury&quot;),
+    (&quot;say thank you&quot;, &quot;you are welcome&quot;),
+    (&quot;count one two&quot;, &quot;three&quot;),
+    (&quot;opposite of hot&quot;, &quot;cold&quot;),
+]
+SPECIALS = [&quot;&lt;user&gt;&quot;, &quot;&lt;asst&gt;&quot;, &quot;&lt;eos&gt;&quot;]       # the chat template
+vocab = list(SPECIALS)
+for prompt, response in PAIRS:
+    for word in (prompt + &quot; &quot; + response).split():
+        if word not in vocab:
+            vocab.append(word)
+stoi = {w: i for i, w in enumerate(vocab)}
+USER, ASST, EOS = 0, 1, 2
+print(f&quot;  vocab: {len(vocab)} tokens &quot;
+      f&quot;({len(SPECIALS)} chat markers + {len(vocab) - len(SPECIALS)} words)&quot;)
+
+
+def build(prompt, response):
+    &quot;&quot;&quot;One SFT example: one token row, labels = ids with the
+    whole prompt side (markers included) masked to -100.
+    Only the response tokens and the final &lt;eos&gt; keep their
+    ids - &lt;eos&gt; carries loss so the model learns to STOP.&quot;&quot;&quot;
+    p_ids = [stoi[w] for w in prompt.split()]
+    r_ids = [stoi[w] for w in response.split()]
+    input_ids = [USER] + p_ids + [ASST] + r_ids + [EOS]
+    labels = [-100] * (2 + len(p_ids)) + r_ids + [EOS]
+    return input_ids, labels
+
+
+ids, labels = build(*PAIRS[0])
+tokens = [vocab[i] for i in ids]
+n_live = sum(1 for x in labels if x != -100)
+print(f&quot;  example 1: prompt &#x27;{PAIRS[0][0]}&#x27;  response &#x27;{PAIRS[0][1]}&#x27;&quot;)
+print(f&quot;    tokens:    {&#x27; &#x27;.join(tokens)}&quot;)
+print(f&quot;    input_ids: {ids}&quot;)
+print(f&quot;    labels:    {labels}&quot;)
+print(f&quot;    loss tokens: {n_live} of {len(ids)} = &quot;
+      f&quot;{n_live / len(ids):.4f} of this example&quot;)
+total = live = 0
+for prompt, response in PAIRS:
+    ex_ids, ex_labels = build(prompt, response)
+    total += len(ex_ids)
+    live += sum(1 for x in ex_labels if x != -100)
+print(f&quot;  all {len(PAIRS)} examples: {total} tokens total, &quot;
+      f&quot;{live} carry loss = {live / total:.4f} &quot;
+      f&quot;({100 * live / total:.2f}%)&quot;)
+print(f&quot;  the remaining {100 * (1 - live / total):.2f}% is the &quot;
+      &quot;user&#x27;s side - read as context, never trained on&quot;)
+
+# ---------- Part 2: masked cross-entropy, by hand ----------
+print(&quot;Part 2 - masked cross-entropy, by hand vs &quot;
+      &quot;F.cross_entropy(ignore_index=-100)&quot;)
+logits = torch.tensor([
+    [2.0, 0.0, -1.0, 0.5, 0.0, 1.0],
+    [0.0, 1.0, 0.5, -0.5, 2.0, 0.0],
+    [0.5, -1.0, 2.0, 0.0, 1.0, -0.5],
+    [1.0, 2.0, 0.0, -1.0, 0.5, 0.0],
+    [-0.5, 0.0, 1.0, 0.5, 2.0, -1.0],
+])
+labels2 = torch.tensor([-100, -100, 2, 1, 4])
+print(f&quot;  labels: {labels2.tolist()}  &quot;
+      &quot;(the first two positions are &#x27;prompt&#x27;)&quot;)
+per_token = F.cross_entropy(logits, labels2, ignore_index=-100,
+                            reduction=&quot;none&quot;)
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.tolist())
+print(f&quot;  per-token CE, reduction=&#x27;none&#x27;: [{fmt(per_token)}]&quot;)
+logp = torch.log_softmax(logits, dim=-1)
+live_idx = [i for i, x in enumerate(labels2.tolist()) if x != -100]
+hand = sum(-logp[i, labels2[i]].item() for i in live_idx) / len(live_idx)
+pieces = &quot; + &quot;.join(f&quot;{per_token[i].item():.4f}&quot; for i in live_idx)
+masked = F.cross_entropy(logits, labels2, ignore_index=-100)
+print(f&quot;  by hand over the {len(live_idx)} live positions: &quot;
+      f&quot;({pieces}) / {len(live_idx)} = {hand:.4f}&quot;)
+print(f&quot;  F.cross_entropy (masked mean): {masked.item():.4f}   &quot;
+      f&quot;max diff vs by-hand {abs(hand - masked.item()):.6f}&quot;)
+naive = per_token.sum().item() / len(labels2)
+print(f&quot;  the same sum over all {len(labels2)} positions would &quot;
+      f&quot;read {naive:.4f} - the mask sets the denominator too&quot;)
+
+# ---------- Part 3: the mask is a wall ----------
+print(&quot;Part 3 - prove the mask is a wall: perturb a logit, &quot;
+      &quot;watch the loss&quot;)
+base = masked.item()
+bumped_prompt = logits.clone()
+bumped_prompt[0, 0] += 5.0                     # a &#x27;prompt&#x27; position
+p_loss = F.cross_entropy(bumped_prompt, labels2,
+                         ignore_index=-100).item()
+bumped_resp = logits.clone()
+bumped_resp[2, 0] += 5.0                       # a &#x27;response&#x27; position
+r_loss = F.cross_entropy(bumped_resp, labels2,
+                         ignore_index=-100).item()
+print(f&quot;  base masked loss:         {base:.4f}&quot;)
+print(f&quot;  +5.0 on a PROMPT logit:   {p_loss:.4f}  &quot;
+      f&quot;(diff {abs(p_loss - base):.6f} - invisible to the loss)&quot;)
+print(f&quot;  +5.0 on a RESPONSE logit: {r_loss:.4f}  &quot;
+      &quot;(the loss moves - this side is what learns)&quot;)
+print(&quot;  scale check: real SFT runs on 10K-1M examples like &quot;
+      &quot;these; Day 51&#x27;s pretraining ran on trillions of tokens&quot;)
+print(&quot;  verdict: SFT = the pretraining loop + instruction &quot;
+      &quot;pairs + a mask that trains only the answer&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - build the SFT dataset: (prompt, response) -&gt; input_ids + masked labels
+  vocab: 30 tokens (3 chat markers + 27 words)
+  example 1: prompt &#x27;say hello&#x27;  response &#x27;hello there&#x27;
+    tokens:    &lt;user&gt; say hello &lt;asst&gt; hello there &lt;eos&gt;
+    input_ids: [0, 3, 4, 1, 4, 5, 2]
+    labels:    [-100, -100, -100, -100, 4, 5, 2]
+    loss tokens: 3 of 7 = 0.4286 of this example
+  all 8 examples: 58 tokens total, 20 carry loss = 0.3448 (34.48%)
+  the remaining 65.52% is the user&#x27;s side - read as context, never trained on
+Part 2 - masked cross-entropy, by hand vs F.cross_entropy(ignore_index=-100)
+  labels: [-100, -100, 2, 1, 4]  (the first two positions are &#x27;prompt&#x27;)
+  per-token CE, reduction=&#x27;none&#x27;: [0.0000, 0.0000, 0.6196, 0.6479, 0.6196]
+  by hand over the 3 live positions: (0.6196 + 0.6479 + 0.6196) / 3 = 0.6290
+  F.cross_entropy (masked mean): 0.6290   max diff vs by-hand 0.000000
+  the same sum over all 5 positions would read 0.3774 - the mask sets the denominator too
+Part 3 - prove the mask is a wall: perturb a logit, watch the loss
+  base masked loss:         0.6290
+  +5.0 on a PROMPT logit:   0.6290  (diff 0.000000 - invisible to the loss)
+  +5.0 on a RESPONSE logit: 1.6052  (the loss moves - this side is what learns)
+  scale check: real SFT runs on 10K-1M examples like these; Day 51&#x27;s pretraining ran on trillions of tokens
+  verdict: SFT = the pretraining loop + instruction pairs + a mask that trains only the answer</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints the three proofs: example 1&rsquo;s labels row <code>[-100, -100, -100, -100, 4, 5, 2]</code> with <strong>20 of 58</strong> dataset tokens carrying loss (<code>0.3448</code>); the by-hand masked CE <code>0.6290</code> matching <code>F.cross_entropy</code> with max diff <code>0.000000</code>; and the perturbation split &mdash; prompt logit diff <code>0.000000</code>, response logit moving the loss to <code>1.6052</code>. The keeper sentence, no notes: SFT is pretraining&rsquo;s loop run on (prompt, response) pairs with the loss masked to the response, because you train the side you want the model to produce.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s top panel until you can say which tokens are <code>-100</code> and why, then run Parts 1 and 2 only. If you can explain why the denominator is 3 and not 5, you have the mechanic &mdash; Part 3 is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: SFT as you ran it tonight updates <em>every</em> weight in the model &mdash; fine at toy scale, heavy at 70B. Tomorrow we get most of the same effect by training only a small patch instead of the whole network.</p>
+  </div>
+
+  <div class="footer">Streak: 52 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
