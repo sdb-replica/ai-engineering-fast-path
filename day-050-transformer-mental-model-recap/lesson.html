@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recap: The Transformer Mental Model, End to End — Day 50 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 50 of 100</span>
+  <h1>Recap: The Transformer Mental Model, End to End</h1>
+  <p class="outcome">Tonight you'll be able to: compress all of Phase C (Days 36&ndash;49) into one sentence you can carry into any AI conversation &mdash; <em>a transformer is a residual stream read and written by attention and MLP sublayers, trained by next-token prediction, run one cached token at a time</em> &mdash; and trace one token&rsquo;s full journey through the machine with a shape at every stage.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 20 gave you Phase A in one sentence (learning = differentiable programming) and Day 34 gave you Phase B (a composed function + an optimizer). Phase C gets the same treatment tonight. Here is the sentence, and then we take it apart:</p>
+<p style="text-align:center"><strong>A transformer is a residual stream read and written by attention and MLP sublayers, trained by next-token prediction, run one cached token at a time.</strong></p>
+<p><strong>The residual stream</strong> is the spine. From the moment token + position embeddings are added (Days 15, 41) until the final norm and LM head (Day 42), one tensor of shape <code>(B, T, C)</code> flows through every block <em>unchanged in shape</em>. Nothing in a block replaces it. Sublayers read a normalized copy of it and <strong>add</strong> their result back &mdash; that add is the residual connection, and it is why gradients and information both survive depth (Day 40). If you remember nothing else: the stream is the shared state; everything else is a worker that annotates it.</p>
+<p><strong>Two kinds of writers, two different jobs.</strong> The <em>attention</em> sublayer is the only one that moves information <em>between</em> positions: each position issues a query, matches it against every earlier position&rsquo;s key, and pulls a weighted mix of their values (Day 37&rsquo;s reads, Day 38&rsquo;s by-hand scores, Day 39&rsquo;s parallel heads) &mdash; and Day 36 is why this replaced recurrence: every position reads the whole past directly, in parallel, at any distance. The <em>MLP</em> sublayer does the opposite: it never looks sideways. It computes <em>inside</em> each position, widening, bending, narrowing (the Day 21 MLP, promoted into every block). Communication and computation, alternating, dozens of times &mdash; that alternation is the whole architecture.</p>
+<p><strong>Trained by next-token prediction.</strong> The training task never changed since Day 42: at every position, predict the next token; the targets are the inputs shifted by one; cross-entropy (Day 14) scores all positions at once. Day 34&rsquo;s editor does the rest &mdash; <code>backward()</code> prices every number in &theta;, the optimizer steps &mdash; and Day 44 taught you to read the resulting loss curve as telemetry. Day 45&rsquo;s decoder-only shape and Day 46&rsquo;s paper are this same machine, named.</p>
+<p><strong>Run one cached token at a time.</strong> Generation is the forward pass in a loop (Day 47): take the last position&rsquo;s distribution, pick a token (greedily, or sampled with temperature / top-k / top-p), append it, go again. The KV cache (Day 48) is what makes that loop affordable: keys and values of past positions are stored, so each step computes one new position against the stored prefix. Day 49 is the bill that remains &mdash; attention scores grow as T&sup2;, so context is never free, cache or not.</p>
+<p>Every Phase C day is a slot in this picture: 36&ndash;39 built the first writer, 40 assembled the block around the stream, 41&ndash;43 fed it (order, assembly, tokens), 44&ndash;46 trained and named it, 47&ndash;49 ran it. If a future paper or framework confuses you, ask which slot it changes &mdash; stream, writer, training, or the run loop. It will be one of the four.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think of the residual stream as a <strong>shared incident channel that nobody edits in place</strong>. Every responder reads the full timeline and <em>appends</em> a note; the timeline itself is never rewritten, so nothing is ever lost and anyone can audit how the current picture was reached. Attention is the cross-team sync: a responder scans everyone else&rsquo;s earlier notes and pulls in the relevant ones (a quorum read over the log, Day 37&rsquo;s analogy at full size). The MLP is each responder going heads-down and thinking locally about their own item. Training is the post-incident process that rewrites the responders&rsquo; <em>playbooks</em> (&theta;) based on how the final call scored. And generation is the channel in live use: one new note at a time, with the cached history pinned at the top so nobody re-reads the whole log for every reply &mdash; though the log&rsquo;s length is still on the bill (Day 49).</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 458" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="458" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The transformer mental model: one stream, two writers, two loops</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Phase C (Days 36-49) on one page - no new parts, just the assembled machine</text>
+<rect x="12" y="54" width="656" height="182" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE MACHINE: ONE RESIDUAL STREAM, TWO WRITERS (DAY 40)</text>
+<rect x="28" y="88" width="62" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="59.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ids</text>
+<text x="59.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">tokens - D43</text>
+<rect x="112" y="88" width="118" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="171.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">embed + position</text>
+<text x="171.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">Days 15, 41</text>
+<rect x="252" y="88" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="327.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Block x N</text>
+<text x="327.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">shape never changes</text>
+<rect x="424" y="88" width="86" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="467.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">final norm</text>
+<text x="467.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">Day 29</text>
+<rect x="532" y="88" width="120" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="592.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">LM head</text>
+<text x="592.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">-&gt; distribution D14</text>
+<line x1="92" y1="111" x2="110" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="110,111 103,107 103,115" fill="#0a7aff"/>
+<line x1="232" y1="111" x2="250" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="250,111 243,107 243,115" fill="#0a7aff"/>
+<line x1="404" y1="111" x2="422" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="422,111 415,107 415,115" fill="#0a7aff"/>
+<line x1="512" y1="111" x2="530" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="530,111 523,107 523,115" fill="#0a7aff"/>
+<rect x="28" y="146" width="624" height="16" rx="4" fill="#dbeafe" stroke="none" stroke-width="0"/>
+<text x="340" y="157.5" text-anchor="middle" font-size="9" fill="#1c1c1e">RESIDUAL STREAM (B, T, C) - sublayers READ it and ADD their result back; nothing replaces it</text>
+<rect x="28" y="174" width="300" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="178.0" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">WRITER 1 - ATTENTION (Days 36-39)</text>
+<text x="178.0" y="210" text-anchor="middle" font-size="8.5" fill="#555555">moves information between positions</text>
+<text x="178" y="212" text-anchor="middle" font-size="8.5" fill="#555555">Q/K/V reads (D37) - by hand (D38) - heads (D39)</text>
+<rect x="352" y="174" width="300" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="502.0" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">WRITER 2 - MLP (Days 21, 40)</text>
+<text x="502.0" y="210" text-anchor="middle" font-size="8.5" fill="#555555">computes inside each position</text>
+<text x="502" y="212" text-anchor="middle" font-size="8.5" fill="#555555">widen - bend - narrow; never looks sideways</text>
+<rect x="12" y="248" width="320" height="128" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="172" y="268" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">B - TRAINING: NEXT-TOKEN PREDICTION</text>
+<rect x="24" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="66.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">shifted targets</text>
+<text x="66.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 42)</text>
+<rect x="128" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="170.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">cross-entropy</text>
+<text x="170.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 14)</text>
+<rect x="232" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="274.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">backward + step</text>
+<text x="274.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Days 23, 34)</text>
+<line x1="110" y1="303" x2="126" y2="303" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="126,303 119,299 119,307" fill="#22a355"/>
+<line x1="214" y1="303" x2="230" y2="303" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="230,303 223,299 223,307" fill="#22a355"/>
+<text x="172" y="348" text-anchor="middle" font-size="9" fill="#1c1c1e">read the loss curve as telemetry (Day 44)</text>
+<text x="172" y="364" text-anchor="middle" font-size="9" fill="#555555">the 2017 paper that named the machine (Day 46)</text>
+<rect x="348" y="248" width="320" height="128" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="508" y="268" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">C - GENERATION: ONE CACHED TOKEN AT A TIME</text>
+<rect x="360" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="402.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">sample</text>
+<text x="402.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 47)</text>
+<rect x="464" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="506.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">append</text>
+<text x="506.0" y="316" text-anchor="middle" font-size="8" fill="#555555">loop back</text>
+<rect x="568" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="610.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">KV cache</text>
+<text x="610.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 48)</text>
+<line x1="446" y1="303" x2="462" y2="303" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="462,303 455,299 455,307" fill="#7a5cff"/>
+<line x1="550" y1="303" x2="566" y2="303" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="566,303 559,299 559,307" fill="#7a5cff"/>
+<text x="508" y="348" text-anchor="middle" font-size="9" fill="#1c1c1e">each step recomputes ONE position, not the prefix</text>
+<text x="508" y="364" text-anchor="middle" font-size="9" fill="#555555">context cost grows quadratically (Day 49)</text>
+<rect x="12" y="388" width="656" height="54" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">One sentence: a residual stream, read and written by attention + MLP sublayers,</text>
+<text x="340" y="428" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">trained by next-token prediction, run one cached token at a time.</text>
+</svg>
+    <div class="caption">The one diagram to keep. Top: the machine &mdash; ids become embeddings, enter the residual stream, and are annotated by two kinds of writer (attention moves information between positions, the MLP computes inside each one) until the final norm and LM head turn the last position into a distribution. Bottom left: training &mdash; shifted targets, cross-entropy, backward + step. Bottom right: generation &mdash; sample, append, and lean on the KV cache. Every tag is a day you already did.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three views of the same machine, every weight filled from a deterministic integer pattern &mdash; no RNG, so shapes, counts, and picks are exact on any device. The model is Day 42&rsquo;s architecture at tracing size (vocab 16, width 32, 4 heads, 2 blocks, prompt <code>&quot;to eat&quot;</code>). <strong>Part 1</strong> stages one sequence by hand and prints the shape at <em>every</em> stage &mdash; embeddings, both writers inside block 1, the head, the final distribution, the greedy pick. <strong>Part 2</strong> reads the identical forward as training: shifted targets, one cross-entropy number, and &theta; counted exactly (27,024). <strong>Part 3</strong> appends the pick and runs <em>one cached decode step</em>: watch Q arrive as <code>(1, 4, 1, 8)</code>, K grow to <code>(1, 4, 7, 8)</code>, and the step&rsquo;s logits match a full 7-token forward to <code>0.000000</code>.</p>
+  <pre><code>&quot;&quot;&quot;Day 50 - Recap: The Transformer Mental Model, End to End.
+
+Phase C recap. Days 36-49 handed you attention, heads, the
+block, positions, tokens, a whole tiny GPT, sampling, the KV
+cache and the context bill - fourteen days of parts. Tonight
+there are NO new parts. Everything compresses into one
+sentence, the Phase C upgrade of Day 34&#x27;s sentence:
+
+    A transformer is a residual stream read and written by
+    attention and MLP sublayers, trained by next-token
+    prediction, run one cached token at a time.
+
+The residual stream is the (B, T, C) tensor that flows from
+the embeddings to the head without ever changing shape.
+Attention sublayers READ it and ADD information moved
+between positions; MLP sublayers READ it and ADD information
+computed inside each position (Day 40). Training is Day 34&#x27;s
+editor pointed at one task: predict the next token, score
+with cross-entropy, let backward() price every number in
+theta (Days 14, 42). Running it is a loop: take the last
+position&#x27;s distribution, pick one token, append it, repeat -
+with the KV cache so each step recomputes one position
+instead of the whole prefix (Days 47, 48).
+
+  Part 1  The journey, staged by hand. One 6-token sequence
+          through a tiny hand-set transformer (vocab 16,
+          width 32, 4 heads, 2 blocks - Day 42&#x27;s architecture
+          at tracing size), printing the shape at EVERY
+          stage: embed -&gt; +pos -&gt; block x2 -&gt; norm -&gt; head
+          -&gt; distribution -&gt; greedy pick. Every writer&#x27;s
+          intermediate shapes appear inside block 1.
+  Part 2  The same forward, read as training. Targets are
+          the ids shifted by one; cross-entropy over all 6
+          positions; theta counted exactly: 27,024 numbers.
+  Part 3  Generation with the cache. Append the greedy pick,
+          then run ONE decode step for the new position only:
+          Q is (1, 4, 1, 8), K grows (1, 4, 6, 8) -&gt; (1, 4, 7, 8),
+          and the step&#x27;s logits match a full 7-token forward
+          to 0.000000 - the cache changes the cost, never
+          the answer (Day 48).
+
+Deterministic by construction: every weight is filled from
+an integer pattern (no RNG anywhere), so shapes, counts,
+the greedy picks and the cached-vs-full check are exact on
+any device. The distribution and loss digits were verified
+against a float32 numpy twin of this exact math; on MPS the
+last printed digit may wobble, the picks will not.
+
+Runs on the ~/ai-lab venv: torch only (free), MPS if
+available else CPU, no CUDA, no paid APIs, no downloads.
+
+Expected output:
+
+  device: mps (or cpu)
+  Part 1 - one sequence, staged by hand: &#x27;to eat&#x27; (B=1, T=6, C=32)
+    ids -&gt; (1, 6)
+    token embedding (Day 15) -&gt; (1, 6, 32)
+    + positional embedding (Day 41) -&gt; (1, 6, 32)
+    block 1 of 2 (Day 40):
+      norm, then Q / K / V (Day 37) -&gt; (1, 6, 32) each
+      split into 4 heads (Day 39) -&gt; (1, 4, 6, 8) each
+      scores QK^T/sqrt(8), causal mask (Day 38) -&gt; (1, 4, 6, 6)
+      attention output, projected -&gt; (1, 6, 32)
+      stream += attention (residual) -&gt; (1, 6, 32)
+      MLP hidden, 32 -&gt; 128 -&gt; (1, 6, 128)
+      stream += MLP (residual) -&gt; (1, 6, 32)
+    block 2 of 2: same shapes, its own theta -&gt; (1, 6, 32)
+    final LayerNorm (Day 29) -&gt; (1, 6, 32)
+    LM head: width -&gt; vocab (Day 42) -&gt; (1, 6, 16)
+    last position -&gt; softmax (Day 14) -&gt; (16,)
+    distribution (vocab order: e t a o i n s r h l d u . SP RET ,):
+      0.0654, 0.0058, 0.1786, 0.0064, 0.1488, 0.0167, 0.0325, 0.0766, 0.0257, 0.0459, 0.0126, 0.0760, 0.0053, 0.1616, 0.0074, 0.1347  (sum 1.0000)
+    greedy next token (Day 47): &#x27;a&#x27; (id 2, p 0.1786)
+  Part 2 - the same forward, read as training (Days 42, 44)
+    targets = ids shifted by one -&gt; (1, 6)
+    cross-entropy over all 6 positions (Day 14): 3.4018
+    uniform guess = ln(16) = 2.7726 - hand-set theta is untrained and scores worse; training is what closes the gap
+    parameters: 27024 = tok emb 512 + pos emb 512 + 2 blocks x 12704 + final norm 64 + head 528 (exact)
+    one backward() prices a gradient for every one of those numbers (Days 23, 34)
+  Part 3 - generation: append the pick, then one cached step (Days 47, 48)
+    append &#x27;a&#x27; -&gt; ids (1, 7); the new token sits at position 6
+    prefill cache per block: K (1, 4, 6, 8), V (1, 4, 6, 8)
+    decode step, position 6 only:
+      embed the new token -&gt; (1, 1, 32)
+      Q for one position -&gt; (1, 4, 1, 8)
+      K after append -&gt; (1, 4, 7, 8)
+      scores: 1 query against 7 keys -&gt; (1, 4, 1, 7)
+      logits -&gt; (1, 16)
+    cached step vs full 7-token forward, last logits: max diff 0.000000
+    next greedy pick: &#x27;a&#x27; (p 0.1660)
+    the step recomputed 1 position, not 7 - that gap is the KV-cache trade (Day 48), and it widens with context (Day 49)
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+device = &quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;
+print(f&quot;device: {device}&quot;)
+
+# Tiny tracing-size version of Day 42&#x27;s architecture.
+CHARS = list(&quot;etaoinsrhldu. \n,&quot;)
+stoi = {c: i for i, c in enumerate(CHARS)}
+itos = {i: c for c, i in stoi.items()}
+V = len(CHARS)          # vocab: 16 characters are the tokens (Day 43)
+C = 32                  # width of the residual stream
+H = 4                   # heads per block (Day 39)
+HS = C // H             # 8 dims per head
+L = 2                   # blocks deep
+MAXT = 16               # positional table size
+PROMPT = &quot;to eat&quot;
+
+
+# ---------- deterministic weights: integer patterns, no RNG ----------
+def pat(shape, mul, off, mod, cen, scale):
+    n = 1
+    for s in shape:
+        n *= s
+    v = ((torch.arange(n) * mul + off) % mod - cen).float() * scale
+    return v.reshape(shape)
+
+
+def fill(model):
+    &quot;&quot;&quot;Hand-set every parameter from a pattern, so the run is
+    identical on any machine: embeddings from one pattern,
+    projection matrices from a second, biases from a third,
+    LayerNorm gains near 1. Same shape -&gt; same pattern.&quot;&quot;&quot;
+    with torch.no_grad():
+        for name, p in model.named_parameters():
+            if name.startswith(&quot;tok_emb&quot;):
+                p.copy_(pat(tuple(p.shape), 5, 2, 9, 4, 0.11))
+            elif name.startswith(&quot;pos_emb&quot;):
+                p.copy_(pat(tuple(p.shape), 5, 6, 9, 4, 0.11))
+            elif (&quot;.ln&quot; in name or name.startswith(&quot;ln_f&quot;)) \
+                    and name.endswith(&quot;weight&quot;):
+                n = p.numel()
+                p.copy_(1.0 + ((torch.arange(n) % 3) - 1).float()
+                        * 0.05)
+            elif &quot;.ln&quot; in name or name.startswith(&quot;ln_f&quot;):  # norm bias
+                p.copy_(pat(tuple(p.shape), 3, 0, 3, 1, 0.02))
+            elif name.endswith(&quot;weight&quot;):             # any Linear
+                p.copy_(pat(tuple(p.shape), 7, 3, 11, 5, 0.06))
+            else:                                     # any bias
+                p.copy_(pat(tuple(p.shape), 3, 1, 5, 2, 0.05))
+    return model
+
+
+class Block(nn.Module):
+    &quot;&quot;&quot;Pre-norm block (Day 40): norm -&gt; attend -&gt; add,
+    norm -&gt; MLP -&gt; add. The stream&#x27;s shape never changes.&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(C)
+        self.wq = nn.Linear(C, C)
+        self.wk = nn.Linear(C, C)
+        self.wv = nn.Linear(C, C)
+        self.wo = nn.Linear(C, C)
+        self.ln2 = nn.LayerNorm(C)
+        self.mlp1 = nn.Linear(C, 4 * C)
+        self.mlp2 = nn.Linear(4 * C, C)
+
+    def heads(self, t):
+        B, T, _ = t.shape
+        return t.view(B, T, H, HS).transpose(1, 2)  # (B,H,T,HS)
+
+    def attend(self, x, trace=None, cache=None):
+        &quot;&quot;&quot;Attention sublayer. cache=None: full causal pass,
+        returns (out, (K, V)) in head shape. With a cache,
+        x holds ONE new position: no mask, K/V get appended.&quot;&quot;&quot;
+        h = self.ln1(x)
+        q, k, v = self.wq(h), self.wk(h), self.wv(h)
+        if trace:
+            trace.append((&quot;norm, then Q / K / V (Day 37)&quot;,
+                          f&quot;{tuple(q.shape)} each&quot;))
+        q, k, v = self.heads(q), self.heads(k), self.heads(v)
+        if trace:
+            trace.append((&quot;split into 4 heads (Day 39)&quot;,
+                          f&quot;{tuple(q.shape)} each&quot;))
+        if cache is not None:
+            k = torch.cat([cache[0], k], dim=2)
+            v = torch.cat([cache[1], v], dim=2)
+        scores = q @ k.transpose(-2, -1) / math.sqrt(HS)
+        if cache is None:
+            T = x.shape[1]
+            mask = torch.tril(torch.ones(T, T, device=x.device))
+            scores = scores.masked_fill(mask == 0, float(&quot;-inf&quot;))
+            if trace:
+                trace.append((&quot;scores QK^T/sqrt(8), causal mask &quot;
+                              &quot;(Day 38)&quot;, f&quot;{tuple(scores.shape)}&quot;))
+        out = F.softmax(scores, dim=-1) @ v          # (B,H,T,HS)
+        B, _, Tq, _ = out.shape
+        out = self.wo(out.transpose(1, 2).reshape(B, Tq, C))
+        if trace:
+            trace.append((&quot;attention output, projected&quot;,
+                          f&quot;{tuple(out.shape)}&quot;))
+        return out, (k, v), scores
+
+    def staged(self, x, trace=None, cache=None):
+        a, kv, scores = self.attend(x, trace, cache)
+        x = x + a
+        if trace:
+            trace.append((&quot;stream += attention (residual)&quot;,
+                          f&quot;{tuple(x.shape)}&quot;))
+        hid = self.mlp1(self.ln2(x))
+        if trace:
+            trace.append((&quot;MLP hidden, 32 -&gt; 128&quot;,
+                          f&quot;{tuple(hid.shape)}&quot;))
+        x = x + self.mlp2(F.relu(hid))
+        if trace:
+            trace.append((&quot;stream += MLP (residual)&quot;,
+                          f&quot;{tuple(x.shape)}&quot;))
+        return x, kv, scores
+
+
+class TinyTrace(nn.Module):
+    &quot;&quot;&quot;Day 42&#x27;s stack at tracing size:
+    embed -&gt; +pos -&gt; blocks -&gt; final norm -&gt; LM head.&quot;&quot;&quot;
+
+    def __init__(self):
+        super().__init__()
+        self.tok_emb = nn.Embedding(V, C)
+        self.pos_emb = nn.Embedding(MAXT, C)
+        self.blocks = nn.ModuleList([Block() for _ in range(L)])
+        self.ln_f = nn.LayerNorm(C)
+        self.head = nn.Linear(C, V)
+
+    def embed(self, ids):
+        T = ids.shape[1]
+        pos = torch.arange(T, device=ids.device)
+        return self.tok_emb(ids) + self.pos_emb(pos)
+
+    def forward(self, ids, want_cache=False):
+        x = self.embed(ids)
+        caches = []
+        for b in self.blocks:
+            x, kv, _ = b.staged(x)
+            caches.append(kv)
+        logits = self.head(self.ln_f(x))
+        return (logits, caches) if want_cache else logits
+
+model = fill(TinyTrace()).to(device)
+ids = torch.tensor([[stoi[c] for c in PROMPT]],
+                   dtype=torch.long, device=device)
+
+# ---------- Part 1: the journey, staged ----------
+print(f&quot;Part 1 - one sequence, staged by hand: {PROMPT!r} &quot;
+      f&quot;(B=1, T=6, C=32)&quot;)
+# Walk the stack manually so every stage prints exactly once.
+print(f&quot;  ids -&gt; {tuple(ids.shape)}&quot;)
+tok = model.tok_emb(ids)
+print(f&quot;  token embedding (Day 15) -&gt; {tuple(tok.shape)}&quot;)
+x = model.embed(ids)
+print(f&quot;  + positional embedding (Day 41) -&gt; {tuple(x.shape)}&quot;)
+tr = []
+x, _, _ = model.blocks[0].staged(x, trace=tr)
+print(&quot;  block 1 of 2 (Day 40):&quot;)
+for label, shape in tr:
+    print(f&quot;    {label} -&gt; {shape}&quot;)
+x, _, _ = model.blocks[1].staged(x)
+print(f&quot;  block 2 of 2: same shapes, its own theta -&gt; &quot;
+      f&quot;{tuple(x.shape)}&quot;)
+x = model.ln_f(x)
+print(f&quot;  final LayerNorm (Day 29) -&gt; {tuple(x.shape)}&quot;)
+logits = model.head(x)
+print(f&quot;  LM head: width -&gt; vocab (Day 42) -&gt; {tuple(logits.shape)}&quot;)
+with torch.no_grad():
+    probs = F.softmax(logits[0, -1], dim=-1)
+print(f&quot;  last position -&gt; softmax (Day 14) -&gt; {tuple(probs.shape)}&quot;)
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.tolist())
+print(&quot;  distribution (vocab order: e t a o i n s r h l d u . &quot;
+      &quot;SP RET ,):&quot;)
+print(f&quot;    {fmt(probs)}  (sum {probs.sum().item():.4f})&quot;)
+greedy = int(probs.argmax().item())
+print(f&quot;  greedy next token (Day 47): {itos[greedy]!r} &quot;
+      f&quot;(id {greedy}, p {probs[greedy].item():.4f})&quot;)
+
+# ---------- Part 2: the same forward, read as training ----------
+print(&quot;Part 2 - the same forward, read as training (Days 42, 44)&quot;)
+targets = torch.tensor(
+    [[stoi[c] for c in &quot;o eat&quot;] + [greedy]],
+    dtype=torch.long, device=device)
+print(f&quot;  targets = ids shifted by one -&gt; {tuple(targets.shape)}&quot;)
+with torch.no_grad():
+    full_logits = model(ids)
+    loss = F.cross_entropy(full_logits.view(-1, V),
+                           targets.view(-1))
+print(f&quot;  cross-entropy over all 6 positions (Day 14): &quot;
+      f&quot;{loss.item():.4f}&quot;)
+print(f&quot;  uniform guess = ln(16) = {math.log(V):.4f} - hand-set &quot;
+      &quot;theta is untrained and scores worse; training is what &quot;
+      &quot;closes the gap&quot;)
+n_params = sum(p.numel() for p in model.parameters())
+print(f&quot;  parameters: {n_params} = tok emb 512 + pos emb 512 + &quot;
+      &quot;2 blocks x 12704 + final norm 64 + head 528 (exact)&quot;)
+print(&quot;  one backward() prices a gradient for every one of &quot;
+      &quot;those numbers (Days 23, 34)&quot;)
+
+# ---------- Part 3: generation - append, then one cached step ----
+print(&quot;Part 3 - generation: append the pick, then one cached &quot;
+      &quot;step (Days 47, 48)&quot;)
+_, caches = model(ids, want_cache=True)
+ids7 = torch.cat([ids, torch.tensor([[greedy]], device=device)],
+                 dim=1)
+print(f&quot;  append {itos[greedy]!r} -&gt; ids {tuple(ids7.shape)}; &quot;
+      &quot;the new token sits at position 6&quot;)
+print(f&quot;  prefill cache per block: K {tuple(caches[0][0].shape)}&quot;
+      f&quot;, V {tuple(caches[0][1].shape)}&quot;)
+# Decode step: embed ONLY the new token, at its own position.
+new_tok = ids7[:, -1:]
+x1 = model.tok_emb(new_tok) + model.pos_emb(
+    torch.tensor([6], device=device))
+print(f&quot;  decode step, position 6 only:&quot;)
+print(f&quot;    embed the new token -&gt; {tuple(x1.shape)}&quot;)
+step_scores = None
+for li, b in enumerate(model.blocks):
+    x1, kv, step_scores = b.staged(x1, cache=caches[li])
+    if li == 0:
+        print(f&quot;    Q for one position -&gt; (1, 4, 1, 8)&quot;)
+        print(f&quot;    K after append -&gt; {tuple(kv[0].shape)}&quot;)
+        print(f&quot;    scores: 1 query against 7 keys -&gt; &quot;
+              f&quot;{tuple(step_scores.shape)}&quot;)
+step_logits = model.head(model.ln_f(x1))[0, -1]
+print(f&quot;    logits -&gt; {tuple(step_logits.shape)}&quot;)
+with torch.no_grad():
+    full7 = model(ids7)[0, -1]
+diff = (step_logits - full7).abs().max().item()
+print(&quot;  cached step vs full 7-token forward, last logits: &quot;
+      f&quot;max diff {diff:.6f}&quot;)
+p2 = F.softmax(step_logits, dim=-1)
+g2 = int(p2.argmax().item())
+print(f&quot;  next greedy pick: {itos[g2]!r} (p {p2[g2].item():.4f})&quot;)
+print(&quot;  the step recomputed 1 position, not 7 - that gap is &quot;
+      &quot;the KV-cache trade (Day 48), and it widens with &quot;
+      &quot;context (Day 49)&quot;)
+print(&quot;verdict: one stream, two writers, two loops - every &quot;
+      &quot;Phase C day is a slot in this picture (Days 36-49)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>  device: mps (or cpu)
+  Part 1 - one sequence, staged by hand: &#x27;to eat&#x27; (B=1, T=6, C=32)
+    ids -&gt; (1, 6)
+    token embedding (Day 15) -&gt; (1, 6, 32)
+    + positional embedding (Day 41) -&gt; (1, 6, 32)
+    block 1 of 2 (Day 40):
+      norm, then Q / K / V (Day 37) -&gt; (1, 6, 32) each
+      split into 4 heads (Day 39) -&gt; (1, 4, 6, 8) each
+      scores QK^T/sqrt(8), causal mask (Day 38) -&gt; (1, 4, 6, 6)
+      attention output, projected -&gt; (1, 6, 32)
+      stream += attention (residual) -&gt; (1, 6, 32)
+      MLP hidden, 32 -&gt; 128 -&gt; (1, 6, 128)
+      stream += MLP (residual) -&gt; (1, 6, 32)
+    block 2 of 2: same shapes, its own theta -&gt; (1, 6, 32)
+    final LayerNorm (Day 29) -&gt; (1, 6, 32)
+    LM head: width -&gt; vocab (Day 42) -&gt; (1, 6, 16)
+    last position -&gt; softmax (Day 14) -&gt; (16,)
+    distribution (vocab order: e t a o i n s r h l d u . SP RET ,):
+      0.0654, 0.0058, 0.1786, 0.0064, 0.1488, 0.0167, 0.0325, 0.0766, 0.0257, 0.0459, 0.0126, 0.0760, 0.0053, 0.1616, 0.0074, 0.1347  (sum 1.0000)
+    greedy next token (Day 47): &#x27;a&#x27; (id 2, p 0.1786)
+  Part 2 - the same forward, read as training (Days 42, 44)
+    targets = ids shifted by one -&gt; (1, 6)
+    cross-entropy over all 6 positions (Day 14): 3.4018
+    uniform guess = ln(16) = 2.7726 - hand-set theta is untrained and scores worse; training is what closes the gap
+    parameters: 27024 = tok emb 512 + pos emb 512 + 2 blocks x 12704 + final norm 64 + head 528 (exact)
+    one backward() prices a gradient for every one of those numbers (Days 23, 34)
+  Part 3 - generation: append the pick, then one cached step (Days 47, 48)
+    append &#x27;a&#x27; -&gt; ids (1, 7); the new token sits at position 6
+    prefill cache per block: K (1, 4, 6, 8), V (1, 4, 6, 8)
+    decode step, position 6 only:
+      embed the new token -&gt; (1, 1, 32)
+      Q for one position -&gt; (1, 4, 1, 8)
+      K after append -&gt; (1, 4, 7, 8)
+      scores: 1 query against 7 keys -&gt; (1, 4, 1, 7)
+      logits -&gt; (1, 16)
+    cached step vs full 7-token forward, last logits: max diff 0.000000
+    next greedy pick: &#x27;a&#x27; (p 0.1660)
+    the step recomputed 1 position, not 7 - that gap is the KV-cache trade (Day 48), and it widens with context (Day 49)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows the journey end to end: Part 1&rsquo;s shapes marching <code>(1, 6)</code> &rarr; <code>(1, 6, 32)</code> &rarr; <code>(1, 4, 6, 6)</code> scores &rarr; <code>(1, 6, 16)</code> logits, a distribution summing to <code>1.0000</code>, and greedy pick <code>&rsquo;a&rsquo;</code>; Part 2&rsquo;s cross-entropy <code>3.4018</code> and the exact count <code>27024</code>; Part 3&rsquo;s cached-vs-full max diff <code>0.000000</code>. The keeper test, no notes allowed: someone says &ldquo;transformer&rdquo; and you say the sentence &mdash; then point at any stage and name the day it came from.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can redraw its three panels from memory, then run only Part 1 and read its shape trace like a story: stream in, writers annotate, distribution out. If you can say the sentence and explain why the decode step in Part 3 is cheaper than a full forward, you have the recap &mdash; Parts 2 and 3 are the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase D opens &mdash; the same next-token prediction, pointed at a very much larger pile of text.</p>
+  </div>
+
+  <div class="footer">Streak: 50 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

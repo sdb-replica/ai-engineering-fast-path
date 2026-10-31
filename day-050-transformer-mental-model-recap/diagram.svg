@@ -1,0 +1,77 @@
+<svg viewBox="0 0 680 458" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="458" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The transformer mental model: one stream, two writers, two loops</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Phase C (Days 36-49) on one page - no new parts, just the assembled machine</text>
+<rect x="12" y="54" width="656" height="182" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE MACHINE: ONE RESIDUAL STREAM, TWO WRITERS (DAY 40)</text>
+<rect x="28" y="88" width="62" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="59.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">ids</text>
+<text x="59.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">tokens - D43</text>
+<rect x="112" y="88" width="118" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="171.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">embed + position</text>
+<text x="171.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">Days 15, 41</text>
+<rect x="252" y="88" width="150" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="327.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Block x N</text>
+<text x="327.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">shape never changes</text>
+<rect x="424" y="88" width="86" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="467.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">final norm</text>
+<text x="467.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">Day 29</text>
+<rect x="532" y="88" width="120" height="46" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="592.0" y="108" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">LM head</text>
+<text x="592.0" y="124" text-anchor="middle" font-size="8.5" fill="#555555">-&gt; distribution D14</text>
+<line x1="92" y1="111" x2="110" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="110,111 103,107 103,115" fill="#0a7aff"/>
+<line x1="232" y1="111" x2="250" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="250,111 243,107 243,115" fill="#0a7aff"/>
+<line x1="404" y1="111" x2="422" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="422,111 415,107 415,115" fill="#0a7aff"/>
+<line x1="512" y1="111" x2="530" y2="111" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="530,111 523,107 523,115" fill="#0a7aff"/>
+<rect x="28" y="146" width="624" height="16" rx="4" fill="#dbeafe" stroke="none" stroke-width="0"/>
+<text x="340" y="157.5" text-anchor="middle" font-size="9" fill="#1c1c1e">RESIDUAL STREAM (B, T, C) - sublayers READ it and ADD their result back; nothing replaces it</text>
+<rect x="28" y="174" width="300" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="178.0" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">WRITER 1 - ATTENTION (Days 36-39)</text>
+<text x="178.0" y="210" text-anchor="middle" font-size="8.5" fill="#555555">moves information between positions</text>
+<text x="178" y="212" text-anchor="middle" font-size="8.5" fill="#555555">Q/K/V reads (D37) - by hand (D38) - heads (D39)</text>
+<rect x="352" y="174" width="300" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="502.0" y="194" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">WRITER 2 - MLP (Days 21, 40)</text>
+<text x="502.0" y="210" text-anchor="middle" font-size="8.5" fill="#555555">computes inside each position</text>
+<text x="502" y="212" text-anchor="middle" font-size="8.5" fill="#555555">widen - bend - narrow; never looks sideways</text>
+<rect x="12" y="248" width="320" height="128" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="172" y="268" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">B - TRAINING: NEXT-TOKEN PREDICTION</text>
+<rect x="24" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="66.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">shifted targets</text>
+<text x="66.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 42)</text>
+<rect x="128" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="170.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">cross-entropy</text>
+<text x="170.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 14)</text>
+<rect x="232" y="282" width="84" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="274.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">backward + step</text>
+<text x="274.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Days 23, 34)</text>
+<line x1="110" y1="303" x2="126" y2="303" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="126,303 119,299 119,307" fill="#22a355"/>
+<line x1="214" y1="303" x2="230" y2="303" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="230,303 223,299 223,307" fill="#22a355"/>
+<text x="172" y="348" text-anchor="middle" font-size="9" fill="#1c1c1e">read the loss curve as telemetry (Day 44)</text>
+<text x="172" y="364" text-anchor="middle" font-size="9" fill="#555555">the 2017 paper that named the machine (Day 46)</text>
+<rect x="348" y="248" width="320" height="128" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="508" y="268" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">C - GENERATION: ONE CACHED TOKEN AT A TIME</text>
+<rect x="360" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="402.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">sample</text>
+<text x="402.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 47)</text>
+<rect x="464" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="506.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">append</text>
+<text x="506.0" y="316" text-anchor="middle" font-size="8" fill="#555555">loop back</text>
+<rect x="568" y="282" width="84" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="610.0" y="301" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">KV cache</text>
+<text x="610.0" y="316" text-anchor="middle" font-size="8" fill="#555555">(Day 48)</text>
+<line x1="446" y1="303" x2="462" y2="303" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="462,303 455,299 455,307" fill="#7a5cff"/>
+<line x1="550" y1="303" x2="566" y2="303" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="566,303 559,299 559,307" fill="#7a5cff"/>
+<text x="508" y="348" text-anchor="middle" font-size="9" fill="#1c1c1e">each step recomputes ONE position, not the prefix</text>
+<text x="508" y="364" text-anchor="middle" font-size="9" fill="#555555">context cost grows quadratically (Day 49)</text>
+<rect x="12" y="388" width="656" height="54" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">One sentence: a residual stream, read and written by attention + MLP sublayers,</text>
+<text x="340" y="428" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">trained by next-token prediction, run one cached token at a time.</text>
+</svg>
