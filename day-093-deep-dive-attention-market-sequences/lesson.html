@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Dive: Attention Over Market Sequences — Day 93 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 93 of 100</span>
+  <h1>Deep Dive: Attention Over Market Sequences</h1>
+  <p class="outcome">Tonight you'll be able to: run your Day 38 attention — the same formula, unchanged — over ten market days instead of ten words, read the 10×10 map it produces (which past days does today actually read?), and say precisely what that map proves and what it doesn't.</p>
+
+  <h2>The one idea</h2>
+  <p>Nothing about tonight's machinery is new — and that is the point. A <strong>token</strong> was never really a word; it is any item you can embed as a vector (Day 15). So embed a <em>day</em>: Day 85's five features — <code>ret_5d</code>, <code>rvol_20</code>, <code>rsi_14</code>, <code>vwap_dev</code>, <code>vol_z</code> — z-scored against days 20–49 only, then pushed through one fixed projection to a 6-wide embedding. (The scaler is fit on pre-window history because Day 69's law applies to scalers too: a mean computed over the full sample is a leak with good PR.) From there it is Day 38 verbatim: scores = QK<sup>T</sup>/√d<sub>k</sub>, softmax each row, blend the values.</p>
+<p><strong>The causal mask is the point-in-time law in architecture form.</strong> On Day 38 the mask stopped a decoder from peeking at the answer key. Here it stops day <em>t</em> from reading day <em>t+1</em> — the exact leak Day 85's truncation test hunts with asserts. Same trick (−∞ before the softmax, exp(−∞) = 0), different jurisdiction: what was a modelling convention for text is a legal requirement for markets.</p>
+<p><strong>How to read the map.</strong> Rows ask, columns get read, and every row is a budget that sums to 1 (Day 14). A bright <em>column</em> is a day many later days read. Tonight the tape is synthetic with two planted <strong>reversal-shock days</strong> — day 53 (−4.6% on a volume z of 3.89) and day 57 (+4.3%) — and the map finds them: columns 53 and 57 average <strong>0.49</strong> and <strong>0.45</strong> of attention per legal query, against 0.21 for the next-brightest column. Day 59 spends 0.58 of its whole budget on those two days, where uniform attention would give them 0.20. Also visible, if you look: days 58–59 collect a fainter glow (column average 0.21) although nothing happened <em>on</em> them — their 20-day vol windows still contain the shocks, so the map is reading their features, not their events. That smear is in the code's output too; remember it whenever a heatmap looks profound.</p>
+<p><strong>Honesty, part 1: tonight's projections are hand-set.</strong> The Q/K matrices in the code are designed — by me, in the open, with every weight commented — to ask one question: <em>which past days were shocks?</em> Nothing was trained, there is no prediction task, and there is <strong>no edge claim anywhere in this lesson</strong>. Real systems do run exactly this over market and economic sequences (the Temporal Fusion Transformer and PatchTST are the names to recognise), but there the projections are <em>learned</em> by gradient descent on a forecasting loss (Days 42/44). Then the map is whatever training made it — undesigned, unlabelled — and reading it well, without over-reading it, becomes the actual skill. Tonight is practice on a map whose ground truth you know.</p>
+<p><strong>Honesty, part 2: attention weights are not explanations.</strong> This deserves to be said flatly, because heatmaps invite storytelling. A weight is a mixing coefficient applied to a <em>value</em> vector. A day can hold 0.50 of a row and contribute almost nothing, if its value vector is near zero; a day holding 0.05 can dominate the output if its value is large; and in a real transformer, more heads and layers downstream re-mix everything again. Jain &amp; Wallace showed this in 2019 (<em>Attention is not Explanation</em>): you can often permute or zero out large parts of an attention map without changing the model's prediction at all. Part 3 demonstrates the mechanism at toy scale — cut a single channel out of the keys and day 59's shock share collapses from 0.58 to 0.19. The map followed the mechanism both times, and it would follow a different mechanism just as obediently. So a bright cell licenses exactly one sentence: <em>"this day's value got mixed in, this much."</em> Anything stronger — "the model moved <em>because</em> of day 53" — is a hypothesis, and in finance a hypothesis has a price of admission: it must survive Day 87's walk-forward, net of costs, and Day 84's count of how many things you tried. Until then it is a story a heatmap told you.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Day 37 framed attention as a read over a key-value store. Push it one step further: <strong>the map is that store's access log.</strong> Every day issues one query, pulls a weighted blend of records, and the log records exactly which records it pulled and in what proportion. You have debugged production incidents from access logs for a decade, so you already know their epistemology: the log tells you what a service <em>read</em>, never which read <em>caused</em> the outage — for that you still run the experiment (disable the read, watch the metric: Part 3's ablation, wearing a pager). Traders have the same instrument and the same trap: before a trade your eyes go to the two or three violent days in the window. The map is that glance, made auditable — and what your eyes land on is not necessarily what should drive the decision.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 496" role="img" aria-label="Causal attention heatmap over market days 50 to 59">
+<text x="96" y="24" font-size="13" font-weight="700" fill="#1c1c1e">Attention map — ten market days (the code's real output)</text>
+<text x="96" y="41" font-size="9.5" fill="#777">each row is one day's budget of 1.00, spent across the days it is allowed to read</text>
+<text x="266" y="60" font-size="9" fill="#888" text-anchor="middle" letter-spacing="1">KEYS — WHO GETS READ</text>
+<text x="113.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">50</text>
+<text x="147.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">51</text>
+<text x="181.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">52</text>
+<text x="215.0" y="78" font-size="10.5" text-anchor="middle" font-weight="700" fill="#b25f00">53 ★</text>
+<text x="249.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">54</text>
+<text x="283.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">55</text>
+<text x="317.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">56</text>
+<text x="351.0" y="78" font-size="10.5" text-anchor="middle" font-weight="700" fill="#b25f00">57 ★</text>
+<text x="385.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">58</text>
+<text x="419.0" y="78" font-size="10.5" text-anchor="middle" font-weight="400" fill="#555">59</text>
+<text x="88" y="105" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q50</text>
+<rect x="96" y="84" width="34" height="34" fill="rgb(10,122,255)"/>
+<text x="113.0" y="105" font-size="8.5" text-anchor="middle" fill="#ffffff">1.00</text>
+<rect x="130" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="147.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="164" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="181.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="198" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="215.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="232" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="249.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="266" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="283.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="300" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="84" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="106" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="139" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q51</text>
+<rect x="96" y="118" width="34" height="34" fill="rgb(115,178,254)"/>
+<text x="113.0" y="139" font-size="8.5" text-anchor="middle" fill="#222222">0.31</text>
+<rect x="130" y="118" width="34" height="34" fill="rgb(51,144,254)"/>
+<text x="147.0" y="139" font-size="8.5" text-anchor="middle" fill="#ffffff">0.69</text>
+<rect x="164" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="181.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="198" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="215.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="232" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="249.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="266" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="283.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="300" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="118" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="140" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="173" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q52</text>
+<rect x="96" y="152" width="34" height="34" fill="rgb(187,216,253)"/>
+<text x="113.0" y="173" font-size="8.5" text-anchor="middle" fill="#222222">0.07</text>
+<rect x="130" y="152" width="34" height="34" fill="rgb(134,188,253)"/>
+<text x="147.0" y="173" font-size="8.5" text-anchor="middle" fill="#222222">0.23</text>
+<rect x="164" y="152" width="34" height="34" fill="rgb(50,143,255)"/>
+<text x="181.0" y="173" font-size="8.5" text-anchor="middle" fill="#ffffff">0.70</text>
+<rect x="198" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="215.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="232" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="249.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="266" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="283.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="300" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="152" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="174" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="207" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q53</text>
+<rect x="96" y="186" width="34" height="34" fill="rgb(221,235,252)"/>
+<text x="113.0" y="207" font-size="8.5" text-anchor="middle" fill="#222222">0.01</text>
+<rect x="130" y="186" width="34" height="34" fill="rgb(202,224,253)"/>
+<text x="147.0" y="207" font-size="8.5" text-anchor="middle" fill="#222222">0.04</text>
+<rect x="164" y="186" width="34" height="34" fill="rgb(163,204,253)"/>
+<text x="181.0" y="207" font-size="8.5" text-anchor="middle" fill="#222222">0.13</text>
+<rect x="198" y="186" width="34" height="34" fill="rgb(33,134,255)"/>
+<text x="215.0" y="207" font-size="8.5" text-anchor="middle" fill="#ffffff">0.82</text>
+<rect x="232" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="249.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="266" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="283.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="300" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="186" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="208" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="241" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q54</text>
+<rect x="96" y="220" width="34" height="34" fill="rgb(218,233,252)"/>
+<text x="113.0" y="241" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="130" y="220" width="34" height="34" fill="rgb(197,222,253)"/>
+<text x="147.0" y="241" font-size="8.5" text-anchor="middle" fill="#222222">0.05</text>
+<rect x="164" y="220" width="34" height="34" fill="rgb(157,200,253)"/>
+<text x="181.0" y="241" font-size="8.5" text-anchor="middle" fill="#222222">0.15</text>
+<rect x="198" y="220" width="34" height="34" fill="rgb(50,144,254)"/>
+<text x="215.0" y="241" font-size="8.5" text-anchor="middle" fill="#ffffff">0.69</text>
+<rect x="232" y="220" width="34" height="34" fill="rgb(178,212,253)"/>
+<text x="249.0" y="241" font-size="8.5" text-anchor="middle" fill="#222222">0.09</text>
+<rect x="266" y="220" width="34" height="34" fill="#e9e9ee"/>
+<text x="283.0" y="242" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="300" y="220" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="242" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="220" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="242" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="220" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="242" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="220" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="242" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="275" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q55</text>
+<rect x="96" y="254" width="34" height="34" fill="rgb(220,234,252)"/>
+<text x="113.0" y="275" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="130" y="254" width="34" height="34" fill="rgb(199,223,253)"/>
+<text x="147.0" y="275" font-size="8.5" text-anchor="middle" fill="#222222">0.04</text>
+<rect x="164" y="254" width="34" height="34" fill="rgb(158,201,253)"/>
+<text x="181.0" y="275" font-size="8.5" text-anchor="middle" fill="#222222">0.15</text>
+<rect x="198" y="254" width="34" height="34" fill="rgb(60,149,254)"/>
+<text x="215.0" y="275" font-size="8.5" text-anchor="middle" fill="#ffffff">0.63</text>
+<rect x="232" y="254" width="34" height="34" fill="rgb(182,214,253)"/>
+<text x="249.0" y="275" font-size="8.5" text-anchor="middle" fill="#222222">0.08</text>
+<rect x="266" y="254" width="34" height="34" fill="rgb(181,213,253)"/>
+<text x="283.0" y="275" font-size="8.5" text-anchor="middle" fill="#222222">0.08</text>
+<rect x="300" y="254" width="34" height="34" fill="#e9e9ee"/>
+<text x="317.0" y="276" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="334" y="254" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="276" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="254" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="276" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="254" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="276" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="309" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q56</text>
+<rect x="96" y="288" width="34" height="34" fill="rgb(226,237,252)"/>
+<text x="113.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.01</text>
+<rect x="130" y="288" width="34" height="34" fill="rgb(213,230,252)"/>
+<text x="147.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="164" y="288" width="34" height="34" fill="rgb(187,216,253)"/>
+<text x="181.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.07</text>
+<rect x="198" y="288" width="34" height="34" fill="rgb(72,155,254)"/>
+<text x="215.0" y="309" font-size="8.5" text-anchor="middle" fill="#ffffff">0.55</text>
+<rect x="232" y="288" width="34" height="34" fill="rgb(193,220,253)"/>
+<text x="249.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.06</text>
+<rect x="266" y="288" width="34" height="34" fill="rgb(194,220,253)"/>
+<text x="283.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.06</text>
+<rect x="300" y="288" width="34" height="34" fill="rgb(133,188,253)"/>
+<text x="317.0" y="309" font-size="8.5" text-anchor="middle" fill="#222222">0.24</text>
+<rect x="334" y="288" width="34" height="34" fill="#e9e9ee"/>
+<text x="351.0" y="310" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="368" y="288" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="310" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="288" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="310" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="343" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q57</text>
+<rect x="96" y="322" width="34" height="34" fill="rgb(242,246,252)"/>
+<text x="113.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="130" y="322" width="34" height="34" fill="rgb(234,241,252)"/>
+<text x="147.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="164" y="322" width="34" height="34" fill="rgb(212,230,252)"/>
+<text x="181.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.03</text>
+<rect x="198" y="322" width="34" height="34" fill="rgb(115,178,254)"/>
+<text x="215.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.31</text>
+<rect x="232" y="322" width="34" height="34" fill="rgb(216,232,252)"/>
+<text x="249.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="266" y="322" width="34" height="34" fill="rgb(215,231,252)"/>
+<text x="283.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="300" y="322" width="34" height="34" fill="rgb(173,209,253)"/>
+<text x="317.0" y="343" font-size="8.5" text-anchor="middle" fill="#222222">0.10</text>
+<rect x="334" y="322" width="34" height="34" fill="rgb(78,158,254)"/>
+<text x="351.0" y="343" font-size="8.5" text-anchor="middle" fill="#ffffff">0.51</text>
+<rect x="368" y="322" width="34" height="34" fill="#e9e9ee"/>
+<text x="385.0" y="344" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<rect x="402" y="322" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="344" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="377" font-size="10.5" text-anchor="end" font-weight="400" fill="#555">Q58</text>
+<rect x="96" y="356" width="34" height="34" fill="rgb(244,247,252)"/>
+<text x="113.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="130" y="356" width="34" height="34" fill="rgb(233,241,252)"/>
+<text x="147.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="164" y="356" width="34" height="34" fill="rgb(200,224,253)"/>
+<text x="181.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.04</text>
+<rect x="198" y="356" width="34" height="34" fill="rgb(140,191,253)"/>
+<text x="215.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.21</text>
+<rect x="232" y="356" width="34" height="34" fill="rgb(220,234,252)"/>
+<text x="249.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="266" y="356" width="34" height="34" fill="rgb(218,233,252)"/>
+<text x="283.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="300" y="356" width="34" height="34" fill="rgb(195,220,253)"/>
+<text x="317.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.05</text>
+<rect x="334" y="356" width="34" height="34" fill="rgb(92,166,254)"/>
+<text x="351.0" y="377" font-size="8.5" text-anchor="middle" fill="#ffffff">0.44</text>
+<rect x="368" y="356" width="34" height="34" fill="rgb(138,190,253)"/>
+<text x="385.0" y="377" font-size="8.5" text-anchor="middle" fill="#222222">0.22</text>
+<rect x="402" y="356" width="34" height="34" fill="#e9e9ee"/>
+<text x="419.0" y="378" font-size="14" text-anchor="middle" fill="#b9b9c3">·</text>
+<text x="88" y="411" font-size="10.5" text-anchor="end" font-weight="700" fill="#0a54c2">Q59 · today</text>
+<rect x="96" y="390" width="34" height="34" fill="rgb(244,247,252)"/>
+<text x="113.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="130" y="390" width="34" height="34" fill="rgb(234,242,252)"/>
+<text x="147.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.00</text>
+<rect x="164" y="390" width="34" height="34" fill="rgb(205,226,253)"/>
+<text x="181.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.04</text>
+<rect x="198" y="390" width="34" height="34" fill="rgb(146,195,253)"/>
+<text x="215.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.19</text>
+<rect x="232" y="390" width="34" height="34" fill="rgb(220,234,252)"/>
+<text x="249.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="266" y="390" width="34" height="34" fill="rgb(219,233,252)"/>
+<text x="283.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.02</text>
+<rect x="300" y="390" width="34" height="34" fill="rgb(196,221,253)"/>
+<text x="317.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.05</text>
+<rect x="334" y="390" width="34" height="34" fill="rgb(100,170,254)"/>
+<text x="351.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.39</text>
+<rect x="368" y="390" width="34" height="34" fill="rgb(145,194,253)"/>
+<text x="385.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.19</text>
+<rect x="402" y="390" width="34" height="34" fill="rgb(172,208,253)"/>
+<text x="419.0" y="411" font-size="8.5" text-anchor="middle" fill="#222222">0.11</text>
+<rect x="198" y="84" width="34" height="340" fill="none" stroke="#e07b00" stroke-width="2"/>
+<rect x="334" y="84" width="34" height="340" fill="none" stroke="#e07b00" stroke-width="2"/>
+<text x="448" y="411" font-size="10" fill="#0a54c2">← today asks</text>
+<text x="96" y="450" font-size="9.5" fill="#555">share of the row's budget:</text>
+<rect x="232" y="440" width="30" height="12" fill="rgb(250,250,252)" stroke="#ccc" stroke-width="0.5"/>
+<text x="247" y="464" font-size="8" text-anchor="middle" fill="#777">0.00</text>
+<rect x="284" y="440" width="30" height="12" fill="rgb(130,186,254)" stroke="#ccc" stroke-width="0.5"/>
+<text x="299" y="464" font-size="8" text-anchor="middle" fill="#777">0.25</text>
+<rect x="336" y="440" width="30" height="12" fill="rgb(80,159,254)" stroke="#ccc" stroke-width="0.5"/>
+<text x="351" y="464" font-size="8" text-anchor="middle" fill="#777">0.50</text>
+<rect x="388" y="440" width="30" height="12" fill="rgb(42,139,255)" stroke="#ccc" stroke-width="0.5"/>
+<text x="403" y="464" font-size="8" text-anchor="middle" fill="#777">0.75</text>
+<rect x="440" y="440" width="30" height="12" fill="rgb(10,122,255)" stroke="#ccc" stroke-width="0.5"/>
+<text x="455" y="464" font-size="8" text-anchor="middle" fill="#777">1.00</text>
+<text x="96" y="484" font-size="9.5" fill="#666">grey · = causal mask — the future is off-limits (Day 69's law) · ★ = planted reversal-shock day · column averages per legal query: day 53 → 0.49, day 57 → 0.45, next best day 58 → 0.21</text>
+</svg>
+    <div class="caption">The code's real 10×10 causal attention map: rows are query days, columns are the days they read; grey cells above the diagonal are the masked future. Columns 53 and 57 (★ — the planted reversal shocks) are the two darkest columns in the grid; the fainter glow on 58–59 is the rvol smear — their vol windows still contain the shocks, so later days read them too.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, numpy only, no downloads. The tape is <strong>synthetic by design</strong> (seed 93, 1%/day vol) with the two reversal shocks planted, so the map has ground truth to be graded against. <strong>Part 1</strong> builds the series, runs Day 85's feature factory (trimmed to the five features), z-scores on days 20–49 only, and prints the window's tokens — watch the <code>vol_z</code> and <code>rvol_20</code> columns. <strong>Part 2</strong> is Day 38's attention by hand — scores, scale, causal mask, softmax, blend — with hand-set <code>Wq</code>/<code>Wk</code>: read the comments, because every weight is a stated design choice and nothing is learned. <strong>Part 3</strong> prints day 59's output blend against its own embedding, then runs the ablation: one channel cut from the keys, and the shock days go dark.</p>
+  <pre><code>&quot;&quot;&quot;Day 93 - Deep Dive: Attention Over Market Sequences.
+
+Days 36-42 built attention over words. Days 83-92 built
+the honest finance pipeline. Tonight they collide: the
+SAME scaled dot-product attention from Day 38, run over
+market days instead of tokens. A day becomes a token by
+embedding it - Day 85&#x27;s five features, z-scored against
+pre-window history, pushed through one fixed projection.
+
+The machinery transfers unchanged, because a sequence
+is a sequence: scores = QK^T / sqrt(d_k), softmax the
+rows, blend the values (Day 38), causal mask on top -
+which in finance is not a trick but the law: the mask
+IS Day 69&#x27;s point-in-time rule, enforced by the
+architecture. Day t literally cannot read day t+1.
+
+What is DIFFERENT from Day 38: the Q/K projections are
+hand-designed, not learned. They are built to ask one
+question - &quot;which past days were shocks?&quot; - by keying
+on the volume z-score and realized-vol features, so the
+two planted reversal-shock days (53 and 57) should light
+up in the map. That is a demonstration of how to READ a
+map, not a discovery. In a real model those projections
+are learned by gradient descent on a prediction task
+(Days 42/44), and whatever lights up is the start of an
+investigation - it still has to survive Day 87&#x27;s
+walk-forward and Day 84&#x27;s trial-counting before it is
+allowed to mean anything. Attention weights are a
+mixing coefficient, not a cause: a day can hold a huge
+weight and contribute almost nothing if its value
+vector is tiny, and a low-weight day can matter through
+later layers. The map shows where the model LOOKED.
+It does not prove why the output moved.
+
+  Part 1  A synthetic 60-day series (seed 93, 1%/day
+          vol) with two planted reversal shocks, and
+          the Day 85 feature factory z-scored on days
+          20-49 only. The last 10 days become tokens.
+  Part 2  Day 38&#x27;s attention, by hand in numpy, causal
+          mask on: the full 10x10 weight map, each
+          query&#x27;s top-attended day, and how much of each
+          late row&#x27;s budget the two shock days capture.
+  Part 3  The receipts: day 59&#x27;s output is a blend -
+          print it against its own embedding - and an
+          ablation: cut the volume channel out of the
+          keys and watch the shock days go dark. The
+          map follows the mechanism. That is all a map
+          ever does.
+
+Runs on the ~/ai-lab venv: numpy only (free), no CUDA,
+no paid APIs, no downloads. Fixed seed, so every number
+is reproducible. (Day 38 used torch; the formula is the
+same - numpy keeps tonight self-contained.)
+
+Expected output:
+
+Part 1 - 60 synthetic days, shocks planted at 53 and 57; last 10 days are the tokens
+  close: day 50 105.62   day 53 103.99   day 57 107.39   day 59 108.18
+   day   ret %   z-scored features (fit on days 20-49)    ret_5d  rvol_20  rsi_14   vwap   vol_z
+    50   -0.01        -1.46    -2.29   -2.67  -2.62   -0.88
+    51    0.95         0.09    -1.91   -1.68  -1.76    1.25
+    52    2.10         1.40    -0.52    0.01  -0.05    3.24
+    53   -4.60        -1.93     4.33   -3.13  -3.40    3.89  &lt;- SHOCK
+    54    0.33        -0.87     4.38   -2.90  -3.03   -0.28
+    55    0.49        -0.53     4.43   -2.56  -2.50   -0.22
+    56   -1.90        -2.47     4.96   -3.50  -3.75    1.70
+    57    4.30        -0.97     8.24   -1.04  -0.14    2.44  &lt;- SHOCK
+    58    0.90         2.77     8.36   -0.63   0.60    0.19
+    59   -0.17         2.43     8.37   -0.73   0.44   -0.63
+  read vol_z: day 53 tops the column (3.89); day 57&#x27;s 2.44 is muted - its trailing
+  window already holds day 53&#x27;s spike (z means &#x27;unusual for lately&#x27; - Day 85, clause 3).
+  and rvol_20 stays hot for days AFTER a shock (its 20-day window remembers) -
+  watch that smear spread attention onto days 58-59 in the map.
+Part 2 - the attention map: rows are queries (who is asking), columns are keys (who gets read)
+       K   50K   51K   52K   53K   54K   55K   56K   57K   58K   59
+  Q 50 1.00    .    .    .    .    .    .    .    .    .
+  Q 51 0.31 0.69    .    .    .    .    .    .    .    .
+  Q 52 0.07 0.23 0.70    .    .    .    .    .    .    .
+  Q 53 0.01 0.04 0.13 0.82    .    .    .    .    .    .
+  Q 54 0.02 0.05 0.15 0.69 0.09    .    .    .    .    .
+  Q 55 0.02 0.04 0.15 0.63 0.08 0.08    .    .    .    .
+  Q 56 0.01 0.02 0.07 0.55 0.06 0.06 0.24    .    .    .
+  Q 57 0.00 0.00 0.03 0.31 0.02 0.02 0.10 0.51    .    .
+  Q 58 0.00 0.00 0.04 0.21 0.02 0.02 0.05 0.44 0.22    .
+  Q 59 0.00 0.00 0.04 0.19 0.02 0.02 0.05 0.39 0.19 0.11
+  &#x27;.&#x27; = masked future - the causal mask is Day 69&#x27;s point-in-time law, in the architecture
+  every row sums to 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000 - a budget (Day 14)
+  day 50 looks hardest at day 50 (weight 1.00)
+  day 51 looks hardest at day 51 (weight 0.69)
+  day 52 looks hardest at day 52 (weight 0.70)
+  day 53 looks hardest at day 53 (weight 0.82)
+  day 54 looks hardest at day 53 (weight 0.69)
+  day 55 looks hardest at day 53 (weight 0.63)
+  day 56 looks hardest at day 53 (weight 0.55)
+  day 57 looks hardest at day 57 (weight 0.51)
+  day 58 looks hardest at day 57 (weight 0.44)
+  day 59 looks hardest at day 57 (weight 0.39)
+  day 58: the two shock days hold 0.65 of its budget (uniform over its 9 legal keys would give them 0.22)
+  day 59: the two shock days hold 0.58 of its budget (uniform over its 10 legal keys would give them 0.20)
+  attention received per legal query (column averages):
+    d50 0.14  d51 0.12  d52 0.16  d53 0.49  d54 0.05  d55 0.04  d56 0.11  d57 0.45  d58 0.21  d59 0.11
+Part 3 - what the map DOES, and what it does not do
+  day 59&#x27;s own embedding : [ 2.43  8.37 -0.73  0.44 -0.63  3.05]
+  day 59&#x27;s output (blend): [-0.06  6.9  -1.47 -0.82  1.85  2.61]
+  the blend is pulled toward the shock days&#x27; embeddings - 0.58 of it IS days 53+57, by weight
+  ablation - volume channel cut from the keys: day 59&#x27;s shock share falls 0.58 -&gt; 0.19
+  the map followed the mechanism both times. A bright cell says &#x27;this value got mixed in&#x27;,
+  never &#x27;this day caused the prediction&#x27; - weights are not explanations (Jain &amp; Wallace).
+verdict: same formula, new tokens. Fluency is reading the map; honesty is knowing it proves nothing
+         until walk-forward (Day 87) and trial-counting (Day 84) say otherwise.
+&quot;&quot;&quot;
+import numpy as np
+
+SEED = 93
+N = 60
+SHOCKS = (53, 57)          # planted reversal-shock days
+WIN = list(range(50, 60))  # the attention window: days 50..59
+
+# ---------- Part 1: series + Day 85 features ----------
+rng = np.random.default_rng(SEED)
+z = rng.standard_normal(N)
+logret = 0.0002 + 0.010 * z          # calm tape: 1%/day vol
+logret[0] = 0.0
+logret[52] = 0.021                   # run-up into the first shock
+logret[53] = -0.046                  # SHOCK 1: -4.6% reversal day
+logret[56] = -0.019                  # drift down into the second
+logret[57] = 0.043                   # SHOCK 2: +4.3% reversal day
+price = 100.0 * np.exp(np.cumsum(logret))
+volume = (1_000_000 * (1.0 + 1.5 * np.abs(logret) / 0.010)
+          * np.exp(0.15 * rng.standard_normal(N))).round().astype(int)
+
+
+def rsi_wilder(close, period=14):
+    &quot;&quot;&quot;Day 85&#x27;s Wilder RSI, unchanged: causal by construction.&quot;&quot;&quot;
+    n = len(close)
+    out = np.full(n, np.nan)
+    d = np.diff(close)
+    gains = np.where(d &gt; 0, d, 0.0)
+    losses = np.where(d &lt; 0, -d, 0.0)
+    ag, al = gains[:period].mean(), losses[:period].mean()
+    for t in range(period, n):
+        if t &gt; period:
+            ag = (ag * (period - 1) + gains[t - 1]) / period
+            al = (al * (period - 1) + losses[t - 1]) / period
+        out[t] = 100.0 if al == 0 else 100.0 - 100.0 / (1.0 + ag / al)
+    return out
+
+
+def compute_features(close, vol):
+    &quot;&quot;&quot;Day 85&#x27;s five features - every one trailing-only.&quot;&quot;&quot;
+    n = len(close)
+    lr = np.zeros(n)
+    lr[1:] = np.log(close[1:] / close[:-1])
+    f = {k: np.full(n, np.nan)
+         for k in (&quot;ret_5d&quot;, &quot;rvol_20&quot;, &quot;rsi_14&quot;, &quot;vwap_dev&quot;, &quot;vol_z&quot;)}
+    f[&quot;rsi_14&quot;] = rsi_wilder(close)
+    for t in range(n):
+        if t &gt;= 5:
+            f[&quot;ret_5d&quot;][t] = 100.0 * lr[t - 4:t + 1].sum()
+        if t &gt;= 20:
+            f[&quot;rvol_20&quot;][t] = 100.0 * lr[t - 19:t + 1].std() \
+                * np.sqrt(252)
+            vw = (close[t - 19:t + 1] * vol[t - 19:t + 1]).sum() \
+                / vol[t - 19:t + 1].sum()
+            f[&quot;vwap_dev&quot;][t] = 100.0 * (close[t] / vw - 1.0)
+            w = vol[t - 19:t + 1].astype(float)
+            f[&quot;vol_z&quot;][t] = (vol[t] - w.mean()) / w.std()
+    return f
+
+
+FEATS = compute_features(price, volume)
+NAMES = (&quot;ret_5d&quot;, &quot;rvol_20&quot;, &quot;rsi_14&quot;, &quot;vwap_dev&quot;, &quot;vol_z&quot;)
+RAW = np.stack([FEATS[k] for k in NAMES], axis=1)      # (60, 5)
+# z-score with PRE-WINDOW history only (days 20-49): the scaler
+# is fit on the past, never on the window it will describe.
+mu, sd = RAW[20:50].mean(axis=0), RAW[20:50].std(axis=0)
+Z = (RAW - mu) / sd
+F = Z[WIN]                                             # (10, 5) tokens
+
+print(&quot;Part 1 - 60 synthetic days, shocks planted at 53 and 57; &quot;
+      &quot;last 10 days are the tokens&quot;)
+print(f&quot;  close: day 50 {price[50]:.2f}   day 53 {price[53]:.2f}   &quot;
+      f&quot;day 57 {price[57]:.2f}   day 59 {price[59]:.2f}&quot;)
+print(f&quot;  {&#x27;day&#x27;:&gt;4}{&#x27;ret %&#x27;:&gt;8}   z-scored features (fit on days 20-49)&quot;
+      f&quot;{&#x27;&#x27;:&gt;2}{&#x27;ret_5d&#x27;:&gt;8}{&#x27;rvol_20&#x27;:&gt;9}{&#x27;rsi_14&#x27;:&gt;8}{&#x27;vwap&#x27;:&gt;7}&quot;
+      f&quot;{&#x27;vol_z&#x27;:&gt;8}&quot;)
+for i, t in enumerate(WIN):
+    mark = &quot;  &lt;- SHOCK&quot; if t in SHOCKS else &quot;&quot;
+    print(f&quot;  {t:&gt;4}{100 * logret[t]:&gt;8.2f}   &quot;
+          f&quot;{&#x27;&#x27;:&gt;2}{F[i, 0]:&gt;8.2f}{F[i, 1]:&gt;9.2f}{F[i, 2]:&gt;8.2f}&quot;
+          f&quot;{F[i, 3]:&gt;7.2f}{F[i, 4]:&gt;8.2f}{mark}&quot;)
+print(&quot;  read vol_z: day 53 tops the column (3.89); day 57&#x27;s 2.44 is &quot;
+      &quot;muted - its trailing&quot;)
+print(&quot;  window already holds day 53&#x27;s spike (z means &#x27;unusual for &quot;
+      &quot;lately&#x27; - Day 85, clause 3).&quot;)
+print(&quot;  and rvol_20 stays hot for days AFTER a shock (its 20-day &quot;
+      &quot;window remembers) -&quot;)
+print(&quot;  watch that smear spread attention onto days 58-59 in the map.&quot;)
+
+# ---------- Part 2: Day 38 attention, causal, by hand ----------
+# Embedding: fixed stated projection, 5 features -&gt; d_model 6.
+# Columns 0-4 carry the features; column 5 is a mix (ret+vol+rvol).
+P = np.array([[1.0, 0.0, 0.0, 0.0, 0.0, 0.3],   # ret_5d
+              [0.0, 1.0, 0.0, 0.0, 0.0, 0.3],   # rvol_20
+              [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],   # rsi_14
+              [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],   # vwap_dev
+              [0.0, 0.0, 0.0, 0.0, 1.0, 0.3]])  # vol_z
+E = F @ P                                              # (10, 6)
+
+# Hand-designed projections (NOT learned - see the docstring).
+# Every query asks roughly the same question (&quot;which past days
+# were shocks?&quot;): q0 is mostly the bias, with a nudge from the
+# mix column; q1 scales with the query&#x27;s own vol regime.
+d_k = 3
+Wq = np.zeros((6, d_k))
+Wq[5, 0] = 0.2        # mix -&gt; q0
+Wq[1, 1] = 0.2        # own rvol -&gt; q1
+Wq[0, 2] = 0.3        # own ret_5d -&gt; q2
+bq = np.array([0.9, 0.0, 0.0])
+# Keys advertise: k0 = volume shock, k1 = vol regime, k2 = move.
+Wk = np.zeros((6, d_k))
+Wk[4, 0] = 0.75       # vol_z -&gt; k0
+Wk[1, 1] = 0.4        # rvol_20 -&gt; k1
+Wk[0, 2] = 0.45       # ret_5d -&gt; k2
+Q = E @ Wq + bq                                        # (10, 3)
+K = E @ Wk                                             # (10, 3)
+V = E.copy()                        # Wv = identity: values are
+                                    # the embeddings themselves
+
+
+def causal_attention(Q, K, V):
+    &quot;&quot;&quot;Day 38&#x27;s five moves, numpy edition: scores, scale,
+    causal mask (future -&gt; -inf BEFORE the softmax), softmax
+    rows, blend the values.&quot;&quot;&quot;
+    scores = Q @ K.T / np.sqrt(Q.shape[-1])
+    future = np.triu(np.ones(scores.shape, dtype=bool), k=1)
+    scores = np.where(future, -np.inf, scores)
+    m = scores.max(axis=1, keepdims=True)
+    e = np.exp(scores - m)
+    w = e / e.sum(axis=1, keepdims=True)
+    return w, w @ V
+
+
+W, OUT = causal_attention(Q, K, V)
+shock_cols = [WIN.index(s) for s in SHOCKS]
+
+print(&quot;Part 2 - the attention map: rows are queries (who is &quot;
+      &quot;asking), columns are keys (who gets read)&quot;)
+print(&quot;       &quot; + &quot;&quot;.join(f&quot;K{d:&gt;5}&quot; for d in WIN))
+for i, t in enumerate(WIN):
+    cells = &quot;&quot;.join(&quot;    .&quot; if j &gt; i else f&quot;{W[i, j]:5.2f}&quot;
+                    for j in range(10))
+    print(f&quot;  Q{t:&gt;3}{cells}&quot;)
+print(&quot;  &#x27;.&#x27; = masked future - the causal mask is Day 69&#x27;s &quot;
+      &quot;point-in-time law, in the architecture&quot;)
+sums = &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in W.sum(axis=1))
+print(f&quot;  every row sums to {sums} - a budget (Day 14)&quot;)
+for i, t in enumerate(WIN):
+    j = int(np.argmax(W[i]))
+    print(f&quot;  day {t} looks hardest at day {WIN[j]} &quot;
+          f&quot;(weight {W[i, j]:.2f})&quot;)
+for i in (8, 9):
+    share = W[i, shock_cols].sum()
+    print(f&quot;  day {WIN[i]}: the two shock days hold {share:.2f} of &quot;
+          f&quot;its budget (uniform over its {i + 1} legal keys would &quot;
+          f&quot;give them {2 / (i + 1):.2f})&quot;)
+recv = W.sum(axis=0) / (10 - np.arange(10))
+print(&quot;  attention received per legal query (column averages):&quot;)
+print(&quot;    &quot; + &quot;  &quot;.join(f&quot;d{d} {recv[j]:.2f}&quot;
+                         for j, d in enumerate(WIN)))
+
+# ---------- Part 3: the output blend + the ablation ----------
+print(&quot;Part 3 - what the map DOES, and what it does not do&quot;)
+print(f&quot;  day 59&#x27;s own embedding : &quot;
+      + np.array2string(E[9], precision=2, suppress_small=True))
+print(f&quot;  day 59&#x27;s output (blend): &quot;
+      + np.array2string(OUT[9], precision=2, suppress_small=True))
+print(f&quot;  the blend is pulled toward the shock days&#x27; embeddings - &quot;
+      f&quot;{W[9, shock_cols].sum():.2f} of it IS days 53+57, by weight&quot;)
+Wk_cut = Wk.copy()
+Wk_cut[4, 0] = 0.0            # keys stop advertising volume
+W2, _ = causal_attention(Q, E @ Wk_cut, V)
+print(f&quot;  ablation - volume channel cut from the keys: day 59&#x27;s &quot;
+      f&quot;shock share falls {W[9, shock_cols].sum():.2f} -&gt; &quot;
+      f&quot;{W2[9, shock_cols].sum():.2f}&quot;)
+print(&quot;  the map followed the mechanism both times. A bright cell &quot;
+      &quot;says &#x27;this value got mixed in&#x27;,&quot;)
+print(&quot;  never &#x27;this day caused the prediction&#x27; - weights are &quot;
+      &quot;not explanations (Jain &amp; Wallace).&quot;)
+print(&quot;verdict: same formula, new tokens. Fluency is reading &quot;
+      &quot;the map; honesty is knowing it proves nothing&quot;)
+print(&quot;         until walk-forward (Day 87) and trial-counting &quot;
+      &quot;(Day 84) say otherwise.&quot;)
+
+# ---------- self-checks ----------
+assert np.allclose(W.sum(axis=1), 1.0)
+assert np.all(W[np.triu_indices(10, k=1)] == 0.0)
+assert WIN[int(np.argmax(W[9]))] in SHOCKS
+assert W[9, shock_cols].sum() &gt; 0.50</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - 60 synthetic days, shocks planted at 53 and 57; last 10 days are the tokens
+  close: day 50 105.62   day 53 103.99   day 57 107.39   day 59 108.18
+   day   ret %   z-scored features (fit on days 20-49)    ret_5d  rvol_20  rsi_14   vwap   vol_z
+    50   -0.01        -1.46    -2.29   -2.67  -2.62   -0.88
+    51    0.95         0.09    -1.91   -1.68  -1.76    1.25
+    52    2.10         1.40    -0.52    0.01  -0.05    3.24
+    53   -4.60        -1.93     4.33   -3.13  -3.40    3.89  &lt;- SHOCK
+    54    0.33        -0.87     4.38   -2.90  -3.03   -0.28
+    55    0.49        -0.53     4.43   -2.56  -2.50   -0.22
+    56   -1.90        -2.47     4.96   -3.50  -3.75    1.70
+    57    4.30        -0.97     8.24   -1.04  -0.14    2.44  &lt;- SHOCK
+    58    0.90         2.77     8.36   -0.63   0.60    0.19
+    59   -0.17         2.43     8.37   -0.73   0.44   -0.63
+  read vol_z: day 53 tops the column (3.89); day 57&#x27;s 2.44 is muted - its trailing
+  window already holds day 53&#x27;s spike (z means &#x27;unusual for lately&#x27; - Day 85, clause 3).
+  and rvol_20 stays hot for days AFTER a shock (its 20-day window remembers) -
+  watch that smear spread attention onto days 58-59 in the map.
+Part 2 - the attention map: rows are queries (who is asking), columns are keys (who gets read)
+       K   50K   51K   52K   53K   54K   55K   56K   57K   58K   59
+  Q 50 1.00    .    .    .    .    .    .    .    .    .
+  Q 51 0.31 0.69    .    .    .    .    .    .    .    .
+  Q 52 0.07 0.23 0.70    .    .    .    .    .    .    .
+  Q 53 0.01 0.04 0.13 0.82    .    .    .    .    .    .
+  Q 54 0.02 0.05 0.15 0.69 0.09    .    .    .    .    .
+  Q 55 0.02 0.04 0.15 0.63 0.08 0.08    .    .    .    .
+  Q 56 0.01 0.02 0.07 0.55 0.06 0.06 0.24    .    .    .
+  Q 57 0.00 0.00 0.03 0.31 0.02 0.02 0.10 0.51    .    .
+  Q 58 0.00 0.00 0.04 0.21 0.02 0.02 0.05 0.44 0.22    .
+  Q 59 0.00 0.00 0.04 0.19 0.02 0.02 0.05 0.39 0.19 0.11
+  &#x27;.&#x27; = masked future - the causal mask is Day 69&#x27;s point-in-time law, in the architecture
+  every row sums to 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000 - a budget (Day 14)
+  day 50 looks hardest at day 50 (weight 1.00)
+  day 51 looks hardest at day 51 (weight 0.69)
+  day 52 looks hardest at day 52 (weight 0.70)
+  day 53 looks hardest at day 53 (weight 0.82)
+  day 54 looks hardest at day 53 (weight 0.69)
+  day 55 looks hardest at day 53 (weight 0.63)
+  day 56 looks hardest at day 53 (weight 0.55)
+  day 57 looks hardest at day 57 (weight 0.51)
+  day 58 looks hardest at day 57 (weight 0.44)
+  day 59 looks hardest at day 57 (weight 0.39)
+  day 58: the two shock days hold 0.65 of its budget (uniform over its 9 legal keys would give them 0.22)
+  day 59: the two shock days hold 0.58 of its budget (uniform over its 10 legal keys would give them 0.20)
+  attention received per legal query (column averages):
+    d50 0.14  d51 0.12  d52 0.16  d53 0.49  d54 0.05  d55 0.04  d56 0.11  d57 0.45  d58 0.21  d59 0.11
+Part 3 - what the map DOES, and what it does not do
+  day 59&#x27;s own embedding : [ 2.43  8.37 -0.73  0.44 -0.63  3.05]
+  day 59&#x27;s output (blend): [-0.06  6.9  -1.47 -0.82  1.85  2.61]
+  the blend is pulled toward the shock days&#x27; embeddings - 0.58 of it IS days 53+57, by weight
+  ablation - volume channel cut from the keys: day 59&#x27;s shock share falls 0.58 -&gt; 0.19
+  the map followed the mechanism both times. A bright cell says &#x27;this value got mixed in&#x27;,
+  never &#x27;this day caused the prediction&#x27; - weights are not explanations (Jain &amp; Wallace).
+verdict: same formula, new tokens. Fluency is reading the map; honesty is knowing it proves nothing
+         until walk-forward (Day 87) and trial-counting (Day 84) say otherwise.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    Done when your run reproduces the map and its receipts: every row summing to 1.0000, a hard-zero upper triangle, day 59 looking hardest at day 57 (0.39), the two shock days holding 0.58 of day 59's budget against the 0.20 that uniform attention would give them, column averages of 0.49 (day 53) and 0.45 (day 57) — and the ablation dropping that 0.58 share to 0.19. You can now open any attention heatmap, markets or language, and read it the way you read an access log: what got read, in what proportion — and no causal story without an experiment.
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    Read “The one idea”, then stare at the diagram until the two bright columns make sense. Run the code and check only Part 2's last lines: the top-attended days, and the 0.58-vs-0.20 shock share for day 59. If you can say why a bright cell doesn't prove causation — and what Days 87 and 84 would demand before you'd let a pattern like this near money — you have the day.
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    Tomorrow: LoRA, hands-on — Day 53's patch-don't-rebuild trick at a scale your Mac can actually train, run for real instead of surveyed.
+  </div>
+
+  <div class="footer">Streak: 93 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
