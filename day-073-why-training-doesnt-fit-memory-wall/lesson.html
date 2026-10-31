@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Memory Wall: Why Training Doesn't Fit on One GPU — Day 73 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 73 of 100</span>
+  <h1>The Memory Wall: Why Training Doesn't Fit on One GPU</h1>
+  <p class="outcome">Tonight you'll be able to: do the full memory arithmetic for one training step &mdash; bytes per parameter for SGD vs Adam, the static bill for 7B&ndash;405B models, and activation memory with and without gradient checkpointing &mdash; and state exactly how many 80&nbsp;GB GPUs a 70B model needs just to stand still.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase F is your home turf: ML systems, where your infra career plugs directly into AI. And it opens with a question that is not about models at all &mdash; it is capacity planning. Every net through Day 72 fit on one device; Day 34&rsquo;s biggest had 113 parameters. Production models have 7 <em>billion</em> to 405 billion. Whether one can train on one GPU is not a matter of engineering cleverness. It is arithmetic, and tonight you do the arithmetic.</p>
+<p><strong>The one idea: the weights are the smallest line item in the training bill.</strong> Serving a model stores the weights once &mdash; in bf16 (2 bytes per parameter, Day 65&rsquo;s quantization math), a 70B model is 140 GB, which already overflows an 80 GB card. Training stores four things per parameter. In the standard mixed-precision recipe (compute in bf16, keep full-precision state &mdash; the honest accounting, with variants noted): an <strong>fp32 master copy of the weights</strong> (4 bytes &mdash; the copy that actually takes the update), <strong>fp32 gradients</strong> (4 bytes &mdash; autograd produces exactly one gradient per parameter, Day 4), and Adam&rsquo;s <strong>two state arrays, m and v</strong> (4 + 4 bytes &mdash; the running averages from Day 18, kept per parameter, always). Total: <strong>16 bytes per parameter</strong>. A stack that also keeps a bf16 compute copy pays 18. Plain SGD pays 8 (weights + grads, no state); SGD with momentum pays 12. Multiply by 70 billion: <strong>1,120 GB of static memory before a single token is processed</strong> &mdash; 14 GPUs&rsquo; worth, just to stand still. Day 34&rsquo;s XOR net under the same recipe: 272 bytes.</p>
+<p><strong>Then come activations</strong> &mdash; everything the forward pass computes that the backward pass will need again. Autograd&rsquo;s tape (Day 4) is not free: every layer&rsquo;s intermediates are saved until backward consumes them. Activations scale with a completely different set of knobs than the static bill: <code>batch &times; sequence &times; layers &times; d_model</code> &mdash; workload size, not model size. For a stated 70B-class config (80 layers, d<sub>model</sub> 8192, a per-device micro-batch of 8 sequences &times; 4096 tokens, bf16, and a stated simplification of ~16 saved hidden-sized tensors per layer), that is <strong>687 GB for one micro-batch step</strong> (Part 3). This is why batch size is secretly a memory dial (Day 30): double the batch, double the activations, static bill untouched.</p>
+<p><strong>One lever exists inside a single step: gradient checkpointing.</strong> Save only each layer&rsquo;s <em>boundary</em> activation, throw the rest away, and recompute one layer&rsquo;s forward on the fly during backward. The 687 GB becomes ~51.5 GB; the price is roughly one extra forward pass, ~&frac13; more step time. It is a memory-for-compute trade, nothing more &mdash; saving <em>weights</em> to survive machine failures is a different job with the same name, and it gets Day 78. Even with checkpointing, the 70B step totals 1,172 GB: 15 GPUs. There is no configuration in which one card wins. The bill has to be split across machines &mdash; which is exactly what the next three days are for.</p>
+<p><strong>Assumptions on the table</strong> (so you can redo this for any stack): GB = 10<sup>9</sup> bytes, as GPU boxes are sold; static recipe = 4 (fp32 master) + 4 (fp32 grads) + 4 (Adam m) + 4 (Adam v) = 16 B/param; activation estimate = layers &times; tokens &times; d<sub>model</sub> &times; 16 saved tensors &times; 2 bytes, a simplification &mdash; a real MLP block&rsquo;s intermediate is 4&times; wider than d<sub>model</sub>, so real activation bills run <em>higher</em>; treat tonight&rsquo;s number as a floor, not a ceiling.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Size a storage node the way you&rsquo;d size Conveyor, and you already know this failure mode: <strong>nobody sizes RAM from the dataset size.</strong> The payload on disk is the weights. But every key also carries bookkeeping &mdash; here, 16 bytes of state for every 2 bytes of bf16 payload, an 8&times; metadata amplification any storage engineer would flag in review. And activations are <strong>in-flight request state</strong>: they scale with concurrency (batch &times; sequence), not with how much data you own &mdash; exactly like sizing a server by simultaneous connections, not by total stored objects. A node that holds the dataset but not the working set doesn&rsquo;t degrade; it OOMs and dies. GPUs are no different.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 548" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="548" rx="0" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Why training doesn't fit on one GPU: the memory wall</text>
+<text x="340" y="44" text-anchor="middle" font-size="9.5" fill="#666666">A 70B model, Adam + mixed precision: static bill 1,120 GB, activations on top</text>
+<rect x="12" y="58" width="656" height="254" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="80" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - ONE TRAINING STEP, 70B MODEL: THE STACKED BILL (GB)</text>
+<rect x="150" y="108" width="77" height="48" rx="2" fill="#0a7aff"/>
+<text x="188.5" y="129" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">master</text>
+<text x="188.5" y="144" text-anchor="middle" font-size="9" fill="#ffffff">280 GB</text>
+<rect x="227" y="108" width="77" height="48" rx="2" fill="#7a5cff"/>
+<text x="265.5" y="129" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">grads</text>
+<text x="265.5" y="144" text-anchor="middle" font-size="9" fill="#ffffff">280 GB</text>
+<rect x="304" y="108" width="77" height="48" rx="2" fill="#22a355"/>
+<text x="342.5" y="129" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">Adam m</text>
+<text x="342.5" y="144" text-anchor="middle" font-size="9" fill="#ffffff">280 GB</text>
+<rect x="381" y="108" width="77" height="48" rx="2" fill="#d99a00"/>
+<text x="419.5" y="129" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">Adam v</text>
+<text x="419.5" y="144" text-anchor="middle" font-size="9" fill="#ffffff">280 GB</text>
+<rect x="458" y="108" width="188" height="48" rx="2" fill="#e5484d"/>
+<text x="552.0" y="129" text-anchor="middle" font-size="9" fill="#ffffff" font-weight="bold">activations</text>
+<text x="552.0" y="144" text-anchor="middle" font-size="9" fill="#ffffff">687 GB</text>
+<text x="150" y="182" text-anchor="start" font-size="9.5" fill="#1c1c1e">static 1,120 GB + activations 687 GB = 1,807 GB for one step</text>
+<text x="150" y="200" text-anchor="start" font-size="9" fill="#555555">the whole bar is ONE micro-batch step: batch 8 x seq 4096, 80 layers, bf16</text>
+<line x1="172" y1="100" x2="172" y2="164" stroke="#e5484d" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="178" y="98" text-anchor="start" font-size="9" fill="#e5484d" font-weight="bold">80 GB = one GPU</text>
+<text x="150" y="236" text-anchor="start" font-size="9.5" fill="#1c1c1e">inference only, bf16 weights:</text>
+<rect x="150" y="248" width="38" height="20" rx="2" fill="#0a7aff"/>
+<text x="196" y="263" text-anchor="start" font-size="9.5" fill="#1c1c1e">140 GB - even serving the weights alone overflows one 80 GB card</text>
+<text x="150" y="296" text-anchor="start" font-size="9" fill="#555555">Day 34's XOR net, for scale: 17 params x 16 B = 272 bytes (a dot at this scale)</text>
+<rect x="12" y="322" width="656" height="214" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="344" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE SAME BILL, COUNTED IN GPUS (80 GB EACH)</text>
+<rect x="28" y="366" width="84" height="52" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.4"/>
+<text x="70" y="390" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">1 GPU</text>
+<text x="70" y="406" text-anchor="middle" font-size="9" fill="#555555">80 GB</text>
+<text x="140" y="362" text-anchor="start" font-size="9.5" fill="#1c1c1e">23 GPUs - no checkpointing: 1,807 GB</text>
+<rect x="140" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="162" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="184" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="206" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="228" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="250" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="272" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="294" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="316" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="338" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="360" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="382" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="404" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="426" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="448" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="470" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="492" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="514" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="536" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="558" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="580" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="602" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<rect x="624" y="368" width="20" height="20" rx="2" fill="#ffffff" stroke="#e5484d" stroke-width="1.2"/>
+<text x="140" y="424" text-anchor="start" font-size="9.5" fill="#1c1c1e">15 GPUs - checkpointing: 1,172 GB</text>
+<rect x="140" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="162" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="184" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="206" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="228" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="250" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="272" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="294" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="316" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="338" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="360" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="382" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="404" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="426" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<rect x="448" y="430" width="20" height="20" rx="2" fill="#22a355" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="478" text-anchor="middle" font-size="9.5" fill="#1c1c1e">checkpointing trades ~1/3 extra step time for 8 fewer GPUs</text>
+<text x="340" y="498" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">the wall is arithmetic: 16 B/param + activations vs 80 GB/card</text>
+<text x="340" y="516" text-anchor="middle" font-size="9" fill="#555555">Days 74-76 split this bill - data, tensor, and pipeline parallelism</text>
+</svg>
+    <div class="caption">Top: one 70B training step as a stacked bar &mdash; four 280 GB static blocks (master weights, gradients, Adam m, Adam v) plus 687 GB of activations, with the red dash marking where a single 80 GB GPU&rsquo;s capacity ends: inside the first block. Bottom: the same 1,807 GB counted in hardware &mdash; 23 GPUs without gradient checkpointing, 15 with it. The weights alone (140 GB, inference) overflow one card too.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>No torch tonight &mdash; counting bytes needs no GPU, so this is pure standard library and runs in milliseconds in <code>~/ai-lab</code>. <strong>Part 1</strong> prices one parameter under three optimizers, component by component. <strong>Part 2</strong> multiplies up: the static bill for 7B / 13B / 70B / 405B, inference&rsquo;s weights-only bill beside it, and the stand-still GPU count. <strong>Part 3</strong> adds activations for the stated 70B-class config and prices gradient checkpointing in both currencies &mdash; GB saved, GPUs saved.</p>
+  <pre><code>&quot;&quot;&quot;Day 73 - The Memory Wall: Why Training Doesn&#x27;t Fit on One GPU.
+
+Phase F opens. Everything so far trained on ONE device -
+Day 34&#x27;s biggest net had 113 parameters. Tonight&#x27;s question
+is pure arithmetic, and it explains why the next three days
+(parallelism, Days 74-76) exist at all:
+
+    Training memory is NOT the weights. It is weights +
+    gradients + optimizer state + activations - and for
+    Adam in mixed precision the static bill alone is about
+    16 bytes per parameter, before a single activation.
+
+THE RECIPE (state your assumptions - every framework mixes
+slightly different dtypes, this is the standard accounting):
+  Adam, mixed precision, per parameter:
+    fp32 master weights .... 4 bytes  (the copy that updates)
+    fp32 gradients ......... 4 bytes  (one grad per param)
+    Adam m (1st moment) .... 4 bytes  (Day 18: Adam keeps two)
+    Adam v (2nd moment) .... 4 bytes
+    TOTAL .................. 16 bytes per parameter
+  Some stacks also keep a bf16 compute copy of the weights
+  (+2 bytes -&gt; 18). SGD pays 8, SGD+momentum pays 12 - Part 1.
+  GB below means 10^9 bytes, the way GPU boxes are sold.
+
+  Part 1  Bytes per parameter: SGD vs SGD+momentum vs Adam,
+          component by component. Day 34&#x27;s 17-parameter XOR
+          net costs 272 bytes under Adam. A 70B model costs
+          16 bytes x 70 billion. Same recipe, bigger number.
+  Part 2  The static bill (weights + grads + optimizer, NO
+          activations yet) for 7B / 13B / 70B / 405B models,
+          with the inference-only bill (bf16 weights alone,
+          2 bytes/param) next to it, and the only column that
+          matters: how many 80GB GPUs you need JUST TO STAND
+          STILL - before one token is processed.
+  Part 3  Activations: the memory autograd saves for the
+          backward pass (Day 4&#x27;s tape, at scale). Stated
+          config: 80 layers, d_model 8192, batch 8 sequences
+          x 4096 tokens, bf16, and a stated simplification -
+          ~16 saved hidden-sized tensors per layer. Gradient
+          checkpointing (store only layer boundaries, redo
+          one layer&#x27;s forward in the backward pass) cuts it
+          ~14x for ~1/3 extra step time. Checkpointing as a
+          fault-tolerance strategy is Day 78 - different job.
+
+Runs anywhere: pure standard library, no torch, no GPU,
+no downloads, no APIs. The whole lesson is counting bytes,
+so it runs on the MacBook ~/ai-lab venv in milliseconds.
+
+Expected output:
+
+  Part 1 - bytes per parameter: the optimizer is the landlord
+    SGD (fp32):              weights 4 + grads 4                  =  8 B/param
+    SGD + momentum:          weights 4 + grads 4 + momentum 4     = 12 B/param
+    Adam, mixed precision:   master 4 + grads 4 + m 4 + v 4       = 16 B/param
+    variant:                 stacks keeping a bf16 compute copy add 2        = 18 B/param
+    Day 34&#x27;s XOR net, 17 params, under Adam: 272 bytes total
+  Part 2 - static bill: weights + grads + optimizer (Adam, 16 B/param)
+    model  params   static (no acts)  bf16 weights only  80GB GPUs to stand still
+       7B      7B           112.0 GB            14.0 GB                         2
+      13B     13B           208.0 GB            26.0 GB                         3
+      70B     70B          1120.0 GB           140.0 GB                        14
+     405B    405B          6480.0 GB           810.0 GB                        81
+    a 70B model&#x27;s STATIC bill is 1.12 TB - and not one token has moved yet
+  Part 3 - activations: the tape autograd saves for backward
+    config: 80 layers, d_model 8192, batch 8 x seq 4096 = 32768 tokens, bf16
+    stated assumption: ~16 saved hidden-sized tensors per layer
+    saved per token per layer: 262144 bytes (0.25 MB)
+    activations, no checkpointing:     687.19 GB
+    gradient checkpointing: boundaries 42.95 GB + one layer recomputed 8.59 GB
+    70B step total, no checkpointing: 1120.0 static + 687.19 acts = 1807.19 GB -&gt; 23 GPUs
+    70B step total, checkpointing: 1120.0 static + 51.54 acts = 1171.54 GB -&gt; 15 GPUs
+    verdict: the wall is arithmetic, not engineering - 16 B/param + activations
+    vs 80 GB/card is WHY Days 74-76 (splitting the bill) exist
+&quot;&quot;&quot;
+import math
+
+GB = 1e9                      # gigabytes as sold: 10^9 bytes
+GPU_GB = 80                   # one H100/A100-class card
+
+# ---------- Part 1: bytes per parameter ----------
+print(&quot;Part 1 - bytes per parameter: the optimizer is the landlord&quot;)
+recipes = [
+    (&quot;SGD (fp32):&quot;, &quot;weights 4 + grads 4&quot;, 4 + 4),
+    (&quot;SGD + momentum:&quot;, &quot;weights 4 + grads 4 + momentum 4&quot;, 4 + 4 + 4),
+    (&quot;Adam, mixed precision:&quot;, &quot;master 4 + grads 4 + m 4 + v 4&quot;,
+     4 + 4 + 4 + 4),
+]
+for name, parts, total in recipes:
+    print(f&quot;  {name:&lt;24} {parts:&lt;36} = {total:&gt;2} B/param&quot;)
+print(f&quot;  {&#x27;variant:&#x27;:&lt;24} stacks keeping a bf16 compute copy &quot;
+      f&quot;add 2        = 18 B/param&quot;)
+print(f&quot;  Day 34&#x27;s XOR net, 17 params, under Adam: {17 * 16} bytes total&quot;)
+ADAM_BPP = recipes[-1][2]     # 16 - the recipe Parts 2-3 use
+
+# ---------- Part 2: the static bill ----------
+print(&quot;Part 2 - static bill: weights + grads + optimizer &quot;
+      &quot;(Adam, 16 B/param)&quot;)
+print(f&quot;  {&#x27;model&#x27;:&gt;5} {&#x27;params&#x27;:&gt;7} {&#x27;static (no acts)&#x27;:&gt;18} &quot;
+      f&quot;{&#x27;bf16 weights only&#x27;:&gt;18} {&#x27;80GB GPUs to stand still&#x27;:&gt;25}&quot;)
+for label, params_b in ((&quot;7B&quot;, 7), (&quot;13B&quot;, 13), (&quot;70B&quot;, 70),
+                        (&quot;405B&quot;, 405)):
+    params = params_b * GB
+    static_gb = params * ADAM_BPP / GB
+    weights_gb = params * 2 / GB          # inference: bf16 weights
+    gpus = math.ceil(static_gb / GPU_GB)
+    print(f&quot;  {label:&gt;5} {params_b:&gt;6}B {static_gb:&gt;15.1f} GB &quot;
+          f&quot;{weights_gb:&gt;15.1f} GB {gpus:&gt;25}&quot;)
+print(&quot;  a 70B model&#x27;s STATIC bill is 1.12 TB - and not one token &quot;
+      &quot;has moved yet&quot;)
+
+# ---------- Part 3: activations ----------
+print(&quot;Part 3 - activations: the tape autograd saves for backward&quot;)
+LAYERS, D_MODEL = 80, 8192                # a 70B-class transformer
+BATCH, SEQ = 8, 4096                      # per-device micro-batch
+TOKENS = BATCH * SEQ
+SAVED_PER_LAYER = 16      # stated simplification: ~16 saved tensors
+BYTES = 2                                 # bf16 activations
+per_token_layer = SAVED_PER_LAYER * D_MODEL * BYTES
+acts_gb = per_token_layer * LAYERS * TOKENS / GB
+bounds_gb = TOKENS * D_MODEL * BYTES * LAYERS / GB   # boundaries only
+recompute_gb = per_token_layer * TOKENS / GB         # one layer redone
+static70 = 70 * ADAM_BPP                          # 1120.0 GB, Part 2
+print(f&quot;  config: {LAYERS} layers, d_model {D_MODEL}, batch {BATCH} &quot;
+      f&quot;x seq {SEQ} = {TOKENS} tokens, bf16&quot;)
+print(f&quot;  stated assumption: ~{SAVED_PER_LAYER} saved hidden-sized &quot;
+      &quot;tensors per layer&quot;)
+print(f&quot;  saved per token per layer: {per_token_layer} bytes (0.25 MB)&quot;)
+print(f&quot;  activations, no checkpointing:     {acts_gb:.2f} GB&quot;)
+print(f&quot;  gradient checkpointing: boundaries {bounds_gb:.2f} GB + one &quot;
+      f&quot;layer recomputed {recompute_gb:.2f} GB&quot;)
+ckpt_acts = bounds_gb + recompute_gb
+for label, total in ((&quot;no checkpointing&quot;, static70 + acts_gb),
+                     (&quot;checkpointing&quot;, static70 + ckpt_acts)):
+    acts = total - static70
+    print(f&quot;  70B step total, {label}: {static70:.1f} static + &quot;
+          f&quot;{acts:.2f} acts = {total:.2f} GB -&gt; &quot;
+          f&quot;{math.ceil(total / GPU_GB)} GPUs&quot;)
+print(&quot;  verdict: the wall is arithmetic, not engineering - &quot;
+      &quot;16 B/param + activations&quot;)
+print(&quot;  vs 80 GB/card is WHY Days 74-76 (splitting the bill) exist&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - bytes per parameter: the optimizer is the landlord
+  SGD (fp32):              weights 4 + grads 4                  =  8 B/param
+  SGD + momentum:          weights 4 + grads 4 + momentum 4     = 12 B/param
+  Adam, mixed precision:   master 4 + grads 4 + m 4 + v 4       = 16 B/param
+  variant:                 stacks keeping a bf16 compute copy add 2        = 18 B/param
+  Day 34&#x27;s XOR net, 17 params, under Adam: 272 bytes total
+Part 2 - static bill: weights + grads + optimizer (Adam, 16 B/param)
+  model  params   static (no acts)  bf16 weights only  80GB GPUs to stand still
+     7B      7B           112.0 GB            14.0 GB                         2
+    13B     13B           208.0 GB            26.0 GB                         3
+    70B     70B          1120.0 GB           140.0 GB                        14
+   405B    405B          6480.0 GB           810.0 GB                        81
+  a 70B model&#x27;s STATIC bill is 1.12 TB - and not one token has moved yet
+Part 3 - activations: the tape autograd saves for backward
+  config: 80 layers, d_model 8192, batch 8 x seq 4096 = 32768 tokens, bf16
+  stated assumption: ~16 saved hidden-sized tensors per layer
+  saved per token per layer: 262144 bytes (0.25 MB)
+  activations, no checkpointing:     687.19 GB
+  gradient checkpointing: boundaries 42.95 GB + one layer recomputed 8.59 GB
+  70B step total, no checkpointing: 1120.0 static + 687.19 acts = 1807.19 GB -&gt; 23 GPUs
+  70B step total, checkpointing: 1120.0 static + 51.54 acts = 1171.54 GB -&gt; 15 GPUs
+  verdict: the wall is arithmetic, not engineering - 16 B/param + activations
+  vs 80 GB/card is WHY Days 74-76 (splitting the bill) exist</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints Part 2&rsquo;s table &mdash; 70B static <code>1120.0 GB</code>, <code>14</code> GPUs to stand still, 405B at <code>81</code> &mdash; and Part 3&rsquo;s two totals: <code>1807.19 GB -&gt; 23 GPUs</code> without checkpointing, <code>1171.54 GB -&gt; 15 GPUs</code> with it. Keeper test, no notes: someone names a model size and an optimizer, and you produce the static bill and the GPU floor in your head &mdash; parameters &times; bytes-per-param &divide; 80 GB &mdash; and you can name the four things the 16 bytes buy.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the stacked bar until the red dash makes you wince, then run only Part 2. If you can say where the 16 comes from (4 + 4 + 4 + 4) and why activations scale with batch while the static bill scales with parameters, you have the day &mdash; Part 3 is the receipt.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the first way to split the bill &mdash; every GPU holds a full copy of the model, and what gets divided instead is the data. Why that is the easy 80% of scaling, and where it stops working.</p>
+  </div>
+
+  <div class="footer">Streak: 73 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
