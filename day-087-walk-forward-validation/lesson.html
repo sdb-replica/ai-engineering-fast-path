@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walk-Forward Validation: The Only Honest Backtest — Day 87 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 87 of 100</span>
+  <h1>Walk-Forward Validation: The Only Honest Backtest</h1>
+  <p class="outcome">Tonight you'll be able to: grade any time-series model the way time actually flows &mdash; train on [0..t], test on the next block, roll forward &mdash; and watch one honest model score 0.6587 under a random split but 0.5476 walk-forward, with its final fold at 0.1270.</p>
+
+  <h2>The one idea</h2>
+  <p>Every validation scheme is secretly a claim about the future. Random k-fold&rsquo;s claim is: <em>days are interchangeable</em> &mdash; shuffle them, train on 80%, test on 20%, which day landed where doesn&rsquo;t matter. For photos of cats that&rsquo;s true. For a time series it is false three separate ways, and Phase G has now met all three: neighbouring days resemble each other (<strong>autocorrelation</strong>), the world changes underneath the model (<strong>regimes</strong>, Day 83), and a label isn&rsquo;t known until days after the sample was taken (<strong>overlapping labels</strong>, Day 86). Shuffle the days and each of those facts becomes a leak.</p>
+<p>Watch the leaks work. A model trained on shuffled days trains on days <em>after</em> its test days &mdash; it has already seen the regime it is being graded on. And the test set blends every regime in the sample, so a model that is excellent in the long regime and catastrophic in the short one averages out to one respectable number. Neither fact appears anywhere in the score. Both appear immediately in live trading.</p>
+<p><strong>Walk-forward validation</strong> refuses the shuffle. Fix a first test day. Train on everything before it &mdash; or, in the <em>rolling</em> variant, on a fixed-length window of the most recent past. Test on the next block of days. Then step the whole apparatus forward and repeat until the data runs out. Every test score was earned on days the model had never seen, in the order a live account would have met them. Tonight&rsquo;s code uses the <em>expanding</em> window: train [0..t], test the next 63 days, step 63, six folds.</p>
+<p>The pooled walk-forward score matters, but the <strong>fold path</strong> is the diagnosis. A strategy is lived as a path, not an average: which folds earned the score, where it broke, whether it recovered. A random split cannot even draw that picture &mdash; all of its folds are the same shuffled world, so every fold tells the same blended story.</p>
+<p>One refinement, from L&oacute;pez de Prado, that becomes mandatory the moment labels overlap: <strong>purge</strong> &mdash; drop any training sample whose label window overlaps the test block, so no near-duplicate straddles the boundary; and <strong>embargo</strong> &mdash; in rolling schemes, leave a small gap of unused days after each test block before training resumes, so autocorrelated label windows can&rsquo;t leak across either. Walk-forward without purging is honest about order and still sloppy about overlap. With both, it is the strictest grade a backtest can earn short of live trading.</p>
+<p>So the house rule for every finance model from tonight on: <strong>a single shuffled-split score is marketing. Ask for the fold table.</strong></p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already run this distinction at work. Random k-fold is &ldquo;testing&rdquo; a restore against a replica that has already received the post-incident writes: of course the restore validates &mdash; the answer was in the building before the test started. Walk-forward is the real restore drill: cold backup, replay in order, no peeking at state written after the snapshot.</p><p>Trading version, one line: a random split grades your strategy on an exam whose answer key was mixed into the study material; walk-forward is the same exam sat in order, with the future chapters still sealed.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 448" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="448" rx="0" fill="#ffffff" stroke="none"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Walk-forward: train on the past, test on the future, roll</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">630 days, one regime flip at day 472 - the same model, graded two ways</text>
+<rect x="12" y="54" width="656" height="196" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - WALK-FORWARD (expanding window): every test block is strictly after its training data</text>
+<text x="495.5" y="94" text-anchor="middle" font-size="9" fill="#c0272d" font-weight="bold">regime flip - day 472</text>
+<text x="46" y="106" font-size="9.5" fill="#1c1c1e">fold 1 - train [0, 250) - test [250, 313)</text>
+<rect x="46.0" y="110" width="238.1" height="16" fill="#0a7aff"/>
+<text x="165.0" y="122" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="284.1" y="110" width="60.0" height="16" fill="#22a355"/>
+<text x="314.1" y="122" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<text x="46" y="142" font-size="9.5" fill="#1c1c1e">fold 3 - train [0, 376) - test [376, 439)</text>
+<rect x="46.0" y="146" width="358.1" height="16" fill="#0a7aff"/>
+<text x="225.0" y="158" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="404.1" y="146" width="60.0" height="16" fill="#22a355"/>
+<text x="434.1" y="158" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<text x="46" y="178" font-size="9.5" fill="#1c1c1e">fold 5 - train [0, 502) - test [502, 565)</text>
+<rect x="46.0" y="182" width="478.1" height="16" fill="#0a7aff"/>
+<text x="285.0" y="194" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="524.1" y="182" width="60.0" height="16" fill="#22a355"/>
+<text x="554.1" y="194" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<line x1="495.5" y1="88" x2="495.5" y2="202" stroke="#c0272d" stroke-width="1.4" stroke-dasharray="4 3"/>
+<line x1="46.0" y1="204" x2="46.0" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="46.0" y="221" text-anchor="middle" font-size="8.5" fill="#777777">day 0</text>
+<line x1="284.1" y1="204" x2="284.1" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="284.1" y="221" text-anchor="middle" font-size="8.5" fill="#777777">250</text>
+<line x1="495.5" y1="204" x2="495.5" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="495.5" y="221" text-anchor="middle" font-size="8.5" fill="#777777">472</text>
+<line x1="646.0" y1="204" x2="646.0" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="646.0" y="221" text-anchor="middle" font-size="8.5" fill="#777777">630</text>
+<text x="46" y="240" font-size="9" fill="#555555">fold 5's test block is 100% new-regime - graded 0.2381 by a model trained on 502 days of the old world</text>
+<rect x="12" y="264" width="656" height="104" rx="10" fill="#ffffff" stroke="#c0272d" stroke-width="1.2"/>
+<text x="340" y="286" text-anchor="middle" font-size="11" fill="#b03030" font-weight="bold">B - SHUFFLED K-FOLD (the lie): test days scattered through the training data</text>
+<rect x="46.0" y="296" width="11.5" height="18" fill="#bcd7ff"/>
+<rect x="57.5" y="296" width="12.2" height="18" fill="#f5a623"/>
+<rect x="69.7" y="296" width="23.3" height="18" fill="#bcd7ff"/>
+<rect x="93.0" y="296" width="18.2" height="18" fill="#f5a623"/>
+<rect x="111.2" y="296" width="13.8" height="18" fill="#bcd7ff"/>
+<rect x="124.9" y="296" width="14.7" height="18" fill="#f5a623"/>
+<rect x="139.6" y="296" width="18.2" height="18" fill="#bcd7ff"/>
+<rect x="157.9" y="296" width="14.6" height="18" fill="#f5a623"/>
+<rect x="172.4" y="296" width="21.1" height="18" fill="#bcd7ff"/>
+<rect x="193.5" y="296" width="11.1" height="18" fill="#f5a623"/>
+<rect x="204.6" y="296" width="15.2" height="18" fill="#bcd7ff"/>
+<rect x="219.8" y="296" width="13.7" height="18" fill="#f5a623"/>
+<rect x="233.5" y="296" width="21.8" height="18" fill="#bcd7ff"/>
+<rect x="255.3" y="296" width="23.2" height="18" fill="#f5a623"/>
+<rect x="278.5" y="296" width="17.7" height="18" fill="#bcd7ff"/>
+<rect x="296.2" y="296" width="24.2" height="18" fill="#f5a623"/>
+<rect x="320.4" y="296" width="10.2" height="18" fill="#bcd7ff"/>
+<rect x="330.6" y="296" width="20.5" height="18" fill="#f5a623"/>
+<rect x="351.1" y="296" width="13.3" height="18" fill="#bcd7ff"/>
+<rect x="364.3" y="296" width="12.2" height="18" fill="#f5a623"/>
+<rect x="376.5" y="296" width="18.5" height="18" fill="#bcd7ff"/>
+<rect x="395.0" y="296" width="10.4" height="18" fill="#f5a623"/>
+<rect x="405.4" y="296" width="9.5" height="18" fill="#bcd7ff"/>
+<rect x="414.8" y="296" width="13.7" height="18" fill="#f5a623"/>
+<rect x="428.6" y="296" width="19.1" height="18" fill="#bcd7ff"/>
+<rect x="447.7" y="296" width="20.1" height="18" fill="#f5a623"/>
+<rect x="467.8" y="296" width="22.8" height="18" fill="#bcd7ff"/>
+<rect x="490.6" y="296" width="14.5" height="18" fill="#f5a623"/>
+<rect x="505.1" y="296" width="20.1" height="18" fill="#bcd7ff"/>
+<rect x="525.2" y="296" width="25.6" height="18" fill="#f5a623"/>
+<rect x="550.8" y="296" width="25.2" height="18" fill="#bcd7ff"/>
+<rect x="576.0" y="296" width="12.5" height="18" fill="#f5a623"/>
+<rect x="588.6" y="296" width="14.9" height="18" fill="#bcd7ff"/>
+<rect x="603.5" y="296" width="12.3" height="18" fill="#f5a623"/>
+<rect x="615.8" y="296" width="19.1" height="18" fill="#bcd7ff"/>
+<rect x="634.9" y="296" width="11.1" height="18" fill="#f5a623"/>
+<line x1="30" y1="290" x2="650" y2="356" stroke="#c0272d" stroke-width="2.5" opacity="0.8"/>
+<line x1="650" y1="290" x2="30" y2="356" stroke="#c0272d" stroke-width="2.5" opacity="0.8"/>
+<rect x="46" y="326" width="10" height="10" fill="#bcd7ff" stroke="#0a7aff"/>
+<text x="60" y="335" font-size="9" fill="#1c1c1e">train day</text>
+<rect x="140" y="326" width="10" height="10" fill="#f5a623"/>
+<text x="154" y="335" font-size="9" fill="#1c1c1e">test day</text>
+<text x="340" y="356" text-anchor="middle" font-size="9.5" fill="#b03030">the model trains on days after its test days - it has already seen the regime it is graded on</text>
+<rect x="12" y="382" width="656" height="52" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="404" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Lopez de Prado refinement: PURGE + EMBARGO</text>
+<text x="340" y="422" text-anchor="middle" font-size="8.5" fill="#1c1c1e">purge train samples whose labels overlap the test block - embargo a gap after it - Day 86's labels overlap, so both are mandatory</text>
+</svg>
+    <div class="caption">Top: walk-forward &mdash; the training window grows from the left edge and each 63-day test block sits strictly in its future; the dashed line is the day-472 regime flip, and fold 5&rsquo;s test block is graded entirely in the new world. Bottom: the shuffled split it replaces &mdash; test days scattered through the training data, so the model is graded on days whose regime it has already trained on.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One model, one synthetic world, two grades. The world is stated in the open, so you can audit it: a slow, autocorrelated feature (&phi; = 0.85 &mdash; a trend-gauge stand-in), tomorrow&rsquo;s return = &beta;&middot;x + noise, and &beta; = +1.3 until day 472, when the regime flips it to &minus;1.3 (Day 83&rsquo;s non-stationarity, weaponised). The model is a single OLS slope, refit inside each evaluation on that evaluation&rsquo;s training days only; the metric is directional accuracy &mdash; did sign(&beta;&#770;&middot;x) match the sign of the return. <strong>Part 1</strong> grades it the flattering way: shuffled 80/20. <strong>Part 2</strong> grades the identical model walk-forward. <strong>Part 3</strong> prints the gap. Watch fold 4 (the block that straddles the flip) and fold 6&rsquo;s &beta;&#770; &mdash; the expanding window never adapts.</p>
+  <pre><code>&quot;&quot;&quot;Day 87 - Walk-Forward Validation: The Only Honest Backtest.
+
+Phase G has been circling one rule since Day 32: a model may
+only ever be graded on days it could not have seen. Tonight
+that rule becomes a full validation scheme - and the demo is
+two grades for ONE model on ONE dataset:
+
+  Evaluation A  random 80/20 split (shuffled k-fold&#x27;s baby
+                picture). The training pool contains days
+                from AFTER the test days, and the test set
+                blends both market regimes into one average.
+  Evaluation B  walk-forward. Train on [0..t], test on the
+                next 63 days, step forward, repeat. No test
+                day is ever in training, and every fold&#x27;s
+                score is earned in chronological order -
+                the way live trading would have felt it.
+
+The world (synthetic, stated so you can audit it): a feature
+x (think: a slow trend gauge) that is autocorrelated - x
+today is 0.85 of x yesterday plus fresh noise. Tomorrow&#x27;s
+return is beta * x + noise, sigma 1. Beta is +1.3 for the
+first 472 days - a real, strong signal - then the regime
+flips (Day 83) and beta becomes -1.3 for the last 158. The
+model is the simplest thing that can learn this: one OLS
+slope fit on its training days, predict the sign of beta*x.
+
+The random split will report a blended beta (mostly the old
+regime) and a blended accuracy that looks tradeable. The
+walk-forward fold table will show what actually happened:
+three strong folds, one coin-flip fold straddling the flip,
+then two folds where the model is confidently WRONG - and
+an expanding training window that never adapts, because 472
+days of dead regime outweigh 93 days of new one.
+
+Runs on the ~/ai-lab venv: numpy only (free), no CUDA, no
+paid APIs, no downloads. Seed 87 fixes every draw, so every
+digit below is exact and reproducible.
+
+Expected output:
+
+  Part 1 - random 80/20 split (the flattering grade)
+    beta_hat fit on 504 shuffled days: +0.814  (a blend of both regimes)
+    test accuracy: 0.6587  (83/126)  &lt;- looks tradeable
+    ...but the test set is a blend of two different worlds:
+      pre-flip test days:  0.8163
+      post-flip test days: 0.1071  &lt;- averaged away in the headline
+  Part 2 - walk-forward: train [0..t], test the next 63 days, roll
+    fold 1: train [0,250)  test [250,313)  beta_hat +1.221  acc 0.7619
+    fold 2: train [0,313)  test [313,376)  beta_hat +1.213  acc 0.8413
+    fold 3: train [0,376)  test [376,439)  beta_hat +1.223  acc 0.8095
+    fold 4: train [0,439)  test [439,502)  beta_hat +1.256  acc 0.5079
+    fold 5: train [0,502)  test [502,565)  beta_hat +1.182  acc 0.2381
+    fold 6: train [0,565)  test [565,628)  beta_hat +1.011  acc 0.1270
+    pooled out-of-sample accuracy: 0.5476  (207/378 test days, none ever trained on)
+  Part 3 - verdict
+    random split says 0.6587; walk-forward says 0.5476 - a 0.1111 honesty gap
+    the fold path is the real story: the score was earned in the
+    old regime, the flip fold is a coin toss, and the last folds
+    are worse than chance - the model never adapted, because an
+    expanding window drowns 93 new-regime days in 472 dead ones
+    a single shuffled number would have shipped this strategy
+&quot;&quot;&quot;
+import numpy as np
+
+SEED = 87
+N = 630            # trading days, ~2.5 years
+FLIP = 472         # day the regime flips: beta changes sign
+BETA = 1.3         # true feature strength before the flip
+PHI = 0.85         # feature autocorrelation
+
+rng = np.random.default_rng(SEED)
+
+# --- the world: autocorrelated feature, one regime flip ---
+innov = rng.normal(0.0, np.sqrt(1 - PHI ** 2), N)
+x = np.zeros(N)
+for t in range(1, N):
+    x[t] = PHI * x[t - 1] + innov[t]          # slow-moving gauge
+beta_true = np.where(np.arange(N) &lt; FLIP, BETA, -BETA)
+r = beta_true * x + rng.normal(0.0, 1.0, N)   # next-day return
+
+
+def fit_beta(idx):
+    &quot;&quot;&quot;OLS slope through the origin on the training days only.&quot;&quot;&quot;
+    return float(np.sum(x[idx] * r[idx]) / np.sum(x[idx] * x[idx]))
+
+
+def score(idx, b):
+    &quot;&quot;&quot;Directional accuracy of sign(b * x) against sign(r).&quot;&quot;&quot;
+    hits = np.sign(b * x[idx]) == np.sign(r[idx])
+    return float(np.mean(hits)), int(np.count_nonzero(hits))
+
+
+# ---------- Part 1: the same model, graded the flattering way ----------
+print(&quot;Part 1 - random 80/20 split (the flattering grade)&quot;)
+perm = rng.permutation(N)                     # shuffle the days
+tr, te = perm[:504], perm[504:]
+b_a = fit_beta(tr)
+acc_a, hits_a = score(te, b_a)
+pre = te[te &lt; FLIP]
+post = te[te &gt;= FLIP]
+print(f&quot;  beta_hat fit on 504 shuffled days: {b_a:+.3f}&quot;
+      &quot;  (a blend of both regimes)&quot;)
+print(f&quot;  test accuracy: {acc_a:.4f}  ({hits_a}/{len(te)})&quot;
+      &quot;  &lt;- looks tradeable&quot;)
+print(&quot;  ...but the test set is a blend of two different worlds:&quot;)
+print(f&quot;    pre-flip test days:  {score(pre, b_a)[0]:.4f}&quot;)
+print(f&quot;    post-flip test days: {score(post, b_a)[0]:.4f}&quot;
+      &quot;  &lt;- averaged away in the headline&quot;)
+
+# ---------- Part 2: the same model, graded the honest way ----------
+print(&quot;Part 2 - walk-forward: train [0..t], test the next 63 days, roll&quot;)
+TRAIN0, H = 250, 63
+tot_days, tot_hits = 0, 0
+start, fold = TRAIN0, 1
+while start + H &lt;= N:
+    tr = np.arange(0, start)                  # strictly the past
+    te = np.arange(start, start + H)          # strictly the future
+    b = fit_beta(tr)
+    acc, hits = score(te, b)
+    print(f&quot;  fold {fold}: train [0,{start})  test [{start},{start + H})&quot;
+          f&quot;  beta_hat {b:+.3f}  acc {acc:.4f}&quot;)
+    tot_days += len(te)
+    tot_hits += hits
+    start += H
+    fold += 1
+acc_b = tot_hits / tot_days
+print(f&quot;  pooled out-of-sample accuracy: {acc_b:.4f}&quot;
+      f&quot;  ({tot_hits}/{tot_days} test days, none ever trained on)&quot;)
+
+# ---------- Part 3: verdict ----------
+print(&quot;Part 3 - verdict&quot;)
+print(f&quot;  random split says {acc_a:.4f}; walk-forward says {acc_b:.4f}&quot;
+      f&quot; - a {acc_a - acc_b:.4f} honesty gap&quot;)
+print(&quot;  the fold path is the real story: the score was earned in the&quot;)
+print(&quot;  old regime, the flip fold is a coin toss, and the last folds&quot;)
+print(&quot;  are worse than chance - the model never adapted, because an&quot;)
+print(&quot;  expanding window drowns 93 new-regime days in 472 dead ones&quot;)
+print(&quot;  a single shuffled number would have shipped this strategy&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - random 80/20 split (the flattering grade)
+  beta_hat fit on 504 shuffled days: +0.814  (a blend of both regimes)
+  test accuracy: 0.6587  (83/126)  &lt;- looks tradeable
+  ...but the test set is a blend of two different worlds:
+    pre-flip test days:  0.8163
+    post-flip test days: 0.1071  &lt;- averaged away in the headline
+Part 2 - walk-forward: train [0..t], test the next 63 days, roll
+  fold 1: train [0,250)  test [250,313)  beta_hat +1.221  acc 0.7619
+  fold 2: train [0,313)  test [313,376)  beta_hat +1.213  acc 0.8413
+  fold 3: train [0,376)  test [376,439)  beta_hat +1.223  acc 0.8095
+  fold 4: train [0,439)  test [439,502)  beta_hat +1.256  acc 0.5079
+  fold 5: train [0,502)  test [502,565)  beta_hat +1.182  acc 0.2381
+  fold 6: train [0,565)  test [565,628)  beta_hat +1.011  acc 0.1270
+  pooled out-of-sample accuracy: 0.5476  (207/378 test days, none ever trained on)
+Part 3 - verdict
+  random split says 0.6587; walk-forward says 0.5476 - a 0.1111 honesty gap
+  the fold path is the real story: the score was earned in the
+  old regime, the flip fold is a coin toss, and the last folds
+  are worse than chance - the model never adapted, because an
+  expanding window drowns 93 new-regime days in 472 dead ones
+  a single shuffled number would have shipped this strategy</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints the two headline numbers &mdash; random split <code>0.6587</code>, walk-forward <code>0.5476</code> &mdash; and you can point at fold 6 and explain both halves of its <code>0.1270</code>: the relationship inverted at day 472, and the model&rsquo;s &beta;&#770; is still <code>+1.011</code> because 472 days of dead regime outweigh 93 days of new one. The keeper test, no notes allowed: someone shows you a backtest quoting one shuffled-split accuracy, and you ask for the fold table &mdash; and can say exactly what the folds would have to show to change your mind.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s two panels, then run the code and read only Part 2&rsquo;s fold table and Part 3. If you can say why the random split&rsquo;s own post-flip slice (<code>0.1071</code>) is the most honest number in Part 1, you have the lesson &mdash; the purge/embargo paragraph is the one part to come back for.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow the capstone builds begin: the pieces from Days 85&ndash;87 &mdash; features, labels, and this validation &mdash; assembled into one end-to-end pipeline on equity data from your watchlist.</p>
+  </div>
+
+  <div class="footer">Streak: 87 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

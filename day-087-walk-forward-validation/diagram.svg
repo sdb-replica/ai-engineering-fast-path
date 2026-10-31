@@ -1,0 +1,81 @@
+<svg viewBox="0 0 680 448" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="448" rx="0" fill="#ffffff" stroke="none"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Walk-forward: train on the past, test on the future, roll</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">630 days, one regime flip at day 472 - the same model, graded two ways</text>
+<rect x="12" y="54" width="656" height="196" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">A - WALK-FORWARD (expanding window): every test block is strictly after its training data</text>
+<text x="495.5" y="94" text-anchor="middle" font-size="9" fill="#c0272d" font-weight="bold">regime flip - day 472</text>
+<text x="46" y="106" font-size="9.5" fill="#1c1c1e">fold 1 - train [0, 250) - test [250, 313)</text>
+<rect x="46.0" y="110" width="238.1" height="16" fill="#0a7aff"/>
+<text x="165.0" y="122" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="284.1" y="110" width="60.0" height="16" fill="#22a355"/>
+<text x="314.1" y="122" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<text x="46" y="142" font-size="9.5" fill="#1c1c1e">fold 3 - train [0, 376) - test [376, 439)</text>
+<rect x="46.0" y="146" width="358.1" height="16" fill="#0a7aff"/>
+<text x="225.0" y="158" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="404.1" y="146" width="60.0" height="16" fill="#22a355"/>
+<text x="434.1" y="158" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<text x="46" y="178" font-size="9.5" fill="#1c1c1e">fold 5 - train [0, 502) - test [502, 565)</text>
+<rect x="46.0" y="182" width="478.1" height="16" fill="#0a7aff"/>
+<text x="285.0" y="194" text-anchor="middle" font-size="8.5" fill="#ffffff">train</text>
+<rect x="524.1" y="182" width="60.0" height="16" fill="#22a355"/>
+<text x="554.1" y="194" text-anchor="middle" font-size="8.5" fill="#ffffff">test</text>
+<line x1="495.5" y1="88" x2="495.5" y2="202" stroke="#c0272d" stroke-width="1.4" stroke-dasharray="4 3"/>
+<line x1="46.0" y1="204" x2="46.0" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="46.0" y="221" text-anchor="middle" font-size="8.5" fill="#777777">day 0</text>
+<line x1="284.1" y1="204" x2="284.1" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="284.1" y="221" text-anchor="middle" font-size="8.5" fill="#777777">250</text>
+<line x1="495.5" y1="204" x2="495.5" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="495.5" y="221" text-anchor="middle" font-size="8.5" fill="#777777">472</text>
+<line x1="646.0" y1="204" x2="646.0" y2="209" stroke="#999999" stroke-width="1"/>
+<text x="646.0" y="221" text-anchor="middle" font-size="8.5" fill="#777777">630</text>
+<text x="46" y="240" font-size="9" fill="#555555">fold 5's test block is 100% new-regime - graded 0.2381 by a model trained on 502 days of the old world</text>
+<rect x="12" y="264" width="656" height="104" rx="10" fill="#ffffff" stroke="#c0272d" stroke-width="1.2"/>
+<text x="340" y="286" text-anchor="middle" font-size="11" fill="#b03030" font-weight="bold">B - SHUFFLED K-FOLD (the lie): test days scattered through the training data</text>
+<rect x="46.0" y="296" width="11.5" height="18" fill="#bcd7ff"/>
+<rect x="57.5" y="296" width="12.2" height="18" fill="#f5a623"/>
+<rect x="69.7" y="296" width="23.3" height="18" fill="#bcd7ff"/>
+<rect x="93.0" y="296" width="18.2" height="18" fill="#f5a623"/>
+<rect x="111.2" y="296" width="13.8" height="18" fill="#bcd7ff"/>
+<rect x="124.9" y="296" width="14.7" height="18" fill="#f5a623"/>
+<rect x="139.6" y="296" width="18.2" height="18" fill="#bcd7ff"/>
+<rect x="157.9" y="296" width="14.6" height="18" fill="#f5a623"/>
+<rect x="172.4" y="296" width="21.1" height="18" fill="#bcd7ff"/>
+<rect x="193.5" y="296" width="11.1" height="18" fill="#f5a623"/>
+<rect x="204.6" y="296" width="15.2" height="18" fill="#bcd7ff"/>
+<rect x="219.8" y="296" width="13.7" height="18" fill="#f5a623"/>
+<rect x="233.5" y="296" width="21.8" height="18" fill="#bcd7ff"/>
+<rect x="255.3" y="296" width="23.2" height="18" fill="#f5a623"/>
+<rect x="278.5" y="296" width="17.7" height="18" fill="#bcd7ff"/>
+<rect x="296.2" y="296" width="24.2" height="18" fill="#f5a623"/>
+<rect x="320.4" y="296" width="10.2" height="18" fill="#bcd7ff"/>
+<rect x="330.6" y="296" width="20.5" height="18" fill="#f5a623"/>
+<rect x="351.1" y="296" width="13.3" height="18" fill="#bcd7ff"/>
+<rect x="364.3" y="296" width="12.2" height="18" fill="#f5a623"/>
+<rect x="376.5" y="296" width="18.5" height="18" fill="#bcd7ff"/>
+<rect x="395.0" y="296" width="10.4" height="18" fill="#f5a623"/>
+<rect x="405.4" y="296" width="9.5" height="18" fill="#bcd7ff"/>
+<rect x="414.8" y="296" width="13.7" height="18" fill="#f5a623"/>
+<rect x="428.6" y="296" width="19.1" height="18" fill="#bcd7ff"/>
+<rect x="447.7" y="296" width="20.1" height="18" fill="#f5a623"/>
+<rect x="467.8" y="296" width="22.8" height="18" fill="#bcd7ff"/>
+<rect x="490.6" y="296" width="14.5" height="18" fill="#f5a623"/>
+<rect x="505.1" y="296" width="20.1" height="18" fill="#bcd7ff"/>
+<rect x="525.2" y="296" width="25.6" height="18" fill="#f5a623"/>
+<rect x="550.8" y="296" width="25.2" height="18" fill="#bcd7ff"/>
+<rect x="576.0" y="296" width="12.5" height="18" fill="#f5a623"/>
+<rect x="588.6" y="296" width="14.9" height="18" fill="#bcd7ff"/>
+<rect x="603.5" y="296" width="12.3" height="18" fill="#f5a623"/>
+<rect x="615.8" y="296" width="19.1" height="18" fill="#bcd7ff"/>
+<rect x="634.9" y="296" width="11.1" height="18" fill="#f5a623"/>
+<line x1="30" y1="290" x2="650" y2="356" stroke="#c0272d" stroke-width="2.5" opacity="0.8"/>
+<line x1="650" y1="290" x2="30" y2="356" stroke="#c0272d" stroke-width="2.5" opacity="0.8"/>
+<rect x="46" y="326" width="10" height="10" fill="#bcd7ff" stroke="#0a7aff"/>
+<text x="60" y="335" font-size="9" fill="#1c1c1e">train day</text>
+<rect x="140" y="326" width="10" height="10" fill="#f5a623"/>
+<text x="154" y="335" font-size="9" fill="#1c1c1e">test day</text>
+<text x="340" y="356" text-anchor="middle" font-size="9.5" fill="#b03030">the model trains on days after its test days - it has already seen the regime it is graded on</text>
+<rect x="12" y="382" width="656" height="52" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="404" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Lopez de Prado refinement: PURGE + EMBARGO</text>
+<text x="340" y="422" text-anchor="middle" font-size="8.5" fill="#1c1c1e">purge train samples whose labels overlap the test block - embargo a gap after it - Day 86's labels overlap, so both are mandatory</text>
+</svg>
