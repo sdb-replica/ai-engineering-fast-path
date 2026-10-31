@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inference at Scale: Disaggregated Serving &amp; Speculative Decoding — Day 80 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 80 of 100</span>
+  <h1>Inference at Scale: Disaggregated Serving &amp; Speculative Decoding</h1>
+  <p class="outcome">Tonight you'll be able to: name the two scale-out patterns frontier serving stacks are converging on &mdash; split prefill and decode onto separate GPU pools, and let a tiny draft model propose tokens that the big model verifies in one pass &mdash; and price both of them: the KV-cache handoff tax and the acceptance-rate speedup, from stated constants you can audit.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase E left you with one engine running two clocks that fight. A long prompt's <strong>prefill</strong> &mdash; compute-bound, the whole prompt processed in parallel &mdash; lands in the same machinery as everyone's <strong>decode</strong> &mdash; bandwidth-bound, one serial token per step (Days 48, 66). Continuous batching (Day 64) juggles the two; the batch sweep (Day 66) priced the truce. At frontier scale, operators stopped trucing and started separating. Tonight is a survey of the two patterns that came out of that &mdash; patterns, not product tours: the plumbing differs by vendor, the shapes don't.</p>
+<p><strong>Pattern 1: disaggregated prefill/decode.</strong> Give each clock its own GPU pool. The prefill pool crunches prompts and nothing else; the decode pool runs the serial token loop and nothing else; each pool is sized, batched, and scaled against its own appetite, so a summarization fleet (huge prompts, short answers) and a chat fleet (short prompts, long answers) stop compromising on one configuration. The connective tissue is Day 48's KV cache: after prefill, the prompt's K/V &mdash; 524,288 bytes per token on the Day 48/49 config &mdash; is shipped to a decode GPU, which picks up the loop from there. You'll see this as DistServe and Splitwise in the research literature, Mooncake in production write-ups, and disaggregated modes in vLLM and TensorRT-LLM. The cost is exactly one thing: the transfer happens before decode step one, so it lands on TTFT &mdash; and you've added a distributed system to operate. Part 2 prices the transfer; the verdict is a bandwidth question.</p>
+<p><strong>Pattern 2: speculative decoding.</strong> Decode's serial chain is the tax: one expensive target pass per token, most of it spent re-reading weights (Day 48). So speculate. A <strong>draft model</strong> &mdash; same tokenizer, a fraction of the size &mdash; autoregressively guesses the next <em>k</em> tokens. Still serial, but each guess costs ~a tenth of a target pass. Then the target scores all <em>k</em> positions in <strong>one parallel pass</strong> &mdash; the prefill-shaped pass its hardware is good at. Accept the longest prefix the target agrees with; at the first disagreement, resample that token from the target's own distribution; if the whole draft is accepted, the pass also yields one bonus token, so a cycle emits between 1 and <em>k</em>+1 tokens. Here is the load-bearing guarantee, stated plainly because everything rests on it: with the standard accept/reject rule (accept each draft token with probability min(1, p<sub>target</sub>/p<sub>draft</sub>), resample rejections from the corrected residual distribution), the emitted stream has <em>exactly</em> the target model's output distribution. Not approximately &mdash; exactly. The speedup is lossless; the draft only ever proposes. Tonight we take that theorem as given and price its consequences. The price hinges on <strong>&alpha; (alpha), the per-token acceptance rate</strong> &mdash; and &alpha; is a property of your traffic: code and formulaic text draft well (&alpha; 0.8&ndash;0.9 is common), open-ended prose worse (~0.5&ndash;0.6). Variants like EAGLE and Medusa replace the separate draft model with small heads on the target itself; the verify math is unchanged.</p>
+<p><strong>How they compose, honestly:</strong> the patterns are orthogonal &mdash; disaggregated pools can each run speculative decode, and serious stacks do. Both are moving targets (transfer plumbing over NVLink vs RDMA, draft designs, scheduler details change per release), so the durable skill is not the feature list. It's the two questions tonight's code answers for any workload: <em>what does the handoff cost?</em> and <em>what is &alpha; on my traffic?</em></p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Speculative decoding is <strong>branch prediction</strong>, and you already know its every move. The CPU guesses the path, executes ahead speculatively, and on a mispredict flushes the pipeline and restarts from the true state &mdash; the committed result is bit-identical to never speculating, only faster. Draft model = the predictor, one verify pass = the commit stage, resampling the first rejected token = flush-and-recover. Even the tuning maps: prediction accuracy (&alpha;) and speculation depth (<em>k</em>) trade exactly like predictor quality and pipeline depth.</p><p>Disaggregation is your storage world: splitting a service whose two paths have <strong>opposite resource profiles</strong> into separate tiers with a state handoff between them &mdash; ingest separated from query serving, the materialized state shipped across. The design question is never &ldquo;can we split it&rdquo; but &ldquo;what does the handoff cost per request, on <em>this</em> fabric&rdquo; &mdash; which is why Part 2 is a bandwidth table, not an opinion.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" rx="0" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Inference at scale: split the clocks, bet on the draft</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Two frontier patterns - separate the two clocks (Day 66), or let a small model guess and a big one check</text>
+<rect x="12" y="56" width="656" height="152" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - DISAGGREGATED: PREFILL AND DECODE GET THEIR OWN POOLS</text>
+<rect x="28" y="92" width="180" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="118" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PREFILL POOL</text>
+<text x="118" y="132" text-anchor="middle" font-size="8.5" fill="#555555">compute-bound - prompt in parallel</text>
+<rect x="248" y="100" width="184" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="118" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">KV cache</text>
+<text x="340" y="133" text-anchor="middle" font-size="8.5" fill="#555555">0.5 MB per token - Day 48</text>
+<rect x="472" y="92" width="180" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="562" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">DECODE POOL</text>
+<text x="562" y="132" text-anchor="middle" font-size="8.5" fill="#555555">bandwidth-bound - one token per step</text>
+<line x1="208" y1="121" x2="246" y2="121" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="246,121 239,117 239,125" fill="#0a7aff"/>
+<line x1="432" y1="121" x2="470" y2="121" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="470,121 463,117 463,125" fill="#0a7aff"/>
+<text x="340" y="172" text-anchor="middle" font-size="9" fill="#1c1c1e">each pool scales and schedules on its own curve - a long prompt&#x27;s prefill can no longer stall everyone&#x27;s decode</text>
+<text x="340" y="190" text-anchor="middle" font-size="9" fill="#0a54c2">the tax: ship the cache before decode step 1 - Part 2: 1.07 GB at 2k context = 1.19 ms NVLink, 16.78 ms PCIe</text>
+<rect x="12" y="222" width="656" height="172" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="242" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - SPECULATIVE: THE DRAFT PROPOSES, THE TARGET DISPOSES</text>
+<text x="28" y="264" font-size="9.5" fill="#1c1c1e">DRAFT (tiny, fast) proposes k = 4:</text>
+<rect x="128" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="170" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">the</text>
+<rect x="226" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">rally</text>
+<rect x="324" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="366" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">continues</text>
+<rect x="422" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="464" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">sharply</text>
+<text x="540" y="294" font-size="9" fill="#555555">4 cheap passes</text>
+<text x="28" y="332" font-size="9.5" fill="#1c1c1e">TARGET verifies all 4 in ONE parallel pass:</text>
+<rect x="128" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="170" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="226" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="268" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="324" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="366" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="422" y="340" width="84" height="30" rx="8" fill="#fdeeee" stroke="#d33" stroke-width="1.2"/>
+<text x="464" y="359" text-anchor="middle" font-size="9.5" fill="#b02a2a" font-weight="bold">rejected</text>
+<text x="540" y="359" font-size="9" fill="#555555">1 pass</text>
+<text x="340" y="386" text-anchor="middle" font-size="9" fill="#1c1c1e">rejected token resampled from the target itself: &#x27;today&#x27; - net: 4 tokens out for ~1.4 pass-units (Part 1)</text>
+<rect x="12" y="408" width="656" height="40" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="433" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Survey rule: the patterns transfer, the constants don&#x27;t - re-price the handoff and the acceptance rate on YOUR workload</text>
+</svg>
+    <div class="caption">Top: disaggregation &mdash; the two clocks get separate pools, and the only coupling left is the KV-cache handoff, priced in Part 2. Bottom: speculative decoding &mdash; the draft spends 4 cheap passes proposing, the target spends 1 parallel pass judging: 3 accepted, 1 rejected and resampled from the target itself, so the emitted stream is the target's own.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>No serving stack tonight &mdash; the deliverable is the pricing tool you'd run <em>before</em> adopting either pattern. Pure standard library, stated constants, no benchmarks to argue with. <strong>Part 1</strong> prices speculative decoding: expected tokens per cycle <code>E = (1 &minus; &alpha;<sup>k+1</sup>)/(1 &minus; &alpha;)</code> against the cycle's true cost (1 verify pass + <em>k</em> draft passes at 0.10 each), plus the break-even &alpha; and what &alpha; 0.75 does to Day 66's per-user stream rate. <strong>Part 2</strong> sizes the disaggregation handoff with Day 48's recipe and clocks it over NVLink vs PCIe at two context lengths. Change &alpha;, <em>k</em>, <em>c</em>, the context, or the fabric and re-run &mdash; the verdicts move, the shapes don't.</p>
+  <pre><code>&quot;&quot;&quot;Day 80 - Inference at Scale: Disaggregated Serving and
+Speculative Decoding (a survey with a calculator).
+
+Phase F. Phase E sized ONE engine (Days 64-66, 72): continuous
+batching, quantization, the batch-vs-latency tradeoff on a
+single pool of GPUs. Tonight is a survey of the two scale-out
+patterns the frontier serving stacks (vLLM, TensorRT-LLM,
+SGLang and friends) are converging on - patterns, not product
+tours. Details vary by vendor; the shapes do not.
+
+  Pattern 1  DISAGGREGATED PREFILL/DECODE. Day 66&#x27;s two clocks
+             have opposite appetites: prefill is compute-bound
+             (the whole prompt in parallel, big matmuls), while
+             decode is bandwidth-bound (one token per step, the
+             step dominated by re-reading weights + KV). In one
+             engine they share GPUs, so a long prompt&#x27;s prefill
+             stalls everyone&#x27;s decode. Split the two clocks onto
+             separate pools and each scales and schedules on its
+             own curve - the price is a handoff: the prompt&#x27;s
+             KV cache (Day 48) must move from the prefill pool
+             to the decode pool before the first decode step.
+             Part 2 prices that handoff.
+
+  Pattern 2  SPECULATIVE DECODING. Decode is serial: token n+1
+             needs token n. So cheat the way a CPU does - a tiny
+             DRAFT model (branch prediction for tokens) guesses
+             the next k tokens autoregressively, which is cheap
+             because it is small; then the big TARGET model
+             checks all k guesses in ONE parallel pass, exactly
+             the kind of pass decode never gets to make. Accept
+             the longest prefix the target agrees with; at the
+             first disagreement, resample that one token from
+             the target&#x27;s own distribution; if all k are
+             accepted, the pass also yields one bonus token.
+             With the standard accept/reject rule - accept each
+             draft token with probability min(1, p_target /
+             p_draft) - the output distribution is EXACTLY the
+             target model&#x27;s own. The speedup is lossless:
+             faster, not different. (Stated, not proved - the
+             one-line rule above is what makes it exact.)
+             Part 1 prices it: expected tokens per target pass
+             E = 1 + a + a^2 + ... + a^k
+               = (1 - a^(k+1)) / (1 - a),
+             where a (alpha) is the per-token acceptance rate.
+
+Stated constants, so every number is auditable:
+  k = 4 draft tokens per cycle; one draft pass costs c = 0.10
+  of one target pass (a roughly 10x cheaper model); alpha in
+  {0.60, 0.75, 0.90}. KV sizing reuses Day 48/49&#x27;s model:
+  32 layers, d_model 4096, fp16 -&gt; 524,288 bytes of KV per
+  token. Interconnects: NVLink 900 GB/s, PCIe 5.0 x16 64 GB/s.
+  One more anchor: Day 66&#x27;s operating point, TPOT 40 ms =
+  25 tokens/sec per user.
+
+Runs on the ~/ai-lab venv: pure standard library - no torch,
+no GPU, no paid APIs, no downloads. Deterministic arithmetic
+only, so every digit below is exact.
+
+Expected output:
+
+  Part 1 - speculative decoding: what one verify pass buys
+    naive decode: 1 token per target pass, 1.00 pass-units per token
+    spec cycle: 1 verify pass + 4 draft passes x 0.10 = 1.40 pass-units
+    alpha 0.60: E[tokens] 2.3056 per cycle -&gt; speedup 1.65x
+    alpha 0.75: E[tokens] 3.0508 per cycle -&gt; speedup 2.18x
+    alpha 0.90: E[tokens] 4.0951 per cycle -&gt; speedup 2.93x
+    ceiling: alpha 1.00 gives k+1 = 5 tokens per cycle; a FREE draft
+      (c = 0) at alpha 0.75 would give 3.05x - draft cost is real
+    break-even: first alpha on a 0.05 grid whose speedup beats 1.00x: 0.30
+    at Day 66&#x27;s point (TPOT 40 ms = 25 tok/s per user), alpha 0.75
+      streams ~54.5 tok/s to that user - same distribution, faster drip
+    the guarantee: accept/reject keeps the output distribution exactly
+      the target model&#x27;s own - the draft only ever proposes
+  Part 2 - disaggregation: the KV handoff tax (Day 48&#x27;s recipe)
+    KV per token: 2 (K and V) x 32 layers x 4096 x 2 bytes = 524,288 bytes
+    context 2,048 tokens: KV = 1.07 GB -&gt; NVLink 900 GB/s: 1.19 ms | PCIe 64 GB/s: 16.78 ms
+    context 32,768 tokens: KV = 17.18 GB -&gt; NVLink 900 GB/s: 19.09 ms | PCIe 64 GB/s: 268.44 ms
+    the tax is paid ONCE per request, before decode step one - it lands on TTFT (Day 66)
+    at 32k context the PCIe handoff alone is 6.7x the whole 40 ms TPOT budget
+    verdict: disagg pays when the fabric is fast (NVLink-class) or prompts
+      are short, and wins most when the mix is lopsided - huge prompts,
+      short answers (or the reverse). On a slow link, keep the clocks together.
+&quot;&quot;&quot;
+
+# ---------- Part 1: speculative decoding, priced ----------
+K = 4            # draft tokens proposed per cycle
+C_DRAFT = 0.10   # one draft pass, in target-pass units
+
+
+def expected_tokens(alpha, k):
+    &quot;&quot;&quot;E[tokens per cycle] = 1 + a + a^2 + ... + a^k: the bonus
+    token always lands (1), plus each draft token that survives
+    every check before it (a^i). Closed form of the same sum.&quot;&quot;&quot;
+    return (1 - alpha ** (k + 1)) / (1 - alpha)
+
+
+cycle_cost = 1.0 + K * C_DRAFT
+print(&quot;Part 1 - speculative decoding: what one verify pass buys&quot;)
+print(&quot;  naive decode: 1 token per target pass, &quot;
+      &quot;1.00 pass-units per token&quot;)
+print(f&quot;  spec cycle: 1 verify pass + {K} draft passes x &quot;
+      f&quot;{C_DRAFT:.2f} = {cycle_cost:.2f} pass-units&quot;)
+for alpha in (0.60, 0.75, 0.90):
+    e = expected_tokens(alpha, K)
+    print(f&quot;  alpha {alpha:.2f}: E[tokens] {e:.4f} per cycle &quot;
+          f&quot;-&gt; speedup {e / cycle_cost:.2f}x&quot;)
+e75 = expected_tokens(0.75, K)
+print(f&quot;  ceiling: alpha 1.00 gives k+1 = {K + 1} tokens per cycle; &quot;
+      &quot;a FREE draft&quot;)
+print(f&quot;    (c = 0) at alpha 0.75 would give {e75:.2f}x &quot;
+      &quot;- draft cost is real&quot;)
+grid = [i / 20 for i in range(1, 20)]          # 0.05, 0.10, ..., 0.95
+breakeven = next(a for a in grid
+                 if expected_tokens(a, K) / cycle_cost &gt; 1.0)
+print(f&quot;  break-even: first alpha on a 0.05 grid whose speedup &quot;
+      f&quot;beats 1.00x: {breakeven:.2f}&quot;)
+print(&quot;  at Day 66&#x27;s point (TPOT 40 ms = 25 tok/s per user), &quot;
+      &quot;alpha 0.75&quot;)
+print(f&quot;    streams ~{25 * e75 / cycle_cost:.1f} tok/s to that user &quot;
+      &quot;- same distribution, faster drip&quot;)
+print(&quot;  the guarantee: accept/reject keeps the output distribution &quot;
+      &quot;exactly&quot;)
+print(&quot;    the target model&#x27;s own - the draft only ever proposes&quot;)
+
+# ---------- Part 2: disaggregation, the handoff tax ----------
+LAYERS, D_MODEL, BYTES = 32, 4096, 2      # Day 48/49 model, fp16
+KV_PER_TOKEN = 2 * LAYERS * D_MODEL * BYTES
+
+print(&quot;Part 2 - disaggregation: the KV handoff tax (Day 48&#x27;s recipe)&quot;)
+print(f&quot;  KV per token: 2 (K and V) x {LAYERS} layers x {D_MODEL} &quot;
+      f&quot;x {BYTES} bytes = {KV_PER_TOKEN:,} bytes&quot;)
+for tokens in (2_048, 32_768):
+    kv = KV_PER_TOKEN * tokens
+    nvlink_ms = kv / (900 * 1e9) * 1000
+    pcie_ms = kv / (64 * 1e9) * 1000
+    print(f&quot;  context {tokens:,} tokens: KV = {kv / 1e9:.2f} GB &quot;
+          f&quot;-&gt; NVLink 900 GB/s: {nvlink_ms:.2f} ms &quot;
+          f&quot;| PCIe 64 GB/s: {pcie_ms:.2f} ms&quot;)
+print(&quot;  the tax is paid ONCE per request, before decode step one &quot;
+      &quot;- it lands on TTFT (Day 66)&quot;)
+pcie_32k = KV_PER_TOKEN * 32_768 / (64 * 1e9) * 1000
+print(f&quot;  at 32k context the PCIe handoff alone is &quot;
+      f&quot;{pcie_32k / 40:.1f}x the whole 40 ms TPOT budget&quot;)
+print(&quot;  verdict: disagg pays when the fabric is fast (NVLink-class) &quot;
+      &quot;or prompts&quot;)
+print(&quot;    are short, and wins most when the mix is lopsided - huge &quot;
+      &quot;prompts,&quot;)
+print(&quot;    short answers (or the reverse). On a slow link, keep the &quot;
+      &quot;clocks together.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - speculative decoding: what one verify pass buys
+  naive decode: 1 token per target pass, 1.00 pass-units per token
+  spec cycle: 1 verify pass + 4 draft passes x 0.10 = 1.40 pass-units
+  alpha 0.60: E[tokens] 2.3056 per cycle -&gt; speedup 1.65x
+  alpha 0.75: E[tokens] 3.0508 per cycle -&gt; speedup 2.18x
+  alpha 0.90: E[tokens] 4.0951 per cycle -&gt; speedup 2.93x
+  ceiling: alpha 1.00 gives k+1 = 5 tokens per cycle; a FREE draft
+    (c = 0) at alpha 0.75 would give 3.05x - draft cost is real
+  break-even: first alpha on a 0.05 grid whose speedup beats 1.00x: 0.30
+  at Day 66&#x27;s point (TPOT 40 ms = 25 tok/s per user), alpha 0.75
+    streams ~54.5 tok/s to that user - same distribution, faster drip
+  the guarantee: accept/reject keeps the output distribution exactly
+    the target model&#x27;s own - the draft only ever proposes
+Part 2 - disaggregation: the KV handoff tax (Day 48&#x27;s recipe)
+  KV per token: 2 (K and V) x 32 layers x 4096 x 2 bytes = 524,288 bytes
+  context 2,048 tokens: KV = 1.07 GB -&gt; NVLink 900 GB/s: 1.19 ms | PCIe 64 GB/s: 16.78 ms
+  context 32,768 tokens: KV = 17.18 GB -&gt; NVLink 900 GB/s: 19.09 ms | PCIe 64 GB/s: 268.44 ms
+  the tax is paid ONCE per request, before decode step one - it lands on TTFT (Day 66)
+  at 32k context the PCIe handoff alone is 6.7x the whole 40 ms TPOT budget
+  verdict: disagg pays when the fabric is fast (NVLink-class) or prompts
+    are short, and wins most when the mix is lopsided - huge prompts,
+    short answers (or the reverse). On a slow link, keep the clocks together.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when Part 1 shows &alpha; 0.75 &rarr; E = <code>3.0508</code> tokens/cycle and <code>2.18x</code> after draft cost, break-even at &alpha; <code>0.30</code>; and Part 2 shows the 32k-context handoff at <code>19.09 ms</code> on NVLink vs <code>268.44 ms</code> on PCIe &mdash; 6.7&times; the whole TPOT budget, before token one. The keeper test, no notes: for each pattern you can name its tax (KV transfer charged to TTFT / draft cost charged per cycle), its guarantee (pools scale independently / output distribution identical to the target's), and the workload question that decides it (fabric bandwidth + prompt mix / &alpha; on your traffic).</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can sketch both panels from memory, then run the code and read only the verdict lines. If you can say why speculative decoding cannot change the output distribution, and why disaggregation lives or dies on interconnect bandwidth, you have the survey &mdash; the tables are reference you'll re-run with your own constants.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase F turns from serving other people's models to running your own training job &mdash; one step, instrumented end to end, until you can point at exactly where its time goes.</p>
+  </div>
+
+  <div class="footer">Streak: 80 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

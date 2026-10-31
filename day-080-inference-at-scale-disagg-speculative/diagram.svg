@@ -1,0 +1,47 @@
+<svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="460" rx="0" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Inference at scale: split the clocks, bet on the draft</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Two frontier patterns - separate the two clocks (Day 66), or let a small model guess and a big one check</text>
+<rect x="12" y="56" width="656" height="152" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - DISAGGREGATED: PREFILL AND DECODE GET THEIR OWN POOLS</text>
+<rect x="28" y="92" width="180" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="118" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PREFILL POOL</text>
+<text x="118" y="132" text-anchor="middle" font-size="8.5" fill="#555555">compute-bound - prompt in parallel</text>
+<rect x="248" y="100" width="184" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="118" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">KV cache</text>
+<text x="340" y="133" text-anchor="middle" font-size="8.5" fill="#555555">0.5 MB per token - Day 48</text>
+<rect x="472" y="92" width="180" height="58" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="562" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">DECODE POOL</text>
+<text x="562" y="132" text-anchor="middle" font-size="8.5" fill="#555555">bandwidth-bound - one token per step</text>
+<line x1="208" y1="121" x2="246" y2="121" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="246,121 239,117 239,125" fill="#0a7aff"/>
+<line x1="432" y1="121" x2="470" y2="121" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="470,121 463,117 463,125" fill="#0a7aff"/>
+<text x="340" y="172" text-anchor="middle" font-size="9" fill="#1c1c1e">each pool scales and schedules on its own curve - a long prompt&#x27;s prefill can no longer stall everyone&#x27;s decode</text>
+<text x="340" y="190" text-anchor="middle" font-size="9" fill="#0a54c2">the tax: ship the cache before decode step 1 - Part 2: 1.07 GB at 2k context = 1.19 ms NVLink, 16.78 ms PCIe</text>
+<rect x="12" y="222" width="656" height="172" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="242" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - SPECULATIVE: THE DRAFT PROPOSES, THE TARGET DISPOSES</text>
+<text x="28" y="264" font-size="9.5" fill="#1c1c1e">DRAFT (tiny, fast) proposes k = 4:</text>
+<rect x="128" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="170" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">the</text>
+<rect x="226" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">rally</text>
+<rect x="324" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="366" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">continues</text>
+<rect x="422" y="272" width="84" height="34" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="464" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">sharply</text>
+<text x="540" y="294" font-size="9" fill="#555555">4 cheap passes</text>
+<text x="28" y="332" font-size="9.5" fill="#1c1c1e">TARGET verifies all 4 in ONE parallel pass:</text>
+<rect x="128" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="170" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="226" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="268" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="324" y="340" width="84" height="30" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="366" y="359" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">accepted</text>
+<rect x="422" y="340" width="84" height="30" rx="8" fill="#fdeeee" stroke="#d33" stroke-width="1.2"/>
+<text x="464" y="359" text-anchor="middle" font-size="9.5" fill="#b02a2a" font-weight="bold">rejected</text>
+<text x="540" y="359" font-size="9" fill="#555555">1 pass</text>
+<text x="340" y="386" text-anchor="middle" font-size="9" fill="#1c1c1e">rejected token resampled from the target itself: &#x27;today&#x27; - net: 4 tokens out for ~1.4 pass-units (Part 1)</text>
+<rect x="12" y="408" width="656" height="40" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="433" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Survey rule: the patterns transfer, the constants don&#x27;t - re-price the handoff and the acceptance rate on YOUR workload</text>
+</svg>
