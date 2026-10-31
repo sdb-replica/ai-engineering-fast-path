@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Parallelism for Real: All-Reduce Across Processes — Day 98 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 98 of 100</span>
+  <h1>Data Parallelism for Real: All-Reduce Across Processes</h1>
+  <p class="outcome">Tonight you'll be able to: spawn four real worker processes, run Day 74&rsquo;s ring all-reduce over actual IPC queues for 30 training steps, and prove the replicas still land on the single-machine &theta; &mdash; then measure the two things the simulation hid: what process startup costs, and what one slow worker does to everybody&rsquo;s step.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 74&rsquo;s ring was a <strong>simulation</strong>: one process played all four workers, and a &ldquo;send&rdquo; was a list copy inside one memory space. It proved the algebra &mdash; average of shard gradients = full-batch gradient, exactly &mdash; but a simulation cannot serialize anything, cannot be scheduled by an OS, and has nobody to wait for. Tonight the protocol runs for real: same 16 points, same shards, same chunk order, but four separate OS processes (Python <code>multiprocessing</code>, <code>spawn</code>) exchanging every chunk through <code>mp.Queue</code> pipes, for 30 full training steps.</p>
+<p><strong>What survives contact with reality: the math.</strong> After 30 steps the four workers&rsquo; &theta;s are <em>bit-identical to each other</em>, and the max diff against the single-process reference is <strong>3.886e-16</strong>. Why not Day 74&rsquo;s exact 0.0? Day 74 took one step in dyadic arithmetic, where every sum is exact in any order. Over 30 steps the values leave dyadic-land, and the ring adds the same numbers in a <em>different order</em> than the reference&rsquo;s one full-batch sum &mdash; float addition is not associative, so the last bits land differently. The IPC itself loses nothing: a pickled float64 arrives bit-exact, which is why the four replicas (which all receive the same chunks) agree <em>exactly</em>, and only the differently-ordered reference drifts, by about one part in 10<sup>15</sup>. That is the honest tolerance statement: replicas exact, reference to machine epsilon.</p>
+<p><strong>What reality adds, part 1: startup.</strong> Spawn &rarr; all four workers ready took <strong>~0.5 s</strong>; the 30 steps of training took ~17&ndash;40 ms. Merely <em>creating</em> the cluster cost 10&ndash;25&times; the entire toy training run &mdash; every worker is a fresh Python interpreter importing numpy. Real clusters pay this once and train for weeks; anything that respawned workers per step would drown in it. There is also a measurement trap the code fixes with a <strong>start gate</strong>: without it, worker 0&rsquo;s first &ldquo;step&rdquo; silently includes waiting for workers 1&ndash;3 to exist (it made worker 0 look 10&times; slower than worker 3); the parent collects all four &ldquo;ready&rdquo; messages, opens the gate, and only then does anyone time a step.</p>
+<p><strong>What reality adds, part 2: the barrier is real waiting.</strong> A healthy step is ~0.4 ms, of which the gradient compute is 0.02 ms &mdash; even at toy scale, ~95% of a step is communication and synchronization, not math (the ratio inverts at real scale, because compute per step grows with shard size while the sync bill is set by model size &mdash; Day 74&rsquo;s Part 4). Inject 25 ms of busywork into worker 3 and <em>every</em> worker&rsquo;s step becomes ~38 ms on this loaded VM (~26 ms on a quiet machine): the healthy workers&rsquo; added time shows up entirely as <strong>waiting</strong> (38.5 of their 38.6 ms). A synchronized step costs the <em>max</em> over workers, never the mean &mdash; and the run still lands on the same &theta; (diff 2.220e-16 vs the 10-step reference): the straggler cost the cluster time and changed no result.</p>
+<p>One more number worth keeping: ~0.4 ms for 12 queue hops is roughly <strong>30 &micro;s per hop</strong> &mdash; pickle, pipe write, wakeup, unpickle &mdash; for an 8-byte payload. Latency, not bandwidth, is the toy&rsquo;s whole bill, which is precisely why real collectives obsess over message count and fusion.</p>
+<p><strong>Why production clusters don&rsquo;t hand-roll this:</strong> the protocol is identical; the transport is not. Tonight&rsquo;s chunks are pickled Python floats pushed through OS pipes by a queue feeder thread, copied more than once, one syscall-heavy hop per chunk &mdash; fine for 48 bytes a step, absurd for the 55.1 GB per worker per step of Day 74&rsquo;s 7B-at-N=64 math. <strong>NCCL</strong> keeps gradient buffers in GPU memory and moves them over NVLink or RDMA without CPU copies, builds topology-aware rings and trees, and <code>torch.distributed</code> / DDP wrap it in process groups whose all-reduce is <em>bucketed and overlapped with <code>backward()</code></em>, so much of the sync hides behind compute. Hand-rolled queues are how you learn what a collective really costs; nobody ships them.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Day 74 was the <strong>tabletop exercise</strong>: sticky notes passed around a table to rehearse a consensus protocol until everyone could recite it. Today is the same protocol deployed between real services &mdash; and every cost that was invisible on paper shows up in production. Process spawn is a <strong>cold start</strong>: ~0.5 s before any useful work, which is why you never cold-start per request. Pickle-plus-pipe is <strong>serialization + RPC overhead</strong> on every single hop, paid even when the payload is 8 bytes. The barrier is a <strong>distributed commit</strong>: the transaction closes when the <em>slowest</em> participant answers, so one node with a noisy neighbour sets the latency for the whole fleet.</p><p>Trading version, one line: Day 74 was the backtest, tonight is live fills &mdash; the strategy&rsquo;s math is identical, but slippage, latency, and the slow counterparty only exist live.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 516" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="516" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">All-reduce for real: four processes, one ring, one barrier</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 98 - Day 74's protocol over real IPC. PIDs are from one actual run; yours will differ.</text>
+<rect x="12" y="52" width="656" height="208" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - FOUR REAL PROCESSES: PARENT SPAWNS, WORKERS RING THROUGH QUEUES</text>
+<rect x="262" y="82" width="156" height="30" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">parent · pid 6272</text>
+<text x="340" y="108" text-anchor="middle" font-size="8" fill="#555555">spawns · start gate · collects θ</text>
+<line x1="104" y1="112" x2="104" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="104,132 100.5,124.5 107.5,124.5" fill="#7a5cff"/>
+<line x1="268" y1="112" x2="268" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="268,132 264.5,124.5 271.5,124.5" fill="#7a5cff"/>
+<line x1="432" y1="112" x2="432" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="432,132 428.5,124.5 435.5,124.5" fill="#7a5cff"/>
+<line x1="596" y1="112" x2="596" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="596,132 592.5,124.5 599.5,124.5" fill="#7a5cff"/>
+<text x="114" y="126" font-size="8" fill="#7a5cff">spawn</text>
+<rect x="28" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="104" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 0 · python3</text>
+<text x="104" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6274</text>
+<text x="104" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="104" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 0.5, 2.5, 4.5, 6.5</text>
+<rect x="192" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 1 · python3</text>
+<text x="268" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6275</text>
+<text x="268" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="268" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.0, 3.0, 5.0, 7.0</text>
+<rect x="356" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="432" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 2 · python3</text>
+<text x="432" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6276</text>
+<text x="432" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="432" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.5, 3.5, 5.5, 7.5</text>
+<rect x="520" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="596" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 3 · python3</text>
+<text x="596" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6277</text>
+<text x="596" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="596" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 2.0, 4.0, 6.0, 8.0</text>
+<line x1="181" y1="166" x2="190" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="192,166 185.5,162.5 185.5,169.5" fill="#7a5cff"/>
+<line x1="345" y1="166" x2="354" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="356,166 349.5,162.5 349.5,169.5" fill="#7a5cff"/>
+<line x1="509" y1="166" x2="518" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="520,166 513.5,162.5 513.5,169.5" fill="#7a5cff"/>
+<path d="M 596 200 L 596 218 L 108 218 L 108 204" fill="none" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="104,200 100.5,207.5 107.5,207.5" fill="#7a5cff"/>
+<text x="352" y="212" text-anchor="middle" font-size="9" fill="#7a5cff">ring order W0→W1→W2→W3→W0 · mp.Queue hops · pickled float64 chunk (8 B) · 6 hops/worker/step</text>
+<line x1="24" y1="232" x2="656" y2="232" stroke="#d64545" stroke-width="1.4" stroke-dasharray="5 4"/>
+<text x="340" y="248" text-anchor="middle" font-size="9" fill="#d64545" font-weight="bold">STEP BARRIER — nobody starts step t+1 until the ring closes step t (the all-reduce IS the barrier)</text>
+<rect x="12" y="274" width="656" height="228" rx="10" fill="#ffffff" stroke="#d64545" stroke-width="1.2"/>
+<text x="340" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONE STEP WITH A STRAGGLER: MEASURED PER-WORKER TIME (ms)</text>
+<rect x="356" y="304" width="10" height="10" fill="#0a7aff"/>
+<text x="370" y="313" font-size="8.5" fill="#1c1c1e">computing</text>
+<rect x="434" y="304" width="10" height="10" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="448" y="313" font-size="8.5" fill="#1c1c1e">waiting at the barrier</text>
+<rect x="566" y="304" width="10" height="10" fill="#e8590c"/>
+<text x="580" y="313" font-size="8.5" fill="#1c1c1e">delayed compute</text>
+<text x="142" y="341" text-anchor="end" font-size="9.5" fill="#1c1c1e">W0 healthy</text>
+<rect x="150" y="326" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="326" width="468" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="386" y="341" text-anchor="middle" font-size="9" fill="#555555">waiting 38.52</text>
+<text x="626" y="341" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.58</text>
+<text x="142" y="373" text-anchor="end" font-size="9.5" fill="#1c1c1e">W1 healthy</text>
+<rect x="150" y="358" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="358" width="468" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="386" y="373" text-anchor="middle" font-size="9" fill="#555555">waiting 38.55</text>
+<text x="626" y="373" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.61</text>
+<text x="142" y="405" text-anchor="end" font-size="9.5" fill="#1c1c1e">W2 healthy</text>
+<rect x="150" y="390" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="390" width="464" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="384" y="405" text-anchor="middle" font-size="9" fill="#555555">waiting 38.22</text>
+<text x="622" y="405" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.27</text>
+<text x="142" y="437" text-anchor="end" font-size="9.5" fill="#1c1c1e">W3 +25 ms injected</text>
+<rect x="150" y="422" width="415" height="22" fill="#e8590c"/>
+<text x="357" y="437" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">computing 34.11 (injected delay + gradient)</text>
+<rect x="565" y="422" width="53" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="591" y="418" text-anchor="middle" font-size="8" fill="#555555">wait 4.38</text>
+<text x="624" y="437" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.48</text>
+<line x1="150" y1="452" x2="620" y2="452" stroke="#999999" stroke-width="1"/>
+<line x1="150" y1="452" x2="150" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="272" y1="452" x2="272" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="393" y1="452" x2="393" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="515" y1="452" x2="515" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="620" y1="452" x2="620" y2="456" stroke="#999999" stroke-width="1"/>
+<text x="150" y="468" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<text x="272" y="468" text-anchor="middle" font-size="8.5" fill="#666666">10</text>
+<text x="393" y="468" text-anchor="middle" font-size="8.5" fill="#666666">20</text>
+<text x="515" y="468" text-anchor="middle" font-size="8.5" fill="#666666">30</text>
+<text x="620" y="468" text-anchor="middle" font-size="8.5" fill="#666666">38.6 ms</text>
+<rect x="150" y="478" width="5" height="6" fill="#22a355"/>
+<text x="162" y="485" font-size="8.5" fill="#555555">the same step with no straggler: ≈ 0.4 ms total (green, drawn to scale) — healthy compute is a ≈ 0.05 ms sliver in every bar above</text>
+</svg>
+    <div class="caption">Top: the real thing — a parent process (pid from an actual run) spawns four worker processes; each holds the full θ and one data shard, and chunks travel the ring as pickled float64 values over mp.Queue pipes. The dashed line is the step barrier: nobody starts step t+1 until the ring closes step t. Bottom: one measured straggler step — 25 ms of injected busywork in worker 3 stretches EVERY worker's step to ~38 ms on a loaded VM, and the healthy workers' bars are almost entirely grey: waiting.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>numpy + stdlib <code>multiprocessing</code> only &mdash; no torch, no cluster. <strong>Part 1</strong> trains Day 74&rsquo;s regression 30 steps in this process (lr 0.01: Day 74&rsquo;s 0.05 was sized for its single step and diverges over 30 &mdash; the comment in the code shows why). <strong>Part 2</strong> spawns four real workers behind a start gate and runs the identical ring over queues; watch for <code>bit-identical: True</code> and the e-16 diff. <strong>Part 3</strong> reruns with worker 3 spinning 25 ms per step and prints both timing tables. <strong>Part 4</strong> counts the messages and bytes. PIDs and milliseconds will differ on your machine &mdash; every &theta;, loss, and diff line must not.</p>
+  <pre><code>&quot;&quot;&quot;Day 98 - Deep Dive: Data Parallelism for Real.
+
+Day 74 ran the ring all-reduce as a SIMULATION: one process
+played all four workers, and a &quot;send&quot; was a list copy inside
+one memory space. It proved the algebra - average of the shard
+gradients = the full-batch gradient, diff exactly 0.0 - but a
+simulation cannot be slow, cannot serialize anything, and has
+nobody to wait for. Tonight the same protocol runs for real:
+four separate OS processes, real IPC, a real barrier.
+
+  Part 1  The single-process reference: Day 7&#x27;s regression
+          (Day 74&#x27;s 4-wide features) trained 30 steps on all
+          16 points in THIS process. The number to beat.
+  Part 2  Four real worker processes (multiprocessing, spawn).
+          Each holds all of theta and one 4-point shard, and
+          runs Day 74&#x27;s ring all-reduce over mp.Queue pipes:
+          every chunk is a pickled float64 that physically
+          crosses a process boundary. After 30 steps, compare
+          every worker&#x27;s theta against Part 1.
+  Part 3  The straggler, measured: rerun with worker 3 given
+          25 ms of injected busywork per step. The step is a
+          barrier, so EVERY worker&#x27;s step time should grow to
+          match the slowest - watch the fast workers&#x27; waiting
+          time, not just the slow worker&#x27;s compute time.
+  Part 4  The systems bill: process startup cost, bytes and
+          messages per step, and why production clusters run
+          this protocol in NCCL / torch.distributed instead of
+          hand-rolled queues (short version in the lesson).
+
+Determinism: fixed formula data, float64 everywhere, no RNG,
+no timing-dependent math - the thetas and diffs print the
+same on every run. PIDs and millisecond timings are from the
+machine you run on and WILL differ; they are labelled.
+
+One honest change from Day 74: it took ONE step at lr 0.05.
+Over 30 steps that rate diverges on this feature scaling
+(the x^3/64 column has a much larger gradient scale), so
+tonight lr = 0.01 and the loss actually descends.
+
+numpy + Python stdlib multiprocessing only. No torch, no
+downloads, no paid APIs. Mac-safe: spawn start method and
+the __main__ guard below are what macOS requires. Runs in
+the ~/ai-lab venv on a MacBook.
+
+Expected output (theta, loss and diff lines exact;
+PIDs and millisecond figures are from ONE run on a
+shared 4-core VM - yours will differ, and on a busy
+machine the straggler step can overshoot 25 ms by a
+lot; the shape - everyone&#x27;s step ~= the slowest
+worker&#x27;s step - is the claim):
+
+  Part 1 - single-process reference (30 steps, all 16 points)
+    loss: step 0 = 78.980469, step 10 = 1.461741, step 20 = 0.802430, step 30 = 0.465431
+    reference theta = 0.968484, 1.579751, 0.463296, 0.068607
+  Part 2 - four REAL processes, ring all-reduce over queues
+    parent pid = 6272
+    spawn -&gt; all 4 workers ready: 498 ms (machine-dependent)
+      worker 0: pid 6274, shard x = 0.5, 2.5, 4.5, 6.5
+      worker 1: pid 6275, shard x = 1.0, 3.0, 5.0, 7.0
+      worker 2: pid 6276, shard x = 1.5, 3.5, 5.5, 7.5
+      worker 3: pid 6277, shard x = 2.0, 4.0, 6.0, 8.0
+    30 steps done in 17 ms wall (machine-dependent)
+    all four workers&#x27; thetas bit-identical: True
+    max |worker theta - reference theta| = 3.886e-16
+    verdict: real processes, real IPC - same theta as one machine
+  Part 3 - straggler: worker 3 gets +25 ms busywork per step
+    baseline (Part 2):        compute/step    step total     waiting
+      worker 0 (healthy)          0.02 ms        0.45 ms        0.43 ms
+      worker 1 (healthy)          0.02 ms        0.35 ms        0.33 ms
+      worker 2 (healthy)          0.02 ms        0.35 ms        0.34 ms
+      worker 3 (healthy)          0.02 ms        0.36 ms        0.34 ms
+    straggler run (10 steps): compute/step    step total     waiting
+      worker 0 (healthy)          0.05 ms       38.58 ms       38.52 ms
+      worker 1 (healthy)          0.07 ms       38.61 ms       38.55 ms
+      worker 2 (healthy)          0.06 ms       38.27 ms       38.22 ms
+      worker 3 (delayed)         34.11 ms       38.48 ms        4.38 ms
+    verdict: the step is a barrier - its length is set by the
+    slowest worker, and the healthy workers pay for it as waiting
+    sanity: straggler thetas bit-identical: True, max diff vs the 10-step reference = 2.220e-16
+    the delay changed the timing, not the math - a slow worker
+    costs the whole cluster time and changes no result
+  Part 4 - what the hand-rolled version costs
+    messages per worker per step: 2(N-1) = 6 sends + 6 receives
+    bytes per worker per step: 6 chunks x 8 B = 48 B (this toy)
+    at 7B params, N=64 (Day 74): 55.1 GB/worker/step - moved by
+    NCCL over NVLink/RDMA from GPU memory, never pickled through
+    a CPU queue; that gap is the whole lesson of Part 4
+&quot;&quot;&quot;
+
+import multiprocessing as mp
+import os
+import time
+
+import numpy as np
+
+
+def features(x):
+    &quot;&quot;&quot;Day 74&#x27;s 4-wide feature vector: phi = [1, x, x^2/8, x^3/64].
+
+    Four features make the gradient a 4-vector, so the ring has
+    one chunk per worker - exactly as in Day 74.
+    &quot;&quot;&quot;
+    return [1.0, x, x * x / 8.0, x * x * x / 64.0]
+
+
+def build_points():
+    &quot;&quot;&quot;The same deterministic 16 points as Day 74 (formula, no RNG).
+
+    x runs 0.5..8.0, the true line is y = 1 + 2x, noise is a
+    small sawtooth. Every value is a dyadic fraction.
+    &quot;&quot;&quot;
+    points = []
+    for i in range(1, 17):
+        x = 0.5 * i
+        noise = ((i * 7) % 5 - 2) * 0.25
+        points.append((x, 1.0 + 2.0 * x + noise))
+    return points
+
+
+def gradient(theta, points):
+    &quot;&quot;&quot;Full-batch MSE gradient over a list of (x, y) points.
+
+    The ONE gradient function used by the reference run and by
+    every worker - same code path, float64 throughout:
+    dL/dtheta = (2/n) * Phi^T (Phi theta - y).
+    &quot;&quot;&quot;
+    phi = np.array([features(x) for x, _ in points], dtype=np.float64)
+    y = np.array([yy for _, yy in points], dtype=np.float64)
+    err = phi @ theta - y
+    return (2.0 / len(points)) * (phi.T @ err)
+
+
+def loss(theta, points):
+    phi = np.array([features(x) for x, _ in points], dtype=np.float64)
+    y = np.array([yy for _, yy in points], dtype=np.float64)
+    err = phi @ theta - y
+    return float(err @ err / len(points))
+
+
+def fmt(vec):
+    return &quot;, &quot;.join(f&quot;{v:.6f}&quot; for v in vec)
+
+
+THETA0 = np.array([0.5, 0.25, 0.0, 0.0], dtype=np.float64)
+LR = 0.01  # Day 74&#x27;s 0.05 was for ONE step; over 30 it diverges.
+N_WORKERS = 4
+STEPS = 30
+STRAGGLER_STEPS = 10
+STRAGGLER_MS = 25.0
+STRAGGLER_RANK = 3
+
+
+def spin(seconds):
+    &quot;&quot;&quot;Busy-wait: the injected straggler delay (a slow node sim).&quot;&quot;&quot;
+    end = time.perf_counter() + seconds
+    x = 0.0
+    while time.perf_counter() &lt; end:
+        x += 1.0
+    return x
+
+
+def worker_main(rank, n, inbox, inboxes, result_q, go, cfg):
+    &quot;&quot;&quot;One real worker process: shard gradient + ring all-reduce.
+
+    The ring is Day 74&#x27;s, unchanged - scatter-reduce (receiver
+    adds) then all-gather (receiver overwrites), one scalar
+    chunk per hop. What changed is the transport: each chunk is
+    pickled into the next worker&#x27;s mp.Queue and physically
+    crosses a process boundary. Queues are FIFO per sender and
+    each inbox has exactly one sender (the left neighbour), so
+    tagged messages arrive in ring order. The all-reduce IS
+    the barrier: nobody can finish step t until every worker&#x27;s
+    step-t chunk has come around.
+    &quot;&quot;&quot;
+    theta = THETA0.copy()
+    shard = cfg[&quot;shards&quot;][rank]
+    delay = (cfg[&quot;delay_ms&quot;] / 1000.0
+             if rank == cfg[&quot;delay_rank&quot;] else 0.0)
+    result_q.put((&quot;ready&quot;, rank, os.getpid()))
+    go.wait()  # start gate: nobody times a step until all 4 exist
+    compute_ms, step_ms = [], []
+    for step in range(cfg[&quot;steps&quot;]):
+        t0 = time.perf_counter()
+        if delay:
+            spin(delay)
+        work = gradient(theta, shard)  # local gradient, 4-vector
+        t1 = time.perf_counter()
+        # Scatter-reduce: N-1 hops, receiver adds.
+        for s in range(n - 1):
+            send_chunk = (rank - s) % n
+            recv_chunk = (rank - s - 1) % n
+            inboxes[(rank + 1) % n].put(
+                (&quot;sr&quot;, step, s, send_chunk, float(work[send_chunk])))
+            tag, st, ss, cidx, val = inbox.get()
+            assert (tag, st, ss, cidx) == (&quot;sr&quot;, step, s, recv_chunk)
+            work[recv_chunk] += val
+        # All-gather: N-1 hops, receiver overwrites.
+        for s in range(n - 1):
+            send_chunk = (rank - s + 1) % n
+            recv_chunk = (rank - s) % n
+            inboxes[(rank + 1) % n].put(
+                (&quot;ag&quot;, step, s, send_chunk, float(work[send_chunk])))
+            tag, st, ss, cidx, val = inbox.get()
+            assert (tag, st, ss, cidx) == (&quot;ag&quot;, step, s, recv_chunk)
+            work[recv_chunk] = val
+        theta = theta - LR * (work / n)  # same averaged grad, same step
+        compute_ms.append((t1 - t0) * 1000.0)
+        step_ms.append((time.perf_counter() - t0) * 1000.0)
+    result_q.put((&quot;final&quot;, rank, theta.tolist(),
+                  sum(compute_ms) / len(compute_ms),
+                  sum(step_ms) / len(step_ms)))
+
+
+def run_cluster(ctx, points, steps, delay_rank=-1, delay_ms=0.0):
+    &quot;&quot;&quot;Spawn N_WORKERS real processes and train. Returns
+    (finals, ready_ms, wall_ms): finals maps rank -&gt; report.&quot;&quot;&quot;
+    shards = [points[i::N_WORKERS] for i in range(N_WORKERS)]
+    cfg = {&quot;shards&quot;: shards, &quot;steps&quot;: steps,
+           &quot;delay_rank&quot;: delay_rank, &quot;delay_ms&quot;: delay_ms}
+    inboxes = [ctx.Queue() for _ in range(N_WORKERS)]
+    result_q = ctx.Queue()
+    go = ctx.Event()
+    procs = [ctx.Process(target=worker_main,
+                         args=(r, N_WORKERS, inboxes[r], inboxes,
+                               result_q, go, cfg))
+             for r in range(N_WORKERS)]
+    t0 = time.perf_counter()
+    for p in procs:
+        p.start()
+    pids = {}
+    for _ in range(N_WORKERS):
+        _, rank, pid = result_q.get()
+        pids[rank] = pid
+    ready_ms = (time.perf_counter() - t0) * 1000.0
+    go.set()
+    t_go = time.perf_counter()
+    finals = {}
+    for _ in range(N_WORKERS):
+        _, rank, theta, c_ms, s_ms = result_q.get()
+        finals[rank] = {&quot;pid&quot;: pids[rank], &quot;theta&quot;: theta,
+                        &quot;compute_ms&quot;: c_ms, &quot;step_ms&quot;: s_ms}
+    wall_ms = (time.perf_counter() - t_go) * 1000.0
+    for p in procs:
+        p.join(timeout=30)
+        assert p.exitcode == 0, f&quot;worker died: exitcode {p.exitcode}&quot;
+    return finals, ready_ms, wall_ms
+
+
+def main():
+    points = build_points()
+    ctx = mp.get_context(&quot;spawn&quot;)  # spawn = the macOS default too
+
+    # ---------- Part 1: the single-process reference ----------
+    print(&quot;Part 1 - single-process reference (30 steps, all 16 points)&quot;)
+    theta = THETA0.copy()
+    marks = {0: loss(theta, points)}
+    theta_ref10 = None
+    for step in range(1, STEPS + 1):
+        theta = theta - LR * gradient(theta, points)
+        if step in (10, 20, STEPS):
+            marks[step] = loss(theta, points)
+        if step == STRAGGLER_STEPS:
+            theta_ref10 = theta.copy()
+    theta_ref = theta
+    print(&quot;  loss: &quot; + &quot;, &quot;.join(f&quot;step {s} = {marks[s]:.6f}&quot;
+                                 for s in (0, 10, 20, STEPS)))
+    print(f&quot;  reference theta = {fmt(theta_ref)}&quot;)
+
+    # ---------- Part 2: four real processes, ring over queues ----------
+    print(&quot;Part 2 - four REAL processes, ring all-reduce over queues&quot;)
+    print(f&quot;  parent pid = {os.getpid()}&quot;)
+    finals, ready_ms, wall_ms = run_cluster(ctx, points, STEPS)
+    print(f&quot;  spawn -&gt; all 4 workers ready: {ready_ms:.0f} ms &quot;
+          f&quot;(machine-dependent)&quot;)
+    shards = [points[i::N_WORKERS] for i in range(N_WORKERS)]
+    for r in range(N_WORKERS):
+        xs = &quot;, &quot;.join(f&quot;{x:.1f}&quot; for x, _ in shards[r])
+        print(f&quot;    worker {r}: pid {finals[r][&#x27;pid&#x27;]}, shard x = {xs}&quot;)
+    print(f&quot;  30 steps done in {wall_ms:.0f} ms wall &quot;
+          f&quot;(machine-dependent)&quot;)
+    thetas = [np.array(finals[r][&quot;theta&quot;]) for r in range(N_WORKERS)]
+    identical = all(np.array_equal(t, thetas[0]) for t in thetas)
+    print(f&quot;  all four workers&#x27; thetas bit-identical: {identical}&quot;)
+    max_diff = max(float(np.max(np.abs(t - theta_ref))) for t in thetas)
+    print(f&quot;  max |worker theta - reference theta| = {max_diff:.3e}&quot;)
+    print(&quot;  verdict: real processes, real IPC - same theta as one machine&quot;)
+
+    # ---------- Part 3: the straggler, measured ----------
+    print(f&quot;Part 3 - straggler: worker {STRAGGLER_RANK} gets &quot;
+          f&quot;+{STRAGGLER_MS:.0f} ms busywork per step&quot;)
+    s_finals, _, _ = run_cluster(ctx, points, STRAGGLER_STEPS,
+                                 delay_rank=STRAGGLER_RANK,
+                                 delay_ms=STRAGGLER_MS)
+    print(&quot;  baseline (Part 2):        compute/step    step total&quot;
+          &quot;     waiting&quot;)
+    for r in range(N_WORKERS):
+        f = finals[r]
+        print(f&quot;    worker {r} (healthy)      &quot;
+              f&quot;{f[&#x27;compute_ms&#x27;]:8.2f} ms    {f[&#x27;step_ms&#x27;]:8.2f} ms&quot;
+              f&quot;    {f[&#x27;step_ms&#x27;] - f[&#x27;compute_ms&#x27;]:8.2f} ms&quot;)
+    print(f&quot;  straggler run ({STRAGGLER_STEPS} steps): &quot;
+          f&quot;compute/step    step total     waiting&quot;)
+    for r in range(N_WORKERS):
+        f = s_finals[r]
+        label = &quot;delayed&quot; if r == STRAGGLER_RANK \
+            else &quot;healthy&quot;
+        print(f&quot;    worker {r} ({label})      &quot;
+              f&quot;{f[&#x27;compute_ms&#x27;]:8.2f} ms    {f[&#x27;step_ms&#x27;]:8.2f} ms&quot;
+              f&quot;    {f[&#x27;step_ms&#x27;] - f[&#x27;compute_ms&#x27;]:8.2f} ms&quot;)
+    print(&quot;  verdict: the step is a barrier - its length is set by the&quot;)
+    print(&quot;  slowest worker, and the healthy workers pay for it as waiting&quot;)
+    s_thetas = [np.array(s_finals[r][&quot;theta&quot;]) for r in range(N_WORKERS)]
+    s_ident = all(np.array_equal(t, s_thetas[0]) for t in s_thetas)
+    s_diff = max(float(np.max(np.abs(t - theta_ref10))) for t in s_thetas)
+    print(f&quot;  sanity: straggler thetas bit-identical: {s_ident}, &quot;
+          f&quot;max diff vs the 10-step reference = {s_diff:.3e}&quot;)
+    print(&quot;  the delay changed the timing, not the math - a slow worker&quot;)
+    print(&quot;  costs the whole cluster time and changes no result&quot;)
+
+    # ---------- Part 4: what the hand-rolled version costs ----------
+    print(&quot;Part 4 - what the hand-rolled version costs&quot;)
+    print(f&quot;  messages per worker per step: 2(N-1) = &quot;
+          f&quot;{2 * (N_WORKERS - 1)} sends + {2 * (N_WORKERS - 1)} receives&quot;)
+    print(f&quot;  bytes per worker per step: {2 * (N_WORKERS - 1)} chunks &quot;
+          f&quot;x 8 B = {2 * (N_WORKERS - 1) * 8} B (this toy)&quot;)
+    print(&quot;  at 7B params, N=64 (Day 74): 55.1 GB/worker/step - moved by&quot;)
+    print(&quot;  NCCL over NVLink/RDMA from GPU memory, never pickled through&quot;)
+    print(&quot;  a CPU queue; that gap is the whole lesson of Part 4&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - single-process reference (30 steps, all 16 points)
+  loss: step 0 = 78.980469, step 10 = 1.461741, step 20 = 0.802430, step 30 = 0.465431
+  reference theta = 0.968484, 1.579751, 0.463296, 0.068607
+Part 2 - four REAL processes, ring all-reduce over queues
+  parent pid = 6272
+  spawn -&gt; all 4 workers ready: 498 ms (machine-dependent)
+    worker 0: pid 6274, shard x = 0.5, 2.5, 4.5, 6.5
+    worker 1: pid 6275, shard x = 1.0, 3.0, 5.0, 7.0
+    worker 2: pid 6276, shard x = 1.5, 3.5, 5.5, 7.5
+    worker 3: pid 6277, shard x = 2.0, 4.0, 6.0, 8.0
+  30 steps done in 17 ms wall (machine-dependent)
+  all four workers&#x27; thetas bit-identical: True
+  max |worker theta - reference theta| = 3.886e-16
+  verdict: real processes, real IPC - same theta as one machine
+Part 3 - straggler: worker 3 gets +25 ms busywork per step
+  baseline (Part 2):        compute/step    step total     waiting
+    worker 0 (healthy)          0.02 ms        0.45 ms        0.43 ms
+    worker 1 (healthy)          0.02 ms        0.35 ms        0.33 ms
+    worker 2 (healthy)          0.02 ms        0.35 ms        0.34 ms
+    worker 3 (healthy)          0.02 ms        0.36 ms        0.34 ms
+  straggler run (10 steps): compute/step    step total     waiting
+    worker 0 (healthy)          0.05 ms       38.58 ms       38.52 ms
+    worker 1 (healthy)          0.07 ms       38.61 ms       38.55 ms
+    worker 2 (healthy)          0.06 ms       38.27 ms       38.22 ms
+    worker 3 (delayed)         34.11 ms       38.48 ms        4.38 ms
+  verdict: the step is a barrier - its length is set by the
+  slowest worker, and the healthy workers pay for it as waiting
+  sanity: straggler thetas bit-identical: True, max diff vs the 10-step reference = 2.220e-16
+  the delay changed the timing, not the math - a slow worker
+  costs the whole cluster time and changes no result
+Part 4 - what the hand-rolled version costs
+  messages per worker per step: 2(N-1) = 6 sends + 6 receives
+  bytes per worker per step: 6 chunks x 8 B = 48 B (this toy)
+  at 7B params, N=64 (Day 74): 55.1 GB/worker/step - moved by
+  NCCL over NVLink/RDMA from GPU memory, never pickled through
+  a CPU queue; that gap is the whole lesson of Part 4</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints <code>all four workers' thetas bit-identical: True</code>, a max diff at e-16 scale (ours: 3.886e-16), and a straggler table where every healthy worker&rsquo;s step sits within a whisker of the delayed worker&rsquo;s &mdash; paid for as waiting. The keeper test, no notes allowed: someone says &ldquo;just add more workers, it averages out&rdquo; and you answer &ldquo;the step is a <strong>max</strong>, not a mean &mdash; I measured a 25 ms delay turn a 0.4 ms step into a ~26&ndash;38 ms step for all four processes, and spawn cost more than the training.&rdquo;</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, then study panel B of the diagram until you can explain where the healthy workers&rsquo; ~38 ms actually went. Run the code and read only Part 2&rsquo;s two proof lines and Part 3&rsquo;s two tables. The rest is confirmation.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the capstone assembles &mdash; the finance-ML pieces from the last two weeks become one end-to-end system on a single page.</p>
+  </div>
+
+  <div class="footer">Streak: 98 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<svg viewBox="0 0 680 516" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="516" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">All-reduce for real: four processes, one ring, one barrier</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 98 - Day 74's protocol over real IPC. PIDs are from one actual run; yours will differ.</text>
+<rect x="12" y="52" width="656" height="208" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="72" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - FOUR REAL PROCESSES: PARENT SPAWNS, WORKERS RING THROUGH QUEUES</text>
+<rect x="262" y="82" width="156" height="30" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="96" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">parent · pid 6272</text>
+<text x="340" y="108" text-anchor="middle" font-size="8" fill="#555555">spawns · start gate · collects θ</text>
+<line x1="104" y1="112" x2="104" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="104,132 100.5,124.5 107.5,124.5" fill="#7a5cff"/>
+<line x1="268" y1="112" x2="268" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="268,132 264.5,124.5 271.5,124.5" fill="#7a5cff"/>
+<line x1="432" y1="112" x2="432" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="432,132 428.5,124.5 435.5,124.5" fill="#7a5cff"/>
+<line x1="596" y1="112" x2="596" y2="130" stroke="#7a5cff" stroke-width="1.4"/>
+<polygon points="596,132 592.5,124.5 599.5,124.5" fill="#7a5cff"/>
+<text x="114" y="126" font-size="8" fill="#7a5cff">spawn</text>
+<rect x="28" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="104" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 0 · python3</text>
+<text x="104" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6274</text>
+<text x="104" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="104" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 0.5, 2.5, 4.5, 6.5</text>
+<rect x="192" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 1 · python3</text>
+<text x="268" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6275</text>
+<text x="268" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="268" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.0, 3.0, 5.0, 7.0</text>
+<rect x="356" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="432" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 2 · python3</text>
+<text x="432" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6276</text>
+<text x="432" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="432" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.5, 3.5, 5.5, 7.5</text>
+<rect x="520" y="132" width="152" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="596" y="150" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 3 · python3</text>
+<text x="596" y="165" text-anchor="middle" font-size="9.5" fill="#0a54c2">pid 6277</text>
+<text x="596" y="179" text-anchor="middle" font-size="8.5" fill="#555555">θ: FULL copy, identical</text>
+<text x="596" y="193" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 2.0, 4.0, 6.0, 8.0</text>
+<line x1="181" y1="166" x2="190" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="192,166 185.5,162.5 185.5,169.5" fill="#7a5cff"/>
+<line x1="345" y1="166" x2="354" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="356,166 349.5,162.5 349.5,169.5" fill="#7a5cff"/>
+<line x1="509" y1="166" x2="518" y2="166" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="520,166 513.5,162.5 513.5,169.5" fill="#7a5cff"/>
+<path d="M 596 200 L 596 218 L 108 218 L 108 204" fill="none" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="104,200 100.5,207.5 107.5,207.5" fill="#7a5cff"/>
+<text x="352" y="212" text-anchor="middle" font-size="9" fill="#7a5cff">ring order W0→W1→W2→W3→W0 · mp.Queue hops · pickled float64 chunk (8 B) · 6 hops/worker/step</text>
+<line x1="24" y1="232" x2="656" y2="232" stroke="#d64545" stroke-width="1.4" stroke-dasharray="5 4"/>
+<text x="340" y="248" text-anchor="middle" font-size="9" fill="#d64545" font-weight="bold">STEP BARRIER — nobody starts step t+1 until the ring closes step t (the all-reduce IS the barrier)</text>
+<rect x="12" y="274" width="656" height="228" rx="10" fill="#ffffff" stroke="#d64545" stroke-width="1.2"/>
+<text x="340" y="294" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONE STEP WITH A STRAGGLER: MEASURED PER-WORKER TIME (ms)</text>
+<rect x="356" y="304" width="10" height="10" fill="#0a7aff"/>
+<text x="370" y="313" font-size="8.5" fill="#1c1c1e">computing</text>
+<rect x="434" y="304" width="10" height="10" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="448" y="313" font-size="8.5" fill="#1c1c1e">waiting at the barrier</text>
+<rect x="566" y="304" width="10" height="10" fill="#e8590c"/>
+<text x="580" y="313" font-size="8.5" fill="#1c1c1e">delayed compute</text>
+<text x="142" y="341" text-anchor="end" font-size="9.5" fill="#1c1c1e">W0 healthy</text>
+<rect x="150" y="326" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="326" width="468" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="386" y="341" text-anchor="middle" font-size="9" fill="#555555">waiting 38.52</text>
+<text x="626" y="341" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.58</text>
+<text x="142" y="373" text-anchor="end" font-size="9.5" fill="#1c1c1e">W1 healthy</text>
+<rect x="150" y="358" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="358" width="468" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="386" y="373" text-anchor="middle" font-size="9" fill="#555555">waiting 38.55</text>
+<text x="626" y="373" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.61</text>
+<text x="142" y="405" text-anchor="end" font-size="9.5" fill="#1c1c1e">W2 healthy</text>
+<rect x="150" y="390" width="2" height="22" fill="#0a7aff"/>
+<rect x="152" y="390" width="464" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="384" y="405" text-anchor="middle" font-size="9" fill="#555555">waiting 38.22</text>
+<text x="622" y="405" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.27</text>
+<text x="142" y="437" text-anchor="end" font-size="9.5" fill="#1c1c1e">W3 +25 ms injected</text>
+<rect x="150" y="422" width="415" height="22" fill="#e8590c"/>
+<text x="357" y="437" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">computing 34.11 (injected delay + gradient)</text>
+<rect x="565" y="422" width="53" height="22" fill="#d9d9de" stroke="#999999" stroke-width="0.8"/>
+<text x="591" y="418" text-anchor="middle" font-size="8" fill="#555555">wait 4.38</text>
+<text x="624" y="437" font-size="9.5" fill="#1c1c1e" font-weight="bold">38.48</text>
+<line x1="150" y1="452" x2="620" y2="452" stroke="#999999" stroke-width="1"/>
+<line x1="150" y1="452" x2="150" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="272" y1="452" x2="272" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="393" y1="452" x2="393" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="515" y1="452" x2="515" y2="456" stroke="#999999" stroke-width="1"/>
+<line x1="620" y1="452" x2="620" y2="456" stroke="#999999" stroke-width="1"/>
+<text x="150" y="468" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<text x="272" y="468" text-anchor="middle" font-size="8.5" fill="#666666">10</text>
+<text x="393" y="468" text-anchor="middle" font-size="8.5" fill="#666666">20</text>
+<text x="515" y="468" text-anchor="middle" font-size="8.5" fill="#666666">30</text>
+<text x="620" y="468" text-anchor="middle" font-size="8.5" fill="#666666">38.6 ms</text>
+<rect x="150" y="478" width="5" height="6" fill="#22a355"/>
+<text x="162" y="485" font-size="8.5" fill="#555555">the same step with no straggler: ≈ 0.4 ms total (green, drawn to scale) — healthy compute is a ≈ 0.05 ms sliver in every bar above</text>
+</svg>
