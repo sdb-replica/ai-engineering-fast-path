@@ -1,0 +1,77 @@
+<svg viewBox="0 0 680 530" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="530" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13" fill="#1c1c1e" font-weight="bold">The build: Day 58&#x27;s lanes, completed - generation filled in, a gate in front of it</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Same write path, same read path - two new boxes: the gate, and the assembler that replaced the stub</text>
+<rect x="12" y="54" width="656" height="118" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - OFFLINE: THE WRITE PATH (what&#x27;s new: the chunker overlaps its windows)</text>
+<rect x="28" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="93.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">10 notes</text>
+<text x="93.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">his lessons + infra</text>
+<rect x="190" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="255.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Chunk + overlap</text>
+<text x="255.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">40 words, share 10</text>
+<rect x="352" y="88" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="422.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed (TF-IDF)</text>
+<text x="422.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">Day 58, unchanged</text>
+<rect x="524" y="88" width="128" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="588.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Index</text>
+<text x="588.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">vector + text + id</text>
+<line x1="160" y1="114" x2="188" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="188,114 181,110 181,118" fill="#0a7aff"/>
+<line x1="322" y1="114" x2="350" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="350,114 343,110 343,118" fill="#0a7aff"/>
+<line x1="494" y1="114" x2="522" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="522,114 515,110 515,118" fill="#0a7aff"/>
+<text x="340" y="160" text-anchor="middle" font-size="9" fill="#1c1c1e">every chunk has an address - [doc#chunk] - which is what makes citations possible later</text>
+<rect x="12" y="186" width="656" height="62" rx="10" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE INDEX - 20 chunks from 10 docs (external memory, not weights)</text>
+<text x="340" y="226" text-anchor="middle" font-size="9.5" fill="#1c1c1e">[day-048-kv-cache#0] text  &lt;-&gt;  [0.00, 3.13, ...]      [day-005-loss-functions#0] text  &lt;-&gt;  [ ... ]</text>
+<text x="340" y="242" text-anchor="middle" font-size="9" fill="#5a3fd4">updating knowledge = re-chunk + re-index - the model itself never changes</text>
+<line x1="588" y1="142" x2="588" y2="184" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="588,184 584,177 592,177" fill="#7a5cff"/>
+<rect x="12" y="262" width="656" height="198" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="282" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONLINE: THE READ PATH - retrieve, then the GATE decides: answer or refuse</text>
+<rect x="24" y="296" width="92" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="70.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Question</text>
+<text x="70.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">user asks</text>
+<rect x="140" y="296" width="104" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="192.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed query</text>
+<text x="192.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">SAME embedder</text>
+<rect x="268" y="296" width="116" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="326.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Retrieve top-k</text>
+<text x="326.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">cosine-rank rows</text>
+<polygon points="460,293 524,321 460,349 396,321" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+<text x="460" y="317" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">GATE</text>
+<text x="460" y="331" text-anchor="middle" font-size="8.5" fill="#555555">best &#8805; 0.25?</text>
+<rect x="548" y="296" width="108" height="50" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602.0" y="318" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE</text>
+<text x="602.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">&#x27;not in my docs&#x27;</text>
+<line x1="118" y1="321" x2="138" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="138,321 131,317 131,325" fill="#22a355"/>
+<line x1="246" y1="321" x2="266" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="266,321 259,317 259,325" fill="#22a355"/>
+<line x1="386" y1="321" x2="394" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="394,321 387,317 387,325" fill="#22a355"/>
+<line x1="526" y1="321" x2="546" y2="321" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="546,321 539,317 539,325" fill="#c23b3b"/>
+<text x="536" y="312" text-anchor="middle" font-size="8.5" fill="#c23b3b">no</text>
+<line x1="326" y1="294" x2="326" y2="250" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="326,250 322,257 330,257" fill="#7a5cff"/>
+<line x1="460" y1="351" x2="460" y2="382" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="460,382 456,375 464,375" fill="#22a355"/>
+<text x="448" y="370" text-anchor="middle" font-size="8.5" fill="#177245">yes</text>
+<text x="24" y="402" font-size="9.5" fill="#1c1c1e">generation is the ONLY stub left: an LLM would</text>
+<text x="24" y="418" font-size="9.5" fill="#1c1c1e">paraphrase these same sentences - nothing else moves</text>
+<rect x="396" y="384" width="128" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2.4"/>
+<text x="460.0" y="406" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">GENERATE</text>
+<text x="460.0" y="422" text-anchor="middle" font-size="8.5" fill="#555555">extractive assembly</text>
+<rect x="548" y="384" width="108" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="602.0" y="406" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Answer</text>
+<text x="602.0" y="422" text-anchor="middle" font-size="8.5" fill="#555555">cited [doc#chunk]</text>
+<line x1="526" y1="408" x2="546" y2="408" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="546,408 539,404 539,412" fill="#22a355"/>
+<text x="340" y="448" text-anchor="middle" font-size="9" fill="#1c1c1e">below the gate there is nothing to hallucinate from - the refusal IS the feature</text>
+<rect x="12" y="476" width="656" height="42" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="494" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Citations are provenance: every answer sentence names the [doc#chunk] it came from.</text>
+<text x="340" y="510" text-anchor="middle" font-size="9.5" fill="#1c1c1e">No provenance, no trust - the same rule as logs, traces, and request IDs in your systems.</text>
+</svg>

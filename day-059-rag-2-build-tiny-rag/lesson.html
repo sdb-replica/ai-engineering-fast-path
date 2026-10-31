@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG 2: Build a Tiny RAG Over Your Own Docs — Day 59 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 59 of 100</span>
+  <h1>RAG 2: Build a Tiny RAG Over Your Own Docs</h1>
+  <p class="outcome">Tonight you'll be able to: build the complete system from yesterday&#x27;s diagram — overlapped chunking, the Day 58 index, answers assembled from your own notes with [doc#chunk] citations — and a refusal gate that says “not in my docs” instead of hallucinating.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday ended on a stub: retrieval worked, generation was a
+placeholder, and the corpus arrived pre-cut. Today you close the loop over a
+corpus that stands in for <em>your</em> docs folder — ten short notes:
+summaries of your own Days 5, 15, 27, 31, 32, 48, 53 and 58, a Conveyor DRS
+note, and a DynamoDB tiered-storage note. Everything from Day 58 survives.
+Exactly two boxes are new, plus one repair to an old one.</p>
+<p><strong>The repair: chunking with overlap.</strong> Real documents arrive
+whole, so a chunker cuts them — and cutting creates Day 58's first failure
+mode: an idea straddling a boundary arrives as two half-answers. The standard
+mitigation is a sliding window with a shared seam: 40-word windows advancing
+30 words at a time, so neighbours overlap by 10 words and a sentence cut at
+one window's edge gets a second chance to be whole in the next. Part 1 prints
+the seam itself as proof. Honest limits: overlap is a mitigation, not a
+guarantee — a long sentence can still straddle — so the assembler in Part 3
+only ever quotes <em>complete</em> sentences and treats fragments as
+non-evidence. The price is a bigger index: windows advance 30 words, not
+40.</p>
+<p><strong>New box 1: the gate.</strong> Between retrieval and generation sit
+three lines of code: if the best cosine score is below <code>0.25</code>,
+refuse. Today's numbers show why it is load-bearing. The two answerable
+questions score <code>0.3329</code> and <code>0.4573</code>. The
+chocolate-cake question — nothing to do with any note — still manages
+<code>0.1978</code>, because TF-IDF credits it for shared filler words like
+<em>the</em>, <em>a</em>, <em>what</em>. That score looks real and is pure
+noise. Without a gate, the question proceeds to generation with
+RAG-architecture chunks as its "context", and something fluent and invented
+comes back. The gate converts a hallucination into an honest miss. It is
+also honestly fragile: a paraphrased question that shares no words with its
+chunk scores low and gets refused too — the known limit of word-matching
+retrieval, and exactly why production systems swap TF-IDF for Day 15's
+learned embeddings. But it errs toward silence, which is the right direction
+when the promise is "answers from <em>my</em> docs".</p>
+<p><strong>New box 2: generation, with the label left on.</strong> There is
+no LLM in this build, so the generation box is <em>extractive assembly</em>:
+lift the best complete sentences out of the top-2 chunks — scored by the
+rare words they share with the question — and print each one verbatim with
+its <code>[doc#chunk]</code> address attached. No paraphrase, no connective
+tissue, nothing that is not in your notes. Watch Q1's answer: exactly one
+sentence clears the quality bar, so the answer is one sentence long. A real
+model dropped into this box would write smoother prose from the <em>same
+evidence</em>; it would not change what gets retrieved, what gets refused,
+or what can be cited. That is the swap Day 58 promised — one box, everything
+else bolted down.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You would fire a storage system that answered a read for a missing key
+with a plausible invented value and a 200 OK. That is precisely what an
+ungated LLM does with an out-of-corpus question — it cannot return NOT
+FOUND, so it fabricates a row. The gate is the read path regaining the right
+to say <em>miss</em>. And the citations are provenance: <code>[day-048-kv-cache#0]</code>
+is the request ID of an answer — it names the exact stored object a sentence
+came from, so a human can verify the claim with one lookup instead of
+trusting the prose. You already run your systems this way: no provenance, no
+trust.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 530" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="530" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13" fill="#1c1c1e" font-weight="bold">The build: Day 58&#x27;s lanes, completed - generation filled in, a gate in front of it</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Same write path, same read path - two new boxes: the gate, and the assembler that replaced the stub</text>
+<rect x="12" y="54" width="656" height="118" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - OFFLINE: THE WRITE PATH (what&#x27;s new: the chunker overlaps its windows)</text>
+<rect x="28" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="93.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">10 notes</text>
+<text x="93.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">his lessons + infra</text>
+<rect x="190" y="88" width="130" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="255.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Chunk + overlap</text>
+<text x="255.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">40 words, share 10</text>
+<rect x="352" y="88" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="422.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed (TF-IDF)</text>
+<text x="422.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">Day 58, unchanged</text>
+<rect x="524" y="88" width="128" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="588.0" y="110" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Index</text>
+<text x="588.0" y="128" text-anchor="middle" font-size="8.5" fill="#555555">vector + text + id</text>
+<line x1="160" y1="114" x2="188" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="188,114 181,110 181,118" fill="#0a7aff"/>
+<line x1="322" y1="114" x2="350" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="350,114 343,110 343,118" fill="#0a7aff"/>
+<line x1="494" y1="114" x2="522" y2="114" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="522,114 515,110 515,118" fill="#0a7aff"/>
+<text x="340" y="160" text-anchor="middle" font-size="9" fill="#1c1c1e">every chunk has an address - [doc#chunk] - which is what makes citations possible later</text>
+<rect x="12" y="186" width="656" height="62" rx="10" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE INDEX - 20 chunks from 10 docs (external memory, not weights)</text>
+<text x="340" y="226" text-anchor="middle" font-size="9.5" fill="#1c1c1e">[day-048-kv-cache#0] text  &lt;-&gt;  [0.00, 3.13, ...]      [day-005-loss-functions#0] text  &lt;-&gt;  [ ... ]</text>
+<text x="340" y="242" text-anchor="middle" font-size="9" fill="#5a3fd4">updating knowledge = re-chunk + re-index - the model itself never changes</text>
+<line x1="588" y1="142" x2="588" y2="184" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="588,184 584,177 592,177" fill="#7a5cff"/>
+<rect x="12" y="262" width="656" height="198" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="282" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - ONLINE: THE READ PATH - retrieve, then the GATE decides: answer or refuse</text>
+<rect x="24" y="296" width="92" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="70.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Question</text>
+<text x="70.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">user asks</text>
+<rect x="140" y="296" width="104" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="192.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Embed query</text>
+<text x="192.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">SAME embedder</text>
+<rect x="268" y="296" width="116" height="50" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="326.0" y="318" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Retrieve top-k</text>
+<text x="326.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">cosine-rank rows</text>
+<polygon points="460,293 524,321 460,349 396,321" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+<text x="460" y="317" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">GATE</text>
+<text x="460" y="331" text-anchor="middle" font-size="8.5" fill="#555555">best &#8805; 0.25?</text>
+<rect x="548" y="296" width="108" height="50" rx="8" fill="#fdeeee" stroke="#c23b3b" stroke-width="1.2"/>
+<text x="602.0" y="318" text-anchor="middle" font-size="10.5" fill="#c23b3b" font-weight="bold">REFUSE</text>
+<text x="602.0" y="334" text-anchor="middle" font-size="8.5" fill="#555555">&#x27;not in my docs&#x27;</text>
+<line x1="118" y1="321" x2="138" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="138,321 131,317 131,325" fill="#22a355"/>
+<line x1="246" y1="321" x2="266" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="266,321 259,317 259,325" fill="#22a355"/>
+<line x1="386" y1="321" x2="394" y2="321" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="394,321 387,317 387,325" fill="#22a355"/>
+<line x1="526" y1="321" x2="546" y2="321" stroke="#c23b3b" stroke-width="1.6"/>
+<polygon points="546,321 539,317 539,325" fill="#c23b3b"/>
+<text x="536" y="312" text-anchor="middle" font-size="8.5" fill="#c23b3b">no</text>
+<line x1="326" y1="294" x2="326" y2="250" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="326,250 322,257 330,257" fill="#7a5cff"/>
+<line x1="460" y1="351" x2="460" y2="382" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="460,382 456,375 464,375" fill="#22a355"/>
+<text x="448" y="370" text-anchor="middle" font-size="8.5" fill="#177245">yes</text>
+<text x="24" y="402" font-size="9.5" fill="#1c1c1e">generation is the ONLY stub left: an LLM would</text>
+<text x="24" y="418" font-size="9.5" fill="#1c1c1e">paraphrase these same sentences - nothing else moves</text>
+<rect x="396" y="384" width="128" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="2.4"/>
+<text x="460.0" y="406" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">GENERATE</text>
+<text x="460.0" y="422" text-anchor="middle" font-size="8.5" fill="#555555">extractive assembly</text>
+<rect x="548" y="384" width="108" height="48" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="602.0" y="406" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Answer</text>
+<text x="602.0" y="422" text-anchor="middle" font-size="8.5" fill="#555555">cited [doc#chunk]</text>
+<line x1="526" y1="408" x2="546" y2="408" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="546,408 539,404 539,412" fill="#22a355"/>
+<text x="340" y="448" text-anchor="middle" font-size="9" fill="#1c1c1e">below the gate there is nothing to hallucinate from - the refusal IS the feature</text>
+<rect x="12" y="476" width="656" height="42" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="494" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Citations are provenance: every answer sentence names the [doc#chunk] it came from.</text>
+<text x="340" y="510" text-anchor="middle" font-size="9.5" fill="#1c1c1e">No provenance, no trust - the same rule as logs, traces, and request IDs in your systems.</text>
+</svg>
+    <div class="caption">Day 58's two-lane diagram, completed. Top lane unchanged except the chunker, which now overlaps its windows; the index holds 20 chunks, each with a citable address. Bottom lane: retrieval feeds a gate on the best score — pass, and the extractive assembler (today's honest stand-in for the LLM, drawn with the heavier border) answers with citations; fail, and the system refuses. The GENERATE box is the only box a real model would change.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure standard library again — no torch, no downloads, no APIs; run it in
+<code>~/ai-lab</code> or anywhere with <code>python3 code.py</code>.
+<strong>Part 1</strong> chunks the ten notes with overlap, proves the seam,
+and builds Day 58's TF-IDF index over the 20 chunks. <strong>Part 2</strong>
+replays the read path for three questions. <strong>Part 3</strong> is the
+payoff: the gate fires on all three — two answers assembled from verbatim
+sentences with citations, one refusal. Note that Q2's two answer sentences
+both come from chunk <code>#0</code> of the KV-cache note: retrieval found
+the right <em>chunk</em>, and assembly found the right <em>sentences</em>
+inside it.</p>
+  <pre><code>&quot;&quot;&quot;Day 59 - RAG 2: Build a Tiny RAG Over Your Own Docs.
+
+Yesterday (Day 58) drew the architecture and ran retrieval
+over 8 pre-cut chunks - with a stub where the answer goes.
+Today the stub is filled in and the loop is closed: a
+complete, honest little RAG system over a corpus that
+stands in for YOUR docs folder.
+
+  WRITE PATH (offline)
+    10 short notes (summaries of your own earlier lessons
+    plus two infra notes from your old teams) -&gt; chunked
+    with a sliding word window WITH OVERLAP -&gt; TF-IDF
+    embedded with Day 58&#x27;s exact code -&gt; indexed, every
+    chunk carrying an address: [doc#chunk].
+
+  READ PATH (online)
+    question -&gt; same embedder -&gt; cosine top-k -&gt; a GATE on
+    the best score -&gt; either an answer assembled from the
+    retrieved chunks, or a refusal.
+
+Two honest labels, up front:
+
+  * The &quot;generation&quot; here is EXTRACTIVE: the answer is the
+    best-matching sentences lifted verbatim out of the
+    retrieved chunks, each printed with its [doc#chunk]
+    citation. No LLM, no API. Swapping in a real model
+    changes ONLY that box - it would paraphrase and connect
+    the same sentences; retrieval, the gate, and the
+    citation contract do not move.
+
+  * The refusal is the point. A bare LLM answers every
+    question, fluently, including the ones your docs say
+    nothing about. This system checks retrieval&#x27;s best
+    score first: below the threshold it says &quot;not in my
+    docs&quot; and generates NOTHING. Silence over fabrication.
+
+  Part 1  Write path: chunk 10 docs with overlap, print
+          per-doc chunk counts and prove the overlap seam.
+  Part 2  Read path: 3 questions, cosine top-3 each.
+  Part 3  The gate + the answer: two questions answered
+          from the docs with citations; one question the
+          docs cannot answer - watch the refusal fire.
+
+Runs anywhere: Python 3.11+ standard library ONLY (math,
+re). No torch, no APIs, no downloads, no RNG - every score
+below is exact and reproducible digit for digit.
+
+Expected output:
+
+  Part 1 - WRITE PATH: chunk with overlap -&gt; embed -&gt; index
+    day-005-loss-functions        68 words -&gt; 2 chunks
+    day-015-embeddings            66 words -&gt; 2 chunks
+    day-048-kv-cache              69 words -&gt; 2 chunks
+    conveyor-drs-note             60 words -&gt; 2 chunks
+    day-027-cnn-classifier        62 words -&gt; 2 chunks
+    dynamodb-tiered-storage-note  62 words -&gt; 2 chunks
+    day-058-rag-architecture      69 words -&gt; 2 chunks
+    day-032-tabular-mlp           65 words -&gt; 2 chunks
+    day-053-lora-note             61 words -&gt; 2 chunks
+    day-031-debugging-training    62 words -&gt; 2 chunks
+    total: 10 docs -&gt; 20 chunks (window 40 words, overlap 10)
+    overlap check: doc &#x27;day-005-loss-functions&#x27; chunks 0 and 1 share their 10-word seam: True
+    the seam itself: &quot;absolute error grows linearly instead, so it resists outliers but&quot;
+    vocabulary = 387 terms; index shape: 20 chunk vectors x 387 dims
+  Part 2 - READ PATH: embed query -&gt; cosine-rank -&gt; top-k
+    Q1: &quot;why does one outlier dominate the gradient in squared error&quot;
+      #1  day-005-loss-functions#0     cos 0.3329  The loss function tells a model how wrong it is. Mean squared error
+      #2  day-031-debugging-training#1 cos 0.1736  a dead activation or a broken gradient path. A spike that never recovers
+      #3  day-048-kv-cache#1           cos 0.1175  time they are computed. Later steps then only compute the new token and
+    Q2: &quot;why is the first token slow and what does the kv cache store&quot;
+      #1  day-048-kv-cache#0           cos 0.4573  Autoregressive generation recomputes attention over every previous token for each new token, which
+      #2  day-048-kv-cache#1           cos 0.2614  time they are computed. Later steps then only compute the new token and
+      #3  day-058-rag-architecture#1   cos 0.1685  the question is embedded with the same embedder, ranked by cosine similarity, and
+    Q3: &quot;what temperature do i bake a chocolate cake at&quot;
+      #1  day-058-rag-architecture#1   cos 0.1978  the question is embedded with the same embedder, ranked by cosine similarity, and
+      #2  day-031-debugging-training#0 cos 0.1767  Loss curves are observability for training. A healthy curve falls steadily and flattens
+      #3  day-031-debugging-training#1 cos 0.1407  a dead activation or a broken gradient path. A spike that never recovers
+  Part 3 - THE GATE: answer with citations, or refuse
+    Q1: &quot;why does one outlier dominate the gradient in squared error&quot;
+      gate: best score 0.3329 &gt;= 0.25 -&gt; ANSWER
+      ANSWER (extractive - verbatim sentences, citations attached):
+        &quot;Mean squared error squares each residual, so one big outlier dominates the gradient and drags the fit toward it.&quot; [day-005-loss-functions#0]
+    Q2: &quot;why is the first token slow and what does the kv cache store&quot;
+      gate: best score 0.4573 &gt;= 0.25 -&gt; ANSWER
+      ANSWER (extractive - verbatim sentences, citations attached):
+        &quot;Autoregressive generation recomputes attention over every previous token for each new token, which makes the first token slow.&quot; [day-048-kv-cache#0]
+        &quot;The KV cache stores each token&#x27;s key and value vectors the first time they are computed.&quot; [day-048-kv-cache#0]
+    Q3: &quot;what temperature do i bake a chocolate cake at&quot;
+      gate: best score 0.1978 &lt; 0.25 -&gt; REFUSE
+      ANSWER: not in my docs - no chunk clears the gate, so nothing is
+              generated. A bare LLM would have invented a temperature here.
+    verdict: same pipeline as Day 58 - the only new boxes are the
+             gate and the assembler. Swap the assembler for a real LLM
+             and every other line of this system stays exactly as is.
+&quot;&quot;&quot;
+import math
+import re
+from collections import Counter
+
+# The corpus: 10 short notes standing in for a docs folder.
+# Each is one small markdown-style note, a few sentences.
+DOCS = [
+    (&quot;day-005-loss-functions&quot;,
+     &quot;The loss function tells a model how wrong it is. Mean squared error &quot;
+     &quot;squares each residual, so one big outlier dominates the gradient and &quot;
+     &quot;drags the fit toward it. Mean absolute error grows linearly instead, &quot;
+     &quot;so it resists outliers but is less smooth to optimize. A loss must be &quot;
+     &quot;differentiable, because the training loop needs a gradient at every &quot;
+     &quot;step to know which way to nudge the weights.&quot;),
+    (&quot;day-015-embeddings&quot;,
+     &quot;An embedding turns a category into a vector of learned numbers. &quot;
+     &quot;One-hot vectors say every pair of categories is equally different, &quot;
+     &quot;which is useless for meaning. A learned embedding table places &quot;
+     &quot;similar meanings near each other, so cosine similarity reads bull &quot;
+     &quot;and rally as close and bear as far. Only the rows looked up in a &quot;
+     &quot;batch receive gradients; the rest of the table stays untouched.&quot;),
+    (&quot;day-048-kv-cache&quot;,
+     &quot;Autoregressive generation recomputes attention over every previous &quot;
+     &quot;token for each new token, which makes the first token slow. The KV &quot;
+     &quot;cache stores each token&#x27;s key and value vectors the first time they &quot;
+     &quot;are computed. Later steps then only compute the new token and read &quot;
+     &quot;the cache. Memory grows linearly with context length, trading RAM &quot;
+     &quot;for speed. This is why long conversations get cheaper per token but &quot;
+     &quot;heavier in memory.&quot;),
+    (&quot;conveyor-drs-note&quot;,
+     &quot;The Data Reliability Service scans stored objects for corruption &quot;
+     &quot;and schedules repairs before redundancy runs out. It compares &quot;
+     &quot;checksums against replicas, flags silent bit rot, and prioritizes &quot;
+     &quot;objects whose remaining copies are fewest. Repair traffic is rate &quot;
+     &quot;limited so background healing never starves foreground reads. A &quot;
+     &quot;repair reads a healthy replica, rewrites the bad shard, and &quot;
+     &quot;verifies the new checksum.&quot;),
+    (&quot;day-027-cnn-classifier&quot;,
+     &quot;The small CNN stacks two convolution blocks before a linear head. &quot;
+     &quot;Each block convolves, applies ReLU, then max-pools, halving the &quot;
+     &quot;feature map while channels grow. Pooling keeps the strongest &quot;
+     &quot;activation in each window, a rollup that throws away position but &quot;
+     &quot;keeps presence. With under two thousand parameters it beat the &quot;
+     &quot;plain MLP on handwritten digits, reaching about ninety eight &quot;
+     &quot;percent validation accuracy.&quot;),
+    (&quot;dynamodb-tiered-storage-note&quot;,
+     &quot;Tiered storage moves cold partitions to cheaper media automatically &quot;
+     &quot;when access patterns cool off. The hot tier keeps recent, frequently &quot;
+     &quot;read data on fast SSDs close to compute. A background process tracks &quot;
+     &quot;access counts per partition and demotes the coldest ones first. &quot;
+     &quot;Reads from the cold tier pay extra latency, so the system warms a &quot;
+     &quot;partition back to hot when traffic returns.&quot;),
+    (&quot;day-058-rag-architecture&quot;,
+     &quot;Retrieval augmented generation keeps knowledge in an external index &quot;
+     &quot;instead of the model weights. Offline, documents are chunked, &quot;
+     &quot;embedded, and indexed with each vector stored beside its chunk &quot;
+     &quot;text. Online, the question is embedded with the same embedder, &quot;
+     &quot;ranked by cosine similarity, and the top chunks are stuffed into &quot;
+     &quot;the prompt as context. The model answers from what it reads, so a &quot;
+     &quot;missed retrieval becomes a confident wrong answer.&quot;),
+    (&quot;day-032-tabular-mlp&quot;,
+     &quot;The tabular MLP predicts next day direction from five features &quot;
+     &quot;built out of raw price history. Feature engineering was the real &quot;
+     &quot;work: returns, momentum windows, realized volatility, and the &quot;
+     &quot;fraction of up days. A chronological split kept the future out of &quot;
+     &quot;training, because shuffling time series leaks tomorrow into &quot;
+     &quot;yesterday. The small network generalized; the wide one memorized &quot;
+     &quot;the training rows and failed on validation.&quot;),
+    (&quot;day-053-lora-note&quot;,
+     &quot;LoRA fine tunes a model by training only two small low rank &quot;
+     &quot;matrices injected beside each frozen weight matrix. The base model &quot;
+     &quot;never changes, so one copy serves many adapters. Merging the &quot;
+     &quot;adapter back into the weights costs nothing at inference time. &quot;
+     &quot;Because so few parameters train, LoRA runs on a single modest GPU &quot;
+     &quot;where full fine tuning would not fit.&quot;),
+    (&quot;day-031-debugging-training&quot;,
+     &quot;Loss curves are observability for training. A healthy curve falls &quot;
+     &quot;steadily and flattens at a floor set by label noise. A flatline &quot;
+     &quot;means almost no signal reaches the weights, often a dead activation &quot;
+     &quot;or a broken gradient path. A spike that never recovers points at &quot;
+     &quot;one corrupted batch. The train and validation curves together &quot;
+     &quot;separate underfitting from overfitting before any metric does.&quot;),
+]
+
+CHUNK_WORDS = 40     # window size, in words
+OVERLAP = 10         # words shared between neighbouring chunks
+K = 3                # top-k retrieval
+THRESHOLD = 0.25     # the refusal gate: best cosine must clear this
+
+
+def tokenize(text):
+    &quot;&quot;&quot;Lowercase word tokens; punctuation is dropped. (Day 58, verbatim.)&quot;&quot;&quot;
+    return re.findall(r&quot;[a-z0-9]+&quot;, text.lower())
+
+
+def chunk_doc(text, size=CHUNK_WORDS, overlap=OVERLAP):
+    &quot;&quot;&quot;Sliding word window. Neighbouring chunks share `overlap`
+    words, so an idea sitting on a boundary survives whole in at
+    least one chunk - Day 58&#x27;s &#x27;bad chunks&#x27; failure mode, fixed.&quot;&quot;&quot;
+    words = text.split()
+    step = size - overlap
+    chunks = []
+    for start in range(0, len(words), step):
+        piece = words[start:start + size]
+        if start &gt; 0 and len(piece) &lt;= overlap:
+            break                    # tail adds nothing new - skip it
+        chunks.append(&quot; &quot;.join(piece))
+        if start + size &gt;= len(words):
+            break
+    return chunks
+
+
+# ---------- Part 1: WRITE PATH - chunk (with overlap) -&gt; embed -&gt; index ----
+print(&quot;Part 1 - WRITE PATH: chunk with overlap -&gt; embed -&gt; index&quot;)
+entries = []               # (doc name, chunk no, chunk text) - the store rows
+for name, text in DOCS:
+    pieces = chunk_doc(text)
+    for ci, piece in enumerate(pieces):
+        entries.append((name, ci, piece))
+    print(f&quot;  {name:&lt;28} {len(text.split()):&gt;3} words -&gt; {len(pieces)} chunks&quot;)
+print(f&quot;  total: {len(DOCS)} docs -&gt; {len(entries)} chunks &quot;
+      f&quot;(window {CHUNK_WORDS} words, overlap {OVERLAP})&quot;)
+
+# Prove the seam: chunk 1 of doc 0 must OPEN with the 10 words
+# chunk 0 CLOSED with - that shared strip is the overlap.
+c0 = entries[0][2].split()
+c1 = entries[1][2].split()
+print(f&quot;  overlap check: doc &#x27;{entries[0][0]}&#x27; chunks 0 and 1 share &quot;
+      f&quot;their {OVERLAP}-word seam: {c0[-OVERLAP:] == c1[:OVERLAP]}&quot;)
+print(f&quot;  the seam itself: \&quot;{&#x27; &#x27;.join(c0[-OVERLAP:])}\&quot;&quot;)
+
+# Day 58&#x27;s embedder, unchanged - now over chunks instead of documents.
+chunk_tokens = [tokenize(text) for _, _, text in entries]
+vocab = sorted({t for toks in chunk_tokens for t in toks})
+V = {w: i for i, w in enumerate(vocab)}
+N = len(entries)
+df = Counter()
+for toks in chunk_tokens:
+    df.update(set(toks))
+idf = {w: math.log((1 + N) / (1 + df[w])) + 1.0 for w in vocab}
+
+
+def embed(tokens):
+    &quot;&quot;&quot;TF-IDF vector: count of each word, weighted by its idf.&quot;&quot;&quot;
+    counts = Counter(tokens)
+    vec = [0.0] * len(vocab)
+    for w, c in counts.items():
+        if w in V:                       # unknown words are ignored
+            vec[V[w]] = c * idf[w]
+    return vec
+
+
+index = [embed(toks) for toks in chunk_tokens]   # the &quot;vector store&quot;
+print(f&quot;  vocabulary = {len(vocab)} terms; index shape: &quot;
+      f&quot;{len(index)} chunk vectors x {len(vocab)} dims&quot;)
+
+# ---------- Part 2: READ PATH - embed query -&gt; cosine-rank -&gt; top-k --------
+print(&quot;Part 2 - READ PATH: embed query -&gt; cosine-rank -&gt; top-k&quot;)
+QUERIES = [
+    &quot;why does one outlier dominate the gradient in squared error&quot;,
+    &quot;why is the first token slow and what does the kv cache store&quot;,
+    &quot;what temperature do i bake a chocolate cake at&quot;,
+]
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def retrieve(query, k=K):
+    qv = embed(tokenize(query))         # SAME embedder as the write path
+    scored = [(cosine(qv, row), i) for i, row in enumerate(index)]
+    scored.sort(key=lambda p: (-p[0], p[1]))
+    return scored[:k]
+
+
+def chunk_id(i):
+    name, ci, _ = entries[i]
+    return f&quot;{name}#{ci}&quot;
+
+
+results = {}
+for qi, q in enumerate(QUERIES, start=1):
+    hits = retrieve(q)
+    results[q] = hits
+    print(f&quot;  Q{qi}: \&quot;{q}\&quot;&quot;)
+    for rank, (score, i) in enumerate(hits, start=1):
+        preview = &quot; &quot;.join(entries[i][2].split()[:13])
+        print(f&quot;    #{rank}  {chunk_id(i):&lt;28} cos {score:.4f}  {preview}&quot;)
+
+# ---------- Part 3: THE GATE + EXTRACTIVE ANSWER (or refusal) --------------
+print(&quot;Part 3 - THE GATE: answer with citations, or refuse&quot;)
+
+
+def sentences(text):
+    return [s for s in re.split(r&quot;(?&lt;=[.!?])\s+&quot;, text) if s]
+
+
+def extract_answer(query, hits, n=2):
+    &quot;&quot;&quot;The generation box, honestly stubbed: lift the sentences
+    from the top-2 chunks that best match the query (scored by
+    summed idf of shared words), verbatim, citations attached.
+    Two quality bars: a sentence must be COMPLETE (chunk edges
+    leave fragments - not quotable evidence) and must score at
+    least 40% of the best sentence, so a weak second chunk
+    cannot pad the answer with off-topic lines.&quot;&quot;&quot;
+    qtoks = set(tokenize(query))
+    cands = []
+    for _, i in hits[:2]:
+        for si, sent in enumerate(sentences(entries[i][2])):
+            if not (sent[0].isupper() and sent[-1] in &quot;.!?&quot;):
+                continue                 # a fragment, not a sentence
+            shared = qtoks &amp; set(tokenize(sent))
+            s = sum(idf[w] for w in shared if w in idf)
+            if s &gt; 0:
+                cands.append((s, i, si, sent))
+    if not cands:
+        return []
+    floor = 0.4 * max(s for s, _, _, _ in cands)
+    strong = [c for c in cands if c[0] &gt;= floor]
+    strong.sort(key=lambda t: (-t[0], t[1], t[2]))
+    picked = sorted(strong[:n], key=lambda t: (t[1], t[2]))
+    return [(sent, chunk_id(i)) for _, i, _, sent in picked]
+
+
+for qi, q in enumerate(QUERIES, start=1):
+    hits = results[q]
+    best = hits[0][0]
+    print(f&quot;  Q{qi}: \&quot;{q}\&quot;&quot;)
+    if best &lt; THRESHOLD:
+        print(f&quot;    gate: best score {best:.4f} &lt; {THRESHOLD:.2f} -&gt; REFUSE&quot;)
+        print(&quot;    ANSWER: not in my docs - no chunk clears the gate, &quot;
+              &quot;so nothing is&quot;)
+        print(&quot;            generated. A bare LLM would have invented a &quot;
+              &quot;temperature here.&quot;)
+    else:
+        print(f&quot;    gate: best score {best:.4f} &gt;= {THRESHOLD:.2f} -&gt; ANSWER&quot;)
+        print(&quot;    ANSWER (extractive - verbatim sentences, citations &quot;
+              &quot;attached):&quot;)
+        for sent, cid in extract_answer(q, hits):
+            print(f&quot;      \&quot;{sent}\&quot; [{cid}]&quot;)
+print(&quot;  verdict: same pipeline as Day 58 - the only new boxes are the&quot;)
+print(&quot;           gate and the assembler. Swap the assembler for a real LLM&quot;)
+print(&quot;           and every other line of this system stays exactly as is.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - WRITE PATH: chunk with overlap -&gt; embed -&gt; index
+  day-005-loss-functions        68 words -&gt; 2 chunks
+  day-015-embeddings            66 words -&gt; 2 chunks
+  day-048-kv-cache              69 words -&gt; 2 chunks
+  conveyor-drs-note             60 words -&gt; 2 chunks
+  day-027-cnn-classifier        62 words -&gt; 2 chunks
+  dynamodb-tiered-storage-note  62 words -&gt; 2 chunks
+  day-058-rag-architecture      69 words -&gt; 2 chunks
+  day-032-tabular-mlp           65 words -&gt; 2 chunks
+  day-053-lora-note             61 words -&gt; 2 chunks
+  day-031-debugging-training    62 words -&gt; 2 chunks
+  total: 10 docs -&gt; 20 chunks (window 40 words, overlap 10)
+  overlap check: doc &#x27;day-005-loss-functions&#x27; chunks 0 and 1 share their 10-word seam: True
+  the seam itself: &quot;absolute error grows linearly instead, so it resists outliers but&quot;
+  vocabulary = 387 terms; index shape: 20 chunk vectors x 387 dims
+Part 2 - READ PATH: embed query -&gt; cosine-rank -&gt; top-k
+  Q1: &quot;why does one outlier dominate the gradient in squared error&quot;
+    #1  day-005-loss-functions#0     cos 0.3329  The loss function tells a model how wrong it is. Mean squared error
+    #2  day-031-debugging-training#1 cos 0.1736  a dead activation or a broken gradient path. A spike that never recovers
+    #3  day-048-kv-cache#1           cos 0.1175  time they are computed. Later steps then only compute the new token and
+  Q2: &quot;why is the first token slow and what does the kv cache store&quot;
+    #1  day-048-kv-cache#0           cos 0.4573  Autoregressive generation recomputes attention over every previous token for each new token, which
+    #2  day-048-kv-cache#1           cos 0.2614  time they are computed. Later steps then only compute the new token and
+    #3  day-058-rag-architecture#1   cos 0.1685  the question is embedded with the same embedder, ranked by cosine similarity, and
+  Q3: &quot;what temperature do i bake a chocolate cake at&quot;
+    #1  day-058-rag-architecture#1   cos 0.1978  the question is embedded with the same embedder, ranked by cosine similarity, and
+    #2  day-031-debugging-training#0 cos 0.1767  Loss curves are observability for training. A healthy curve falls steadily and flattens
+    #3  day-031-debugging-training#1 cos 0.1407  a dead activation or a broken gradient path. A spike that never recovers
+Part 3 - THE GATE: answer with citations, or refuse
+  Q1: &quot;why does one outlier dominate the gradient in squared error&quot;
+    gate: best score 0.3329 &gt;= 0.25 -&gt; ANSWER
+    ANSWER (extractive - verbatim sentences, citations attached):
+      &quot;Mean squared error squares each residual, so one big outlier dominates the gradient and drags the fit toward it.&quot; [day-005-loss-functions#0]
+  Q2: &quot;why is the first token slow and what does the kv cache store&quot;
+    gate: best score 0.4573 &gt;= 0.25 -&gt; ANSWER
+    ANSWER (extractive - verbatim sentences, citations attached):
+      &quot;Autoregressive generation recomputes attention over every previous token for each new token, which makes the first token slow.&quot; [day-048-kv-cache#0]
+      &quot;The KV cache stores each token&#x27;s key and value vectors the first time they are computed.&quot; [day-048-kv-cache#0]
+  Q3: &quot;what temperature do i bake a chocolate cake at&quot;
+    gate: best score 0.1978 &lt; 0.25 -&gt; REFUSE
+    ANSWER: not in my docs - no chunk clears the gate, so nothing is
+            generated. A bare LLM would have invented a temperature here.
+  verdict: same pipeline as Day 58 - the only new boxes are the
+           gate and the assembler. Swap the assembler for a real LLM
+           and every other line of this system stays exactly as is.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints <code>10 docs -&gt; 20 chunks</code> with the
+overlap seam <code>True</code>, Q1 answered by the single outlier sentence
+cited <code>[day-005-loss-functions#0]</code>, Q2 answered by two sentences
+both cited <code>[day-048-kv-cache#0]</code>, and Q3 refused at
+<code>0.1978 &lt; 0.25</code> with nothing generated. Keeper test, no notes:
+say why overlap exists, why the gate sits <em>before</em> generation rather
+than after, and which single box a real LLM would replace.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea", study the diagram until you can point at the two new
+boxes, then run the code and read only Part 3. Now mentally lower
+<code>THRESHOLD</code> to <code>0.15</code>: Q3 suddenly "answers" a baking
+question out of RAG-architecture chunks. That shiver is the entire lesson —
+you have felt exactly what the gate is for.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow the pipeline grows hands: the system stops only answering
+questions and starts calling code you wrote — one tool at a time, with the
+same discipline about what happens when the answer is "no".</p>
+  </div>
+
+  <div class="footer">Streak: 59 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
