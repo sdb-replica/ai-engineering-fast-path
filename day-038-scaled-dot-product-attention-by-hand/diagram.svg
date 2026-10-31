@@ -1,0 +1,49 @@
+<svg viewBox="0 0 680 452" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="452" rx="0" fill="#ffffff" stroke="none"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Scaled dot-product attention: five moves, all primitives you own</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) V  —  shapes ride under every stage</text>
+<rect x="12" y="56" width="656" height="168" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE PIPELINE — today&#x27;s 3 tokens, d_k = 4, d_v = 2</text>
+<rect x="24" y="92" width="100" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="74.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Q @ K^T</text>
+<text x="74.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">scores (3,3)</text>
+<rect x="148" y="92" width="104" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="200.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">/ sqrt(d_k) = 2</text>
+<text x="200.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">scaled (3,3)</text>
+<rect x="276" y="92" width="108" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="330.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">softmax rows</text>
+<text x="330.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">weights (3,3)</text>
+<rect x="408" y="92" width="84" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="450.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">@ V</text>
+<text x="450.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">V is (3,2)</text>
+<rect x="516" y="92" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="586.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">output</text>
+<text x="586.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">one row per query (3,2)</text>
+<line x1="124" y1="118" x2="146" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="146,118 139,114 139,122" fill="#0a7aff"/>
+<line x1="252" y1="118" x2="274" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="274,118 267,114 267,122" fill="#0a7aff"/>
+<line x1="384" y1="118" x2="406" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="406,118 399,114 399,122" fill="#0a7aff"/>
+<line x1="492" y1="118" x2="514" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="514,118 507,114 507,122" fill="#0a7aff"/>
+<rect x="276" y="156" width="108" height="26" rx="6" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text x="330" y="173" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">mask: future = -inf</text>
+<line x1="330" y1="156" x2="330" y2="148" stroke="#d99a00" stroke-width="1.4"/>
+<polygon points="330,145 326,152 334,152" fill="#d99a00"/>
+<text x="330" y="200" text-anchor="middle" font-size="8.5" fill="#555555">decoders only (Part 3)</text>
+<text x="340" y="216" text-anchor="middle" font-size="9.0" fill="#0a54c2">row 0 today: scores [1, 1, 2] -&gt; scaled [0.5, 0.5, 1.0] -&gt; weights [0.274, 0.274, 0.452] -&gt; out [1.630, 0.822]</text>
+<rect x="12" y="238" width="656" height="132" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">WHY THE DIVIDE — DOT PRODUCTS GROW WITH DIMENSION</text>
+<text x="340" y="280" text-anchor="middle" font-size="9.0" fill="#1c1c1e">every coordinate pair contributes 0.25:   d = 4 -&gt; dot 1.00   |   d = 64 -&gt; dot 16.00   |   d = 256 -&gt; dot 64.00</text>
+<text x="118" y="303" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">unscaled, d=256</text>
+<rect x="228" y="292" width="300" height="14" rx="3" fill="#c22f2f"/>
+<text x="536" y="303" text-anchor="middle" font-size="9.0" fill="#1c1c1e">1.0000 · grad 0.000000</text>
+<text x="118" y="327" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">scaled, d=256</text>
+<rect x="228" y="316" width="295" height="14" rx="3" fill="#22a355"/>
+<text x="536" y="327" text-anchor="middle" font-size="9.0" fill="#1c1c1e">0.9820 · grad 0.017663</text>
+<text x="340" y="356" text-anchor="middle" font-size="9.0" fill="#177245">softmax saturates on raw scores: winner takes all, gradient dies. sqrt(d_k) keeps it confident but trainable.</text>
+<rect x="12" y="384" width="656" height="52" rx="10" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="404" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">No new machinery: matmul (Day 12) + divide + softmax (Day 14) + matmul — the mask is just -inf before the softmax</text>
+<text x="340" y="423" text-anchor="middle" font-size="9.5" fill="#1c1c1e">That one line, repeated and stacked, is the transformer&#x27;s engine room.</text>
+</svg>

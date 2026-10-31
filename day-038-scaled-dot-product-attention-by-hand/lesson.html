@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scaled Dot-Product Attention, By Hand in Torch — Day 38 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 38 of 100</span>
+  <h1>Scaled Dot-Product Attention, By Hand in Torch</h1>
+  <p class="outcome">Tonight you'll be able to: run the most reused formula in modern AI &mdash; Attention(Q,K,V) = softmax(QK<sup>T</sup>/&radic;d<sub>k</sub>)V &mdash; step by step with your own hands, match PyTorch&rsquo;s fused op exactly, and prove why the &radic;d<sub>k</sub> divide is load-bearing.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 37 gave every token three roles: a <strong>query</strong> (what am I looking for), a <strong>key</strong> (what do I advertise), a <strong>value</strong> (what do I hand over if picked). Today the roles become one formula. Stack the tokens&rsquo; vectors into matrices: <code>Q</code> and <code>K</code> are (T, d<sub>k</sub>) &mdash; one row per token, d<sub>k</sub> = the key width (4 today; 64&ndash;128 per head in real models) &mdash; and <code>V</code> is (T, d<sub>v</sub>). Then:</p>
+<p style="text-align:center"><strong>Attention(Q, K, V) = softmax(QK<sup>T</sup> / &radic;d<sub>k</sub>) &middot; V</strong></p>
+<p><strong>The five moves.</strong> (1) <strong>Score:</strong> <code>S = QK<sup>T</sup></code>, shape (T, T) &mdash; S[i][j] is query i dotted with key j: every pair, one matmul (Day 12). (2) <strong>Scale:</strong> divide every score by &radic;d<sub>k</sub> &mdash; the reason gets its own paragraph below. (3) <strong>Mask</strong> (optional, decoders only): block the future before it can be picked &mdash; also below. (4) <strong>Softmax each row:</strong> row i becomes a set of weights summing to 1 &mdash; a budget over tokens (Day 14). (5) <strong>Blend:</strong> <code>out = weights &middot; V</code> &mdash; output row i is the weighted average of the value rows, using row i&rsquo;s budget. That is the entire mechanism; everything else in a transformer is scaffolding around this line.</p>
+<p><strong>Read one row end to end.</strong> In today&rsquo;s run, query 2 scores [1, 1, 1] &mdash; it matches every key equally &mdash; so its weights are [1/3, 1/3, 1/3] and its output is the plain average of all three value rows, [1.3333, 1.0000]. Attention with no preference <em>is</em> averaging. The sharp, selective rows (query 0 putting 0.4519 on token 2) are what training will eventually produce; the formula is just the blending machine.</p>
+<p><strong>The one math bite: why &radic;d<sub>k</sub>.</strong> A dot product is a <em>sum</em> of d<sub>k</sub> coordinate products, and sums grow. If the coordinates are unit-sized and random-signed, the sum wanders like a random walk &mdash; typical size &radic;d<sub>k</sub> (Day 10&rsquo;s distributions). If they align, it grows like d<sub>k</sub> itself. Part 2 shows the aligned case with every coordinate pair contributing 0.25: the raw dot is 1.00 at d = 4 but 64.00 at d = 256. Feed softmax a score gap of 64 and the winner takes 1.0000, the runner-up gets ~10<sup>&minus;28</sup>, and the gradient factor p(1&minus;p) is 0.000000 &mdash; a saturated softmax passes no blame backward (Day 22&rsquo;s saturation, in softmax form), so nothing upstream can learn. Divide by &radic;d<sub>k</sub> and the same gap becomes 4.00: winner 0.9820, gradient 0.017663 &mdash; confident, but alive. The divide exists to keep scores in softmax&rsquo;s working range as the dimension grows. Nothing deeper is hiding in it.</p>
+<p><strong>The mask beat.</strong> A decoder generates text one token at a time, left to right, so when it is being trained, position i must not read positions after i &mdash; that is look-ahead bias, the exact sin from Days 9 and 32: peeking at the future invalidates the test. The fix is mechanical: before the softmax, set every score with j &gt; i to &minus;inf. Then exp(&minus;inf) = 0, the future weights come out exactly 0, and each row still sums to 1. Position 0 can only read itself, so its output is exactly its own value row &mdash; Part 3 proves it. Models that read a whole input at once (encoders) skip the mask; the formula is otherwise identical.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Day 37 called attention a quorum read over memory; the formula is that read written as a protocol. <strong><code>QK<sup>T</sup></code> is the fan-out:</strong> your read (one query) is scored against every replica&rsquo;s advertised index (the keys) in parallel &mdash; it is one matmul <em>because</em> it is one broadcast. <strong>Softmax is the vote-weighting rule:</strong> weights are normalized to sum to 1, bigger match = bigger say &mdash; a weighted quorum, not a majority vote. <strong><code>@ V</code> is the merge:</strong> you don&rsquo;t take one replica&rsquo;s payload, you blend all payloads by vote weight. And <strong>the causal mask is Lamport&rsquo;s happens-before, enforced as arithmetic:</strong> an event may only be influenced by events that happened before it; anything later isn&rsquo;t slow or stale, it&rsquo;s causally inadmissible, so its weight is exactly zero, not approximately.</p><p>Trading version, one line: the mask is your no-look-ahead rule from backtesting (Days 9, 32), enforced by the math instead of by discipline.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 452" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="452" rx="0" fill="#ffffff" stroke="none"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Scaled dot-product attention: five moves, all primitives you own</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) V  —  shapes ride under every stage</text>
+<rect x="12" y="56" width="656" height="168" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE PIPELINE — today&#x27;s 3 tokens, d_k = 4, d_v = 2</text>
+<rect x="24" y="92" width="100" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="74.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Q @ K^T</text>
+<text x="74.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">scores (3,3)</text>
+<rect x="148" y="92" width="104" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="200.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">/ sqrt(d_k) = 2</text>
+<text x="200.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">scaled (3,3)</text>
+<rect x="276" y="92" width="108" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="330.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">softmax rows</text>
+<text x="330.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">weights (3,3)</text>
+<rect x="408" y="92" width="84" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="450.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">@ V</text>
+<text x="450.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">V is (3,2)</text>
+<rect x="516" y="92" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="586.0" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">output</text>
+<text x="586.0" y="132" text-anchor="middle" font-size="8.5" fill="#555555">one row per query (3,2)</text>
+<line x1="124" y1="118" x2="146" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="146,118 139,114 139,122" fill="#0a7aff"/>
+<line x1="252" y1="118" x2="274" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="274,118 267,114 267,122" fill="#0a7aff"/>
+<line x1="384" y1="118" x2="406" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="406,118 399,114 399,122" fill="#0a7aff"/>
+<line x1="492" y1="118" x2="514" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="514,118 507,114 507,122" fill="#0a7aff"/>
+<rect x="276" y="156" width="108" height="26" rx="6" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text x="330" y="173" text-anchor="middle" font-size="8.5" fill="#1c1c1e" font-weight="bold">mask: future = -inf</text>
+<line x1="330" y1="156" x2="330" y2="148" stroke="#d99a00" stroke-width="1.4"/>
+<polygon points="330,145 326,152 334,152" fill="#d99a00"/>
+<text x="330" y="200" text-anchor="middle" font-size="8.5" fill="#555555">decoders only (Part 3)</text>
+<text x="340" y="216" text-anchor="middle" font-size="9.0" fill="#0a54c2">row 0 today: scores [1, 1, 2] -&gt; scaled [0.5, 0.5, 1.0] -&gt; weights [0.274, 0.274, 0.452] -&gt; out [1.630, 0.822]</text>
+<rect x="12" y="238" width="656" height="132" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">WHY THE DIVIDE — DOT PRODUCTS GROW WITH DIMENSION</text>
+<text x="340" y="280" text-anchor="middle" font-size="9.0" fill="#1c1c1e">every coordinate pair contributes 0.25:   d = 4 -&gt; dot 1.00   |   d = 64 -&gt; dot 16.00   |   d = 256 -&gt; dot 64.00</text>
+<text x="118" y="303" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">unscaled, d=256</text>
+<rect x="228" y="292" width="300" height="14" rx="3" fill="#c22f2f"/>
+<text x="536" y="303" text-anchor="middle" font-size="9.0" fill="#1c1c1e">1.0000 · grad 0.000000</text>
+<text x="118" y="327" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">scaled, d=256</text>
+<rect x="228" y="316" width="295" height="14" rx="3" fill="#22a355"/>
+<text x="536" y="327" text-anchor="middle" font-size="9.0" fill="#1c1c1e">0.9820 · grad 0.017663</text>
+<text x="340" y="356" text-anchor="middle" font-size="9.0" fill="#177245">softmax saturates on raw scores: winner takes all, gradient dies. sqrt(d_k) keeps it confident but trainable.</text>
+<rect x="12" y="384" width="656" height="52" rx="10" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="404" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">No new machinery: matmul (Day 12) + divide + softmax (Day 14) + matmul — the mask is just -inf before the softmax</text>
+<text x="340" y="423" text-anchor="middle" font-size="9.5" fill="#1c1c1e">That one line, repeated and stacked, is the transformer&#x27;s engine room.</text>
+</svg>
+    <div class="caption">Top: the pipeline with shapes &mdash; every query scores every key in one matmul, the scores are scaled, decoders mask the future, softmax turns each row into a budget, and the budgets blend the value rows. Bottom: why the divide exists &mdash; raw dot products grow with dimension until softmax saturates and the gradient dies; dividing by &radic;d<sub>k</sub> keeps the winner confident and the gradient alive.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, every tensor hand-set &mdash; no RNG, every digit checkable against the diagram. <strong>Part 1</strong> runs the formula in five explicit steps and diffs the result against <code>F.scaled_dot_product_attention</code> (the <code>[None]</code> just adds the batch slot that API expects). <strong>Part 2</strong> is the scaling experiment from &ldquo;The one idea&rdquo;. <strong>Part 3</strong> adds the causal mask by hand, then lets PyTorch apply the same mask with <code>is_causal=True</code>.</p>
+  <pre><code>&quot;&quot;&quot;Day 38 - Scaled Dot-Product Attention, By Hand in Torch.
+
+Day 37 gave every token three roles: a query (what am I
+looking for), a key (what do I advertise), and a value (what
+do I hand over if picked). Tonight those roles become one
+formula - the single most reused line in modern AI:
+
+    Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
+
+Five moves, every one a primitive you already own: a matmul
+(Day 12), a divide, a row-wise softmax (Day 14), another
+matmul. Nothing else. If you can run this by hand, you can
+read any transformer diagram ever drawn.
+
+  Part 1  The formula by hand on 3 tokens, d_k = 4. Print
+          every intermediate: scores QK^T (3, 3), the scaled
+          scores, the softmax weights (each row a budget
+          summing to 1), and the output (3, 2) - then check
+          the whole chain against PyTorch&#x27;s fused
+          F.scaled_dot_product_attention.
+  Part 2  Why the / sqrt(d_k) is there. A dot product is a
+          sum of d_k coordinate products, so it grows with
+          dimension: with every coordinate pair contributing
+          0.25, the raw dot is 1.00 at d = 4 but 64.00 at
+          d = 256. Feed scores like that to softmax and the
+          winner takes literally everything - top weight
+          1.0000, gradient factor p(1-p) = 0.000000, nothing
+          can learn. Dividing by sqrt(d_k) keeps the winner
+          confident (0.9820) and the gradient alive.
+  Part 3  The causal mask. A decoder generating token i may
+          not read tokens after i - that would be peeking at
+          the answer. Set the future scores (j &gt; i) to -inf
+          BEFORE the softmax and exp(-inf) = 0 does the rest:
+          position 0&#x27;s weights become [1, 0, 0] and its output
+          is exactly its own value row. Same mask PyTorch
+          applies with is_causal=True.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny hand-set tensors, exact digits - the same
+ops run unchanged on MPS), no CUDA, no paid APIs, no
+downloads. No RNG anywhere: every tensor is set by hand.
+
+Expected output:
+
+  Part 1 - attention by hand: softmax(QK^T / sqrt(d_k)) V
+    Q (3, 4), K (3, 4), V (3, 2) - d_k = 4, sqrt(d_k) = 2
+    scores = Q @ K^T (3, 3):
+      [1.0000, 1.0000, 2.0000]
+      [1.0000, 1.0000, 0.0000]
+      [1.0000, 1.0000, 1.0000]
+    scaled = scores / 2 (3, 3):
+      [0.5000, 0.5000, 1.0000]
+      [0.5000, 0.5000, 0.0000]
+      [0.5000, 0.5000, 0.5000]
+    weights = softmax row by row (3, 3):
+      [0.2741, 0.2741, 0.4519]
+      [0.3837, 0.3837, 0.2327]
+      [0.3333, 0.3333, 0.3333]
+    every weight row sums to 1.0000, 1.0000, 1.0000 - a budget (Day 14)
+    out = weights @ V (3, 2):
+      [1.6297, 0.8222]
+      [1.0817, 1.1510]
+      [1.3333, 1.0000]
+    F.scaled_dot_product_attention vs by-hand: max diff 0.000000
+  Part 2 - why divide by sqrt(d_k): dot products grow with d
+    q . k where every coordinate pair contributes 0.25:
+      d =   4: raw dot 1.00 -&gt; scaled 0.50 | top weight raw 0.7311 vs scaled 0.6225 | grad p(1-p) raw 0.196612 vs scaled 0.235004
+      d =  64: raw dot 16.00 -&gt; scaled 2.00 | top weight raw 1.0000 vs scaled 0.8808 | grad p(1-p) raw 0.000000 vs scaled 0.104994
+      d = 256: raw dot 64.00 -&gt; scaled 4.00 | top weight raw 1.0000 vs scaled 0.9820 | grad p(1-p) raw 0.000000 vs scaled 0.017663
+    unscaled: winner takes all and the gradient is ~0 - nothing learns
+    scaled: still confident, gradient alive - that is the whole trick
+  Part 3 - causal mask: a decoder may not see the future
+    future scores (j &gt; i) set to -inf before the softmax
+    causal weights (3, 3):
+      [1.0000, 0.0000, 0.0000]
+      [0.5000, 0.5000, 0.0000]
+      [0.3333, 0.3333, 0.3333]
+    causal out (3, 2):
+      [1.0000, 2.0000]
+      [0.5000, 1.5000]
+      [1.3333, 1.0000]
+    position 0 out == V row 0 exactly: True (it may only read itself)
+    F.scaled_dot_product_attention(is_causal=True) vs by-hand: max diff 0.000000
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn.functional as F
+
+# Three tokens, hand-set. d_k = 4 (Q/K width), d_v = 2 (V width).
+Q = torch.tensor([[1.0, 0.0, 1.0, 0.0],
+                  [0.0, 1.0, 0.0, 1.0],
+                  [1.0, 1.0, 0.0, 0.0]])
+K = torch.tensor([[1.0, 0.0, 0.0, 1.0],
+                  [0.0, 1.0, 1.0, 0.0],
+                  [1.0, 0.0, 1.0, 0.0]])
+V = torch.tensor([[1.0, 2.0],
+                  [0.0, 1.0],
+                  [3.0, 0.0]])
+
+
+def show(label, t):
+    print(f&quot;  {label}&quot;)
+    for r in t.tolist():
+        print(&quot;    [&quot; + &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in r) + &quot;]&quot;)
+
+
+# ---------- Part 1: the formula, step by step ----------
+print(&quot;Part 1 - attention by hand: softmax(QK^T / sqrt(d_k)) V&quot;)
+d_k = Q.shape[-1]
+print(f&quot;  Q {tuple(Q.shape)}, K {tuple(K.shape)}, V {tuple(V.shape)}&quot;
+      f&quot; - d_k = {d_k}, sqrt(d_k) = {math.sqrt(d_k):.0f}&quot;)
+scores = Q @ K.T                       # every query vs every key
+show(&quot;scores = Q @ K^T (3, 3):&quot;, scores)
+scaled = scores / math.sqrt(d_k)       # the scaling - Part 2 justifies it
+show(&quot;scaled = scores / 2 (3, 3):&quot;, scaled)
+weights = torch.softmax(scaled, dim=-1)          # Day 14, row by row
+show(&quot;weights = softmax row by row (3, 3):&quot;, weights)
+sums = &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in weights.sum(dim=-1).tolist())
+print(f&quot;  every weight row sums to {sums} - a budget (Day 14)&quot;)
+out = weights @ V                      # blend the values by the weights
+show(&quot;out = weights @ V (3, 2):&quot;, out)
+# PyTorch&#x27;s fused op. [None] adds the batch slot the API expects.
+ref = F.scaled_dot_product_attention(Q[None], K[None], V[None])[0]
+diff = (out - ref).abs().max().item()
+print(f&quot;  F.scaled_dot_product_attention vs by-hand: max diff {diff:.6f}&quot;)
+
+# ---------- Part 2: why divide by sqrt(d_k) ----------
+print(&quot;Part 2 - why divide by sqrt(d_k): dot products grow with d&quot;)
+print(&quot;  q . k where every coordinate pair contributes 0.25:&quot;)
+for d in (4, 64, 256):
+    q = torch.full((d,), 0.5)
+    k = torch.full((d,), 0.5)
+    raw = (q * k).sum().item()                   # sum of d terms of 0.25
+    sc = raw / math.sqrt(d)
+    top_raw = torch.softmax(torch.tensor([raw, 0.0]), dim=0)[0].item()
+    top_sc = torch.softmax(torch.tensor([sc, 0.0]), dim=0)[0].item()
+    print(f&quot;    d = {d:&gt;3}: raw dot {raw:.2f} -&gt; scaled {sc:.2f} | &quot;
+          f&quot;top weight raw {top_raw:.4f} vs scaled {top_sc:.4f} | &quot;
+          f&quot;grad p(1-p) raw {top_raw * (1 - top_raw):.6f} vs &quot;
+          f&quot;scaled {top_sc * (1 - top_sc):.6f}&quot;)
+print(&quot;  unscaled: winner takes all and the gradient is ~0 - &quot;
+      &quot;nothing learns&quot;)
+print(&quot;  scaled: still confident, gradient alive - that is the &quot;
+      &quot;whole trick&quot;)
+
+# ---------- Part 3: the causal mask ----------
+print(&quot;Part 3 - causal mask: a decoder may not see the future&quot;)
+print(&quot;  future scores (j &gt; i) set to -inf before the softmax&quot;)
+T = Q.shape[0]
+future = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
+masked = scaled.masked_fill(future, float(&quot;-inf&quot;))
+weights_c = torch.softmax(masked, dim=-1)        # exp(-inf) = 0
+show(&quot;causal weights (3, 3):&quot;, weights_c)
+out_c = weights_c @ V
+show(&quot;causal out (3, 2):&quot;, out_c)
+print(f&quot;  position 0 out == V row 0 exactly: &quot;
+      f&quot;{bool(torch.equal(out_c[0], V[0]))} (it may only read itself)&quot;)
+ref_c = F.scaled_dot_product_attention(Q[None], K[None], V[None],
+                                       is_causal=True)[0]
+diff_c = (out_c - ref_c).abs().max().item()
+print(f&quot;  F.scaled_dot_product_attention(is_causal=True) vs &quot;
+      f&quot;by-hand: max diff {diff_c:.6f}&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - attention by hand: softmax(QK^T / sqrt(d_k)) V
+  Q (3, 4), K (3, 4), V (3, 2) - d_k = 4, sqrt(d_k) = 2
+  scores = Q @ K^T (3, 3):
+    [1.0000, 1.0000, 2.0000]
+    [1.0000, 1.0000, 0.0000]
+    [1.0000, 1.0000, 1.0000]
+  scaled = scores / 2 (3, 3):
+    [0.5000, 0.5000, 1.0000]
+    [0.5000, 0.5000, 0.0000]
+    [0.5000, 0.5000, 0.5000]
+  weights = softmax row by row (3, 3):
+    [0.2741, 0.2741, 0.4519]
+    [0.3837, 0.3837, 0.2327]
+    [0.3333, 0.3333, 0.3333]
+  every weight row sums to 1.0000, 1.0000, 1.0000 - a budget (Day 14)
+  out = weights @ V (3, 2):
+    [1.6297, 0.8222]
+    [1.0817, 1.1510]
+    [1.3333, 1.0000]
+  F.scaled_dot_product_attention vs by-hand: max diff 0.000000
+Part 2 - why divide by sqrt(d_k): dot products grow with d
+  q . k where every coordinate pair contributes 0.25:
+    d =   4: raw dot 1.00 -&gt; scaled 0.50 | top weight raw 0.7311 vs scaled 0.6225 | grad p(1-p) raw 0.196612 vs scaled 0.235004
+    d =  64: raw dot 16.00 -&gt; scaled 2.00 | top weight raw 1.0000 vs scaled 0.8808 | grad p(1-p) raw 0.000000 vs scaled 0.104994
+    d = 256: raw dot 64.00 -&gt; scaled 4.00 | top weight raw 1.0000 vs scaled 0.9820 | grad p(1-p) raw 0.000000 vs scaled 0.017663
+  unscaled: winner takes all and the gradient is ~0 - nothing learns
+  scaled: still confident, gradient alive - that is the whole trick
+Part 3 - causal mask: a decoder may not see the future
+  future scores (j &gt; i) set to -inf before the softmax
+  causal weights (3, 3):
+    [1.0000, 0.0000, 0.0000]
+    [0.5000, 0.5000, 0.0000]
+    [0.3333, 0.3333, 0.3333]
+  causal out (3, 2):
+    [1.0000, 2.0000]
+    [0.5000, 1.5000]
+    [1.3333, 1.0000]
+  position 0 out == V row 0 exactly: True (it may only read itself)
+  F.scaled_dot_product_attention(is_causal=True) vs by-hand: max diff 0.000000</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three proofs: Part 1&rsquo;s fused-op check at max diff <code>0.000000</code>, with every weight row summing to <code>1.0000</code>, and you can trace row 0 through all five stages on the diagram without looking at the code; Part 2&rsquo;s d = 256 line showing grad p(1&minus;p) raw <code>0.000000</code> vs scaled <code>0.017663</code>, with the one-sentence reason on demand; and Part 3&rsquo;s causal weights with an exactly-zero upper triangle and position 0&rsquo;s output equal to V&rsquo;s first row, <code>[1.0000, 2.0000]</code>.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s top panel, then run Part 1 only and narrate each printed matrix as it goes past &mdash; scores, scaled, weights, out. If you can explain why row 2&rsquo;s output is the average of V, you own the formula; Parts 2&ndash;3 are the victory laps.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: one attention pass blends values with ONE set of weights per token &mdash; but a token sometimes needs to track its immediate neighbors <em>and</em> the sentence&rsquo;s subject at the same time. What if it could run several blends in parallel and combine them?</p>
+  </div>
+
+  <div class="footer">Day 38 of 100 &middot; Streak: 38 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
