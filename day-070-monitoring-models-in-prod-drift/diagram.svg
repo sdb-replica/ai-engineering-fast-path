@@ -1,0 +1,80 @@
+<svg viewBox="0 0 680 452" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="452" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Drift: same reference, three live windows</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">one input feature, 8 fixed bins - PSI compares each live window to the reference, bin by bin</text>
+<rect x="8" y="54" width="158" height="252" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="87.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">REFERENCE</text>
+<text x="87.0" y="89" text-anchor="middle" font-size="8.5" fill="#555555">training time</text>
+<rect x="19.0" y="234.5" width="14.5" height="1.5" fill="#0a7aff"/>
+<rect x="36.3" y="225.3" width="14.5" height="10.7" fill="#0a7aff"/>
+<rect x="53.6" y="187.2" width="14.5" height="48.8" fill="#0a7aff"/>
+<rect x="70.9" y="131.7" width="14.5" height="104.3" fill="#0a7aff"/>
+<rect x="88.2" y="131.7" width="14.5" height="104.3" fill="#0a7aff"/>
+<rect x="105.5" y="187.2" width="14.5" height="48.8" fill="#0a7aff"/>
+<rect x="122.8" y="225.3" width="14.5" height="10.7" fill="#0a7aff"/>
+<rect x="140.1" y="234.5" width="14.5" height="1.5" fill="#0a7aff"/>
+<line x1="16" y1="236.0" x2="158" y2="236.0" stroke="#888888" stroke-width="1.0"/>
+<text x="87.0" y="258" text-anchor="middle" font-size="9.0" fill="#555555">decile bins: 10% each</text>
+<text x="87.0" y="279" text-anchor="middle" font-size="9.0" fill="#555555">the baseline every</text>
+<text x="87.0" y="292" text-anchor="middle" font-size="9.0" fill="#555555">window is judged against</text>
+<rect x="174" y="54" width="158" height="252" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="253.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">LIVE A - SAME</text>
+<text x="253.0" y="89" text-anchor="middle" font-size="8.5" fill="#555555">a normal Tuesday</text>
+<rect x="185.0" y="234.5" width="14.5" height="1.5" fill="#22a355"/>
+<rect x="202.3" y="225.9" width="14.5" height="10.1" fill="#22a355"/>
+<rect x="219.6" y="188.9" width="14.5" height="47.1" fill="#22a355"/>
+<rect x="236.9" y="133.1" width="14.5" height="102.9" fill="#22a355"/>
+<rect x="254.2" y="130.6" width="14.5" height="105.4" fill="#22a355"/>
+<rect x="271.5" y="185.1" width="14.5" height="50.9" fill="#22a355"/>
+<rect x="288.8" y="224.8" width="14.5" height="11.2" fill="#22a355"/>
+<rect x="306.1" y="234.5" width="14.5" height="1.5" fill="#22a355"/>
+<line x1="182" y1="236.0" x2="324" y2="236.0" stroke="#888888" stroke-width="1.0"/>
+<text x="253.0" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PSI 0.0009</text>
+<rect x="218" y="266" width="70" height="18" rx="9" fill="#22a355"/>
+<text x="253.0" y="279" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">STABLE</text>
+<rect x="340" y="54" width="158" height="252" rx="10" fill="#ffffff" stroke="#d99a00" stroke-width="1.2"/>
+<text x="419.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">LIVE B - SHIFTED</text>
+<text x="419.0" y="89" text-anchor="middle" font-size="8.5" fill="#555555">mean +0.5 sigma</text>
+<rect x="351.0" y="234.5" width="14.5" height="1.5" fill="#d99a00"/>
+<rect x="368.3" y="232.7" width="14.5" height="3.3" fill="#d99a00"/>
+<rect x="385.6" y="212.7" width="14.5" height="23.3" fill="#d99a00"/>
+<rect x="402.9" y="160.8" width="14.5" height="75.2" fill="#d99a00"/>
+<rect x="420.2" y="121.4" width="14.5" height="114.6" fill="#d99a00"/>
+<rect x="437.5" y="154.2" width="14.5" height="81.8" fill="#d99a00"/>
+<rect x="454.8" y="208.6" width="14.5" height="27.4" fill="#d99a00"/>
+<rect x="472.1" y="231.7" width="14.5" height="4.3" fill="#d99a00"/>
+<line x1="348" y1="236.0" x2="490" y2="236.0" stroke="#888888" stroke-width="1.0"/>
+<text x="419.0" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PSI 0.2376</text>
+<rect x="384" y="266" width="70" height="18" rx="9" fill="#d99a00"/>
+<text x="419.0" y="279" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">WATCH</text>
+<rect x="506" y="54" width="158" height="252" rx="10" fill="#ffffff" stroke="#d43a2f" stroke-width="1.2"/>
+<text x="585.0" y="74" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">LIVE C - WIDER</text>
+<text x="585.0" y="89" text-anchor="middle" font-size="8.5" fill="#555555">std x2, same mean</text>
+<rect x="517.0" y="217.3" width="14.5" height="18.7" fill="#d43a2f"/>
+<rect x="534.3" y="202.0" width="14.5" height="34.0" fill="#d43a2f"/>
+<rect x="551.6" y="185.3" width="14.5" height="50.7" fill="#d43a2f"/>
+<rect x="568.9" y="174.3" width="14.5" height="61.7" fill="#d43a2f"/>
+<rect x="586.2" y="174.3" width="14.5" height="61.7" fill="#d43a2f"/>
+<rect x="603.5" y="185.3" width="14.5" height="50.7" fill="#d43a2f"/>
+<rect x="620.8" y="202.0" width="14.5" height="34.0" fill="#d43a2f"/>
+<rect x="638.1" y="217.3" width="14.5" height="18.7" fill="#d43a2f"/>
+<line x1="514" y1="236.0" x2="656" y2="236.0" stroke="#888888" stroke-width="1.0"/>
+<text x="585.0" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PSI 0.4915</text>
+<rect x="550" y="266" width="70" height="18" rx="9" fill="#d43a2f"/>
+<text x="585.0" y="279" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">ACT</text>
+<text x="340.0" y="330" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE ALERT BANDS (rules of thumb, not laws - calibrate per feature)</text>
+<rect x="60" y="340" width="100" height="16" fill="#22a355"/>
+<rect x="160" y="340" width="150" height="16" fill="#d99a00"/>
+<rect x="310" y="340" width="350" height="16" fill="#d43a2f"/>
+<text x="110.0" y="352" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">STABLE &lt; 0.10</text>
+<text x="235.0" y="352" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">WATCH 0.10-0.25</text>
+<text x="485.0" y="352" text-anchor="middle" font-size="9.5" fill="#ffffff" font-weight="bold">ACT &gt; 0.25</text>
+<polygon points="61,362 56,372 66,372" fill="#1c1c1e"/>
+<text x="61" y="386" text-anchor="middle" font-size="9.0" fill="#1c1c1e">A: 0.0009</text>
+<polygon points="298,362 293,372 303,372" fill="#1c1c1e"/>
+<text x="298" y="386" text-anchor="middle" font-size="9.0" fill="#1c1c1e">B: 0.2376</text>
+<polygon points="552,362 546,372 556,372" fill="#1c1c1e"/>
+<text x="552" y="386" text-anchor="middle" font-size="9.0" fill="#1c1c1e">C: 0.4915</text>
+<text x="340.0" y="412" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Labels arrive late (days to weeks). Drift detection needs none - it pages you while the eval is still blind.</text>
+<text x="340.0" y="430" text-anchor="middle" font-size="9.5" fill="#666666">Concept drift (same inputs, new right answers) hides from PSI - only fresh labels expose it.</text>
+</svg>
