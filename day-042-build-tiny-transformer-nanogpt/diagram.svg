@@ -1,0 +1,38 @@
+<svg viewBox="0 0 680 566" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="566" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">TinyGPT: the whole stack, end to end</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">every box is a part you already built - tonight is assembly only</text>
+<rect x="30" y="56" width="620" height="52" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="79.0" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Characters in - one id per char</text>
+<text x="340" y="95.0" text-anchor="middle" font-size="8.5" fill="#555555">batch of windows (B=32, T=64): each char of the corpus is one id</text>
+<line x1="340" y1="108" x2="340" y2="120" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,122 336,115 344,115" fill="#888888"/>
+<rect x="30" y="124" width="620" height="56" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="149.0" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Token embedding (6,528)  +  Positional embedding (8,192)</text>
+<text x="340" y="165.0" text-anchor="middle" font-size="8.5" fill="#555555">ids (32, 64) -&gt; vectors (32, 64, 128): what the char is + where it sits (Days 15, 41)</text>
+<line x1="340" y1="180" x2="340" y2="192" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,194 336,187 344,187" fill="#888888"/>
+<rect x="30" y="196" width="620" height="122" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="216" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">x 4 Transformer Blocks - 198,272 params each (Day 40)</text>
+<rect x="52" y="228" width="576" height="34" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.0"/>
+<text x="340" y="249" text-anchor="middle" font-size="9.5" fill="#1c1c1e">LayerNorm -> Masked Multi-Head Attention (4 heads x 32) -> + residual</text>
+<rect x="52" y="268" width="576" height="34" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.0"/>
+<text x="340" y="289" text-anchor="middle" font-size="9.5" fill="#1c1c1e">LayerNorm -> MLP 128 -> 512 -> 128 -> + residual</text>
+<text x="340" y="312" text-anchor="middle" font-size="8.5" fill="#555555">causal mask: position t attends only to positions up to t - shapes never change: (32, 64, 128)</text>
+<line x1="340" y1="318" x2="340" y2="330" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,332 336,325 344,325" fill="#888888"/>
+<rect x="30" y="334" width="620" height="52" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="357.0" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Final LayerNorm (256)</text>
+<text x="340" y="373.0" text-anchor="middle" font-size="8.5" fill="#555555">(32, 64, 128) - one last normalize at the exit (Days 29, 40)</text>
+<line x1="340" y1="386" x2="340" y2="398" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,400 336,393 344,393" fill="#888888"/>
+<rect x="30" y="402" width="620" height="52" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="425.0" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">LM head - Linear 128 -&gt; 51 (6,579)</text>
+<text x="340" y="441.0" text-anchor="middle" font-size="8.5" fill="#555555">logits (32, 64, 51): one score per vocab char, at every position</text>
+<line x1="340" y1="454" x2="340" y2="466" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,468 336,461 344,461" fill="#888888"/>
+<rect x="30" y="470" width="620" height="52" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="493.0" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Softmax -&gt; next-char probabilities (Day 14)</text>
+<text x="340" y="509.0" text-anchor="middle" font-size="8.5" fill="#555555">train: cross-entropy vs the real next char  |  generate: sample one, append, loop</text>
+<text x="340" y="546" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Total theta = 814,643 numbers - assembled from Days 15, 38, 39, 40, 41. Nothing new but the wiring.</text>
+</svg>
