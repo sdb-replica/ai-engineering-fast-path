@@ -1,0 +1,44 @@
+<svg viewBox="0 0 680 576" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="576" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">LoRA hands-on: adapters bolted onto Day 42's GPT</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">grey = frozen base - green = the only numbers that train</text>
+<rect x="30" y="54" width="620" height="54" rx="10" fill="#f0f0f0" stroke="#888888" stroke-width="1.2"/>
+<text x="340" y="77" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE BASE - Day 42's TinyGPT, frozen solid</text>
+<text x="340" y="94" text-anchor="middle" font-size="8.5" fill="#555555">embeddings 14,720 &#183; x4 blocks 793,088 &#183; final norm + LM head 6,835 &#8594; 814,643 numbers, none trainable</text>
+<line x1="340" y1="108" x2="340" y2="118" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,122 336,115 344,115" fill="#888888"/>
+<rect x="30" y="124" width="620" height="306" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="146" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ONE BLOCK, UP CLOSE - every weight matrix gets a patch (x4 blocks)</text>
+<rect x="52" y="158" width="576" height="30" rx="8" fill="#f0f0f0" stroke="#888888" stroke-width="1.0"/>
+<text x="340" y="177" text-anchor="middle" font-size="9.5" fill="#1c1c1e">LayerNorm x2 - frozen &#183; no weight matrix here to patch</text>
+<line x1="340" y1="188" x2="340" y2="194" stroke="#888888" stroke-width="1.4"/>
+<polygon points="340,198 337,192 343,192" fill="#888888"/>
+<rect x="52" y="200" width="576" height="66" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.0"/>
+<text x="340" y="220" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Masked multi-head attention - 13 matrices, 13 patches</text>
+<rect x="64" y="230" width="268" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="198" y="245" text-anchor="middle" font-size="8.5" fill="#1c1c1e">K &#183; Q &#183; V per head (128 &#8594; 32) + A&#183;B &#215;12</text>
+<rect x="344" y="230" width="268" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="478" y="245" text-anchor="middle" font-size="8.5" fill="#1c1c1e">attn proj (128 &#8594; 128) + A&#183;B &#215;1</text>
+<line x1="340" y1="266" x2="340" y2="272" stroke="#888888" stroke-width="1.4"/>
+<polygon points="340,276 337,270 343,270" fill="#888888"/>
+<rect x="52" y="278" width="576" height="66" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.0"/>
+<text x="340" y="298" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">MLP - 2 matrices, 2 patches</text>
+<rect x="64" y="308" width="268" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="198" y="323" text-anchor="middle" font-size="8.5" fill="#1c1c1e">up (128 &#8594; 512) + A&#183;B</text>
+<rect x="344" y="308" width="268" height="22" rx="6" fill="#e9f9ee" stroke="#22a355" stroke-width="1.0"/>
+<text x="478" y="323" text-anchor="middle" font-size="8.5" fill="#1c1c1e">down (512 &#8594; 128) + A&#183;B</text>
+<line x1="340" y1="344" x2="340" y2="350" stroke="#888888" stroke-width="1.4"/>
+<polygon points="340,354 337,348 343,348" fill="#888888"/>
+<rect x="52" y="356" width="576" height="30" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.0"/>
+<text x="340" y="375" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per block: 198,272 numbers - 13,824 trainable (the green patches), 184,448 frozen</text>
+<text x="340" y="408" text-anchor="middle" font-size="8.5" fill="#555555">residuals carry x past both rows untouched - a patch can only add its say (Day 40)</text>
+<text x="340" y="422" text-anchor="middle" font-size="8.5" fill="#555555">each patch: A squeezes to r = 4 numbers, B lifts back - trainable per matrix = 4 &#215; (in + out)</text>
+<line x1="340" y1="430" x2="340" y2="440" stroke="#888888" stroke-width="1.6"/>
+<polygon points="340,444 336,437 344,437" fill="#888888"/>
+<rect x="30" y="446" width="620" height="88" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="468" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">THE BILL - train small, ship small</text>
+<text x="340" y="488" text-anchor="middle" font-size="9.5" fill="#1c1c1e">trainable: 55,296 = 6.79% of the base count - grads and Adam state exist only for these</text>
+<text x="340" y="506" text-anchor="middle" font-size="9.5" fill="#1c1c1e">deliverable per voice: one adapter file, 0.21 MiB &#183; full fine-tune training state: 12.43 MiB</text>
+<text x="340" y="524" text-anchor="middle" font-size="9.5" fill="#1c1c1e">serve merged: W' = W + 2&#183;(B&#183;A) folded in - one matrix, zero extra latency (Day 53)</text>
+<text x="340" y="558" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">B starts at 0, so the patched model IS the base model until training moves it.</text>
+</svg>
