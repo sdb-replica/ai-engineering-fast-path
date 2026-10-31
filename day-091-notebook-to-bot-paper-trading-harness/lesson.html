@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From Notebook to Bot: The Paper-Trading Harness — Day 91 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 91 of 100</span>
+  <h1>From Notebook to Bot: The Paper-Trading Harness</h1>
+  <p class="outcome">Tonight you'll be able to: draw the four-box harness that sits between a model and any order &mdash; signal, risk gate, execution sim, journal &mdash; and run one end-to-end: the gate clips the model, the kill switch flattens a crash day, and the journal reconciles paper against frictionless to the cent.</p>
+
+  <h2>The one idea</h2>
+  <p>Days 83&ndash;90 built a model and the discipline for believing it: honest features, triple-barrier labels, walk-forward validation, Kelly-capped sizing. A notebook ends there, with a number &mdash; an accuracy, a Sharpe. Production starts there. Something has to turn the model&rsquo;s opinions into orders, survive the bad days without human reflexes, and afterwards <em>prove</em> what it did and why. That something is a <strong>harness</strong>: an architecture of four boxes with hard boundaries, not a bigger notebook.</p>
+<p><strong>Box 1 &mdash; the signal process.</strong> Model plus features, and the features obey Day 69&rsquo;s point-in-time law with no exceptions: at bar <code>t</code> it may read closes up to <code>t</code>, never beyond. It emits <em>intents</em> &mdash; &ldquo;I&rsquo;d like to be long, sized at 15% of equity&rdquo; &mdash; never orders. Keeping it order-blind is what makes it testable: Days 87&ndash;88&rsquo;s walk-forward graded exactly this box, in isolation, and its grade means nothing if it can also touch the account.</p>
+<p><strong>Box 2 &mdash; the risk gate.</strong> Dumb, deterministic code that reviews every intent and can <strong>approve, clip, or reject</strong> it: a hard position limit, Day 90&rsquo;s sizing cap, a daily-loss kill switch. The model cannot argue with it, retry around it, or special-case it &mdash; the gate owns the boundary, the way admission control owns a service&rsquo;s front door. <em>Dumb is the feature.</em> The gate&rsquo;s whole behavior is a small table you can unit-test (Part 1 does exactly that), which is precisely what you want from the last code standing between a model and money.</p>
+<p><strong>Box 3 &mdash; the execution simulator.</strong> Paper fills, modeled honestly: you cross the spread and pay slippage on every fill &mdash; tonight 5 bps half-spread plus 2 bps slippage, charged in both directions. Fills at mid are fantasy, and fantasies compound (Day 84&rsquo;s ghost, wearing a new costume). The design has a LIVE flag and it ships <strong>OFF</strong>; flipping it is a graduation decision you make with a reconciled journal in hand, not a whim.</p>
+<p><strong>Box 4 &mdash; the journal, plus reconciliation.</strong> Every decision is logged <em>with the features that produced it</em> &mdash; approvals, clips, rejections, kill-switch trips, all of them, because a rejection is a decision too. This is Day 67&rsquo;s experiment tracking and Day 69&rsquo;s lineage pointed at trades: six weeks from now, &ldquo;why did it buy on day 11?&rdquo; is answered by a log line (<code>ret_20 -3.6%</code>), not by memory. Reconciliation closes the loop: replay the identical decisions with frictionless mid fills and compare P&amp;L. The gap must equal exactly the friction you modeled &mdash; tonight, $48.25. Any <em>other</em> gap means paper and backtest disagree about reality: a bug or a leak. You investigate before you believe either number.</p>
+<p><strong>Why paper first, always:</strong> each box fails in its own way during its first week &mdash; features off by one bar, a limit written in shares where dollars were meant, fills booked on the wrong side of the spread. Paper trading is where those bugs go to be found, and where the kill switch gets rehearsed before it is ever needed. Tonight&rsquo;s tape makes it fire on purpose.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It&rsquo;s the service architecture you already run. The model is a <strong>stateless recommendation service</strong> &mdash; smart, and deliberately untrusted with side effects. The risk gate is <strong>admission control plus a circuit breaker</strong> at the gateway: quotas it enforces mechanically, and a breaker that trips when the error budget burns &mdash; and cannot be talked out of tripping by the upstream service having a really good feeling. The execution sim is a <strong>staging environment with fault injection</strong>: realistic spread and slippage instead of the happy path. The journal is <strong>structured request logging with the full payload</strong>, and reconciliation is the canary diff review: expected deltas itemized to the cent, anything unexplained blocks promotion. You already operate TheMarketWatcher on this shape &mdash; signal engine, trade journal, order broadcast default OFF. Tonight just names the boxes.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 416" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="416" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The paper-trading harness: four boxes, hard boundaries</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">the model proposes - the platform disposes. Nothing reaches the market except through the gate.</text>
+<rect x="12" y="62" width="66" height="68" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="45" y="86" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">TAPE</text>
+<text x="45" y="102" text-anchor="middle" font-size="8.5" fill="#555555">point-in-time</text>
+<text x="45" y="116" text-anchor="middle" font-size="8.5" fill="#555555">closes only</text>
+<line x1="78" y1="96" x2="96" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="96,96 89,92 89,100" fill="#0a7aff"/>
+<rect x="96" y="62" width="140" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="166" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">1 - SIGNAL PROCESS</text>
+<text x="166" y="98" text-anchor="middle" font-size="9" fill="#555555">features + model</text>
+<text x="166" y="112" text-anchor="middle" font-size="9" fill="#555555">emits INTENTS,</text>
+<text x="166" y="125" text-anchor="middle" font-size="9" fill="#555555">never orders</text>
+<text x="247" y="54" text-anchor="middle" font-size="8.5" fill="#0a54c2">wants BUY 150</text>
+<line x1="236" y1="96" x2="258" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="258,96 251,92 251,100" fill="#0a7aff"/>
+<rect x="258" y="62" width="88" height="68" rx="8" fill="#fdf0f0" stroke="#c81e1e" stroke-width="1.2"/>
+<text x="302" y="78" text-anchor="middle" font-size="10" fill="#c81e1e" font-weight="bold">2 - RISK GATE</text>
+<rect x="270" y="86" width="5" height="30" fill="#c81e1e"/>
+<rect x="329" y="86" width="5" height="30" fill="#c81e1e"/>
+<line x1="272" y1="90" x2="332" y2="110" stroke="#c81e1e" stroke-width="6"/>
+<line x1="272" y1="90" x2="332" y2="110" stroke="#ffffff" stroke-width="6" stroke-dasharray="7 7"/>
+<text x="302" y="126" text-anchor="middle" font-size="8.5" fill="#c81e1e" font-weight="bold">can say NO</text>
+<text x="357" y="54" text-anchor="middle" font-size="8.5" fill="#177245">approved: 100</text>
+<line x1="346" y1="96" x2="368" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="368,96 361,92 361,100" fill="#0a7aff"/>
+<rect x="368" y="62" width="142" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="439" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">3 - EXECUTION SIM</text>
+<text x="439" y="98" text-anchor="middle" font-size="9" fill="#555555">paper fills: mid -/+</text>
+<text x="439" y="112" text-anchor="middle" font-size="9" fill="#555555">spread + slippage (7 bps)</text>
+<text x="439" y="125" text-anchor="middle" font-size="9" fill="#c81e1e" font-weight="bold">LIVE flag: OFF</text>
+<line x1="510" y1="96" x2="528" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="528,96 521,92 521,100" fill="#0a7aff"/>
+<rect x="528" y="62" width="140" height="68" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="598" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PAPER ACCOUNT</text>
+<text x="598" y="98" text-anchor="middle" font-size="9" fill="#555555">cash + position</text>
+<text x="598" y="112" text-anchor="middle" font-size="9" fill="#555555">marked to market</text>
+<text x="598" y="125" text-anchor="middle" font-size="9" fill="#555555">every bar</text>
+<line x1="302" y1="130" x2="302" y2="148" stroke="#c81e1e" stroke-width="1.4"/>
+<polygon points="302,152 298,144 306,144" fill="#c81e1e"/>
+<text x="302" y="168" text-anchor="middle" font-size="9.5" fill="#c81e1e" font-weight="bold">kill switch: day P&amp;L &lt; -$400 &#8594; flatten + halt</text>
+<text x="302" y="184" text-anchor="middle" font-size="9" fill="#555555">day 35: trips at -$749 - and the re-entry attempt an hour later is REJECTED</text>
+<line x1="87" y1="134" x2="87" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="247" y1="134" x2="247" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="357" y1="134" x2="357" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="519" y1="134" x2="519" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<rect x="12" y="196" width="656" height="138" rx="8" fill="#fffdf4" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="218" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">4 - JOURNAL + RECONCILIATION: every decision, logged with its features</text>
+<text x="28" y="244" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d11 b0  BUY  req 150 -&gt; got 100 @ 99.71    ret_20 -3.6%    gate: CLIPPED to max 100</text>
+<text x="28" y="264" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d15 b2  SELL 100 @ 102.89                   ret_20 +1.9%    gate: APPROVED (recovery exit)</text>
+<text x="28" y="284" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d35 b2  KILL SWITCH SELL 100 @ 94.10        day P&amp;L -$749   gate: FLATTEN + HALT</text>
+<text x="28" y="304" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d35 b3  BUY  req 161 -&gt; got 0               ret_20 -12.0%   gate: REJECTED (halted)</text>
+<text x="28" y="324" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">reconcile: paper -$565.15 vs frictionless -$516.90 -&gt; gap $48.25 = friction paid, explained</text>
+<text x="340" y="322" text-anchor="middle" font-size="9" fill="#9a6b00">any OTHER paper-vs-backtest gap = a bug or a leak. Investigate before believing either number.</text>
+<rect x="12" y="348" width="656" height="48" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="368" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Paper first - always. Live money is a config change you EARN with a reconciled journal,</text>
+<text x="340" y="386" text-anchor="middle" font-size="9.5" fill="#1c1c1e">not a default you ship. Same reason an order broadcast ships default OFF.</text>
+</svg>
+    <div class="caption">Left to right: the tape feeds the signal process, which emits intents; every intent passes the risk gate (drawn as what it is &mdash; a barrier that can stay down); approved size reaches the execution sim; fills land in the paper account. The dashed lines are the journal&rsquo;s taps: nothing flows without being logged, and the band underneath carries three real rows from tonight&rsquo;s run plus the reconciliation verdict.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, numpy only, seed 91 &mdash; the whole harness in miniature. <strong>Part 1</strong> unit-tests the gate like an API: an in-limit order (approved), a 150-share order (clipped to the 100 cap), an order while halted (rejected). <strong>Part 2</strong> runs all four boxes over a synthetic 60-day tape, 4 bars a day, designed so every box has to work: two dips (entries), a recovery (clean exit), a crash day (kill switch), a rejected re-entry an hour later, and a late noise dip still open at the end. The signal is Day 88-flavored mean reversion &mdash; want long when <code>ret_20 &lt; -3%</code>, exit when it recovers &mdash; sized at Day 90&rsquo;s 15%-of-equity intent, which is why the gate clips every single entry: watch <code>req</code> vs <code>got</code>. <strong>Part 3</strong> reconciles. The strategy itself loses about $565 on this tape &mdash; that&rsquo;s fine, and it&rsquo;s the point: the harness never promised profit. It promised that every dollar of the loss is explainable.</p>
+  <pre><code>&quot;&quot;&quot;Day 91 - From Notebook to Bot: The Paper-Trading Harness.
+
+Phase G has built a model (Days 83-90): honest features,
+triple-barrier labels, walk-forward validation, Kelly-capped
+sizing. A notebook stops there. Production doesn&#x27;t. Between
+the model and any order sits a HARNESS - four boxes with hard
+boundaries, each of which can be tested on its own:
+
+  1. Signal process   model + features, point-in-time inputs
+                      only. Emits INTENTS, never orders.
+  2. Risk gate        dumb, deterministic code between the
+                      model and the market: position limits,
+                      Day 90 sizing caps, a daily-loss kill
+                      switch. It can say NO, and the model
+                      cannot argue with it.
+  3. Execution sim    paper fills at mid -/+ half-spread and
+                      slippage. Never fantasy mid fills. A
+                      LIVE flag exists, default OFF; paper is
+                      a stage you graduate from, not skip.
+  4. Journal +        every decision logged WITH the features
+     reconciliation   that produced it (Day 67&#x27;s tracking,
+                      Day 69&#x27;s lineage, for trades), and the
+                      paper result reconciled against the
+                      frictionless backtest number. A gap you
+                      can&#x27;t explain is a bug or a leak.
+
+  Part 1  The gate, unit-tested: approve, clip, reject.
+  Part 2  The full harness on a synthetic 60-day tape (4 bars
+          a day) with a designed dip, a recovery, a second
+          dip - and a crash day the kill switch has to catch.
+  Part 3  Reconciliation: paper P&amp;L vs the frictionless P&amp;L
+          of the identical decisions, and the gate&#x27;s report.
+
+Runs on the ~/ai-lab venv: numpy only (free), no paid APIs,
+no downloads. The tape is synthetic with a stated seed; the
+architecture is the lesson, not the alpha.
+
+Expected output:
+
+  Part 1 - the risk gate, unit-tested
+    BUY 100 (pos 0, halted False) -&gt; APPROVED         qty 100  within limits
+    BUY 150 (pos 0, halted False) -&gt; APPROVED-CLIPPED qty 100  requested 150 &gt; headroom 100
+    BUY  50 (pos 0, halted True) -&gt; REJECTED         qty   0  kill switch: halted for the day
+  Part 2 - the harness runs: journal of every decision
+    day bar event              req  got      mid     fill  ret_20  verdict
+     11   0 BUY                150  100    99.64    99.71   -3.6%  APPROVED-CLIPPED
+     15   2 SELL               100  100   102.97   102.89   +1.9%  APPROVED
+     30   1 BUY                142  100   105.94   106.01   -3.1%  APPROVED-CLIPPED
+     35   2 KILL SWITCH SELL   100  100    94.16    94.10  -10.7%  day P&amp;L -749 &lt; -400
+     35   3 BUY (no fill)      161    0    92.28    92.28  -12.0%  REJECTED
+     36   0 BUY                159  100    93.00    93.07  -10.5%  APPROVED-CLIPPED
+     40   2 SELL               100  100    97.02    96.95   +3.0%  APPROVED
+     58   3 BUY                154  100    96.62    96.69   -3.6%  APPROVED-CLIPPED
+    still holding 100 sh at the end, marked at last mid 95.88
+  Part 3 - reconciliation
+    decisions journaled: 8 (approved 2, clipped 4, rejected 1, kill-switch trips 1)
+    paper P&amp;L (real fills):        $   -565.15
+    frictionless P&amp;L (same trades): $   -516.90
+    friction paid (spread+slippage): $    48.25
+    verdict: the gap above is the ONLY difference between
+    the two runs - same signals, same gate, same tape. Any
+    other gap in real life is a bug or a leak. Investigate.
+&quot;&quot;&quot;
+import numpy as np
+
+SEED = 91
+BARS_PER_DAY = 4
+DAYS = 60
+START_CASH = 100_000.0
+MAX_POS = 100              # hard position limit, shares
+TARGET_FRAC = 0.15         # signal wants 15% of equity (Day 90)
+KILL_LOSS = 400.0          # daily-loss kill switch, dollars
+HALF_SPREAD = 0.0005       # 5 bps paid on every fill
+SLIPPAGE = 0.0002          # 2 bps adverse, every fill
+
+
+# ---------- the tape (synthetic, designed) ----------
+def build_tape():
+    rng = np.random.default_rng(SEED)
+    n = DAYS * BARS_PER_DAY
+    rets = rng.normal(0.0001, 0.006, n)
+    rets[20:40] = rng.normal(0.0, 0.002, 20)        # calm before dip 1
+    rets[40:48] = rng.normal(-0.008, 0.002, 8)      # dip 1
+    rets[48:72] = rng.normal(0.0035, 0.002, 24)     # recovery 1
+    rets[120:128] = rng.normal(-0.008, 0.002, 8)    # dip 2
+    rets[128:140] = rng.normal(0.002, 0.002, 12)    # drift up
+    rets[140:144] = [-0.015, -0.030, -0.045, -0.020]  # crash day
+    rets[144:170] = rng.normal(0.0025, 0.003, 26)   # partial heal
+    closes = 100.0 * np.cumprod(1.0 + rets)
+    return closes
+
+
+# ---------- box 2: the risk gate ----------
+class RiskGate:
+    &quot;&quot;&quot;Deterministic admission control. No model in here.&quot;&quot;&quot;
+
+    def review(self, side, qty, pos, halted):
+        if halted:
+            return &quot;REJECTED&quot;, 0, &quot;kill switch: halted for the day&quot;
+        if side == &quot;SELL&quot;:
+            return &quot;APPROVED&quot;, qty, &quot;exit, always allowed&quot;
+        headroom = MAX_POS - pos
+        if headroom &lt;= 0:
+            return &quot;REJECTED&quot;, 0, f&quot;max position {MAX_POS} reached&quot;
+        if qty &gt; headroom:
+            return &quot;APPROVED-CLIPPED&quot;, headroom, \
+                f&quot;requested {qty} &gt; headroom {headroom}&quot;
+        return &quot;APPROVED&quot;, qty, &quot;within limits&quot;
+
+
+# ---------- box 1: the signal process ----------
+def signal(closes, t, pos, held):
+    &quot;&quot;&quot;Point-in-time only: features use closes[..t]. Emits an
+    intent (side, qty, features) or None.&quot;&quot;&quot;
+    if t &lt; 20:
+        return None
+    ret20 = closes[t] / closes[t - 20] - 1.0
+    feats = {&quot;ret_20&quot;: ret20}
+    if pos == 0 and ret20 &lt; -0.03:
+        return &quot;BUY&quot;, feats
+    if pos &gt; 0 and (ret20 &gt; 0.01 or held &gt;= 40):
+        return &quot;SELL&quot;, feats
+    return None
+
+
+# ---------- Parts 1-3 ----------
+def main():
+    closes = build_tape()
+    gate = RiskGate()
+
+    print(&quot;Part 1 - the risk gate, unit-tested&quot;)
+    for side, qty, pos, halted in ((&quot;BUY&quot;, 100, 0, False),
+                                   (&quot;BUY&quot;, 150, 0, False),
+                                   (&quot;BUY&quot;, 50, 0, True)):
+        v, q, why = gate.review(side, qty, pos, halted)
+        print(f&quot;  {side} {qty:&gt;3} (pos {pos}, halted {halted})&quot;
+              f&quot; -&gt; {v:&lt;16} qty {q:&gt;3}  {why}&quot;)
+
+    print(&quot;Part 2 - the harness runs: journal of every decision&quot;)
+    print(&quot;  day bar event              req  got      mid&quot;
+          &quot;     fill  ret_20  verdict&quot;)
+    cash = free_cash = START_CASH
+    pos = 0
+    held = 0
+    halted_day = -1
+    day_start_eq = START_CASH
+    journal = []
+    counts = {&quot;APPROVED&quot;: 0, &quot;APPROVED-CLIPPED&quot;: 0, &quot;REJECTED&quot;: 0,
+              &quot;KILL&quot;: 0}
+
+    def log(day, bar, event, req, got, mid, fill, feats, verdict):
+        r = feats[&quot;ret_20&quot;] if feats else float(&quot;nan&quot;)
+        journal.append((day, bar, event, req, got, mid, fill, r,
+                        verdict))
+        print(f&quot;  {day:&gt;3} {bar:&gt;3} {event:&lt;18} {req:&gt;3} {got:&gt;4}&quot;
+              f&quot; {mid:&gt;8.2f} {fill:&gt;8.2f} {r:&gt;+7.1%}  {verdict}&quot;)
+
+    for t, mid in enumerate(closes):
+        day, bar = divmod(t, BARS_PER_DAY)
+        if bar == 0:
+            day_start_eq = cash + pos * mid
+        halted = day == halted_day
+        sig = signal(closes, t, pos, held)
+        if sig is not None:
+            side, feats = sig
+            equity = cash + pos * mid
+            if side == &quot;BUY&quot;:
+                req = int(TARGET_FRAC * equity / mid)
+            else:
+                req = pos
+            verdict, qty, _ = gate.review(side, req, pos, halted)
+            counts[verdict] += 1
+            if qty &gt; 0:
+                if side == &quot;BUY&quot;:
+                    fill = mid * (1 + HALF_SPREAD + SLIPPAGE)
+                    cash -= qty * fill
+                    free_cash -= qty * mid
+                    pos += qty
+                    held = 0
+                else:
+                    fill = mid * (1 - HALF_SPREAD - SLIPPAGE)
+                    cash += qty * fill
+                    free_cash += qty * mid
+                    pos -= qty
+                log(day, bar, side, req, qty, mid, fill, feats,
+                    verdict)
+            else:
+                log(day, bar, side + &quot; (no fill)&quot;, req, 0, mid,
+                    mid, feats, verdict)
+        if pos &gt; 0:
+            held += 1
+        # kill switch: mark to market, judge the day
+        day_pnl = (cash + pos * mid) - day_start_eq
+        if pos &gt; 0 and day_pnl &lt; -KILL_LOSS and day != halted_day:
+            fill = mid * (1 - HALF_SPREAD - SLIPPAGE)
+            log(day, bar, &quot;KILL SWITCH SELL&quot;, pos, pos, mid, fill,
+                {&quot;ret_20&quot;: closes[t] / closes[t - 20] - 1.0},
+                f&quot;day P&amp;L {day_pnl:,.0f} &lt; -{KILL_LOSS:,.0f}&quot;)
+            cash += pos * fill
+            free_cash += pos * mid
+            pos = 0
+            halted_day = day
+            counts[&quot;KILL&quot;] += 1
+
+    last = closes[-1]
+    if pos &gt; 0:
+        print(f&quot;  still holding {pos} sh at the end, &quot;
+              f&quot;marked at last mid {last:.2f}&quot;)
+    paper_eq = cash + pos * last
+    free_eq = free_cash + pos * last
+    print(&quot;Part 3 - reconciliation&quot;)
+    print(f&quot;  decisions journaled: {len(journal)} &quot;
+          f&quot;(approved {counts[&#x27;APPROVED&#x27;]}, &quot;
+          f&quot;clipped {counts[&#x27;APPROVED-CLIPPED&#x27;]}, &quot;
+          f&quot;rejected {counts[&#x27;REJECTED&#x27;]}, &quot;
+          f&quot;kill-switch trips {counts[&#x27;KILL&#x27;]})&quot;)
+    print(f&quot;  paper P&amp;L (real fills):        &quot;
+          f&quot;${paper_eq - START_CASH:&gt;10,.2f}&quot;)
+    print(f&quot;  frictionless P&amp;L (same trades): &quot;
+          f&quot;${free_eq - START_CASH:&gt;10,.2f}&quot;)
+    print(f&quot;  friction paid (spread+slippage):&quot;
+          f&quot; ${free_eq - paper_eq:&gt;9,.2f}&quot;)
+    print(&quot;  verdict: the gap above is the ONLY difference between&quot;)
+    print(&quot;  the two runs - same signals, same gate, same tape. Any&quot;)
+    print(&quot;  other gap in real life is a bug or a leak. Investigate.&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the risk gate, unit-tested
+  BUY 100 (pos 0, halted False) -&gt; APPROVED         qty 100  within limits
+  BUY 150 (pos 0, halted False) -&gt; APPROVED-CLIPPED qty 100  requested 150 &gt; headroom 100
+  BUY  50 (pos 0, halted True) -&gt; REJECTED         qty   0  kill switch: halted for the day
+Part 2 - the harness runs: journal of every decision
+  day bar event              req  got      mid     fill  ret_20  verdict
+   11   0 BUY                150  100    99.64    99.71   -3.6%  APPROVED-CLIPPED
+   15   2 SELL               100  100   102.97   102.89   +1.9%  APPROVED
+   30   1 BUY                142  100   105.94   106.01   -3.1%  APPROVED-CLIPPED
+   35   2 KILL SWITCH SELL   100  100    94.16    94.10  -10.7%  day P&amp;L -749 &lt; -400
+   35   3 BUY (no fill)      161    0    92.28    92.28  -12.0%  REJECTED
+   36   0 BUY                159  100    93.00    93.07  -10.5%  APPROVED-CLIPPED
+   40   2 SELL               100  100    97.02    96.95   +3.0%  APPROVED
+   58   3 BUY                154  100    96.62    96.69   -3.6%  APPROVED-CLIPPED
+  still holding 100 sh at the end, marked at last mid 95.88
+Part 3 - reconciliation
+  decisions journaled: 8 (approved 2, clipped 4, rejected 1, kill-switch trips 1)
+  paper P&amp;L (real fills):        $   -565.15
+  frictionless P&amp;L (same trades): $   -516.90
+  friction paid (spread+slippage): $    48.25
+  verdict: the gap above is the ONLY difference between
+  the two runs - same signals, same gate, same tape. Any
+  other gap in real life is a bug or a leak. Investigate.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three gate interventions and the reconciliation: Part 1&rsquo;s verdicts <code>APPROVED</code> / <code>APPROVED-CLIPPED</code> / <code>REJECTED</code>; the day-35 <code>KILL SWITCH SELL</code> at day P&amp;L <code>-$749</code> with the bar-3 re-entry <code>REJECTED</code> right behind it; and Part 3&rsquo;s gap &mdash; paper <code>-$565.15</code> vs frictionless <code>-$516.90</code>, friction <code>$48.25</code>. The keeper test, no notes allowed: pick any journal row and read off what the model wanted, what the gate allowed, what it filled at, and which feature caused it. If you can do that for all eight rows, you own the architecture.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study the diagram&rsquo;s gate until you can redraw the four boxes from memory. Then run the code and find the three gate interventions in the journal &mdash; one CLIPPED row, the KILL row, one REJECTED row. If you can say out loud why the gate must be dumb code the model can&rsquo;t argue with, and why an unexplained reconciliation gap blocks going live, you have the day.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the whole capstone on one page &mdash; data &rarr; features &rarr; labels &rarr; validation &rarr; sizing &rarr; execution, drawn as a single map.</p>
+  </div>
+
+  <div class="footer">Streak: 91 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

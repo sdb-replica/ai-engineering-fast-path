@@ -1,0 +1,60 @@
+<svg viewBox="0 0 680 416" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="416" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The paper-trading harness: four boxes, hard boundaries</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">the model proposes - the platform disposes. Nothing reaches the market except through the gate.</text>
+<rect x="12" y="62" width="66" height="68" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="45" y="86" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">TAPE</text>
+<text x="45" y="102" text-anchor="middle" font-size="8.5" fill="#555555">point-in-time</text>
+<text x="45" y="116" text-anchor="middle" font-size="8.5" fill="#555555">closes only</text>
+<line x1="78" y1="96" x2="96" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="96,96 89,92 89,100" fill="#0a7aff"/>
+<rect x="96" y="62" width="140" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="166" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">1 - SIGNAL PROCESS</text>
+<text x="166" y="98" text-anchor="middle" font-size="9" fill="#555555">features + model</text>
+<text x="166" y="112" text-anchor="middle" font-size="9" fill="#555555">emits INTENTS,</text>
+<text x="166" y="125" text-anchor="middle" font-size="9" fill="#555555">never orders</text>
+<text x="247" y="54" text-anchor="middle" font-size="8.5" fill="#0a54c2">wants BUY 150</text>
+<line x1="236" y1="96" x2="258" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="258,96 251,92 251,100" fill="#0a7aff"/>
+<rect x="258" y="62" width="88" height="68" rx="8" fill="#fdf0f0" stroke="#c81e1e" stroke-width="1.2"/>
+<text x="302" y="78" text-anchor="middle" font-size="10" fill="#c81e1e" font-weight="bold">2 - RISK GATE</text>
+<rect x="270" y="86" width="5" height="30" fill="#c81e1e"/>
+<rect x="329" y="86" width="5" height="30" fill="#c81e1e"/>
+<line x1="272" y1="90" x2="332" y2="110" stroke="#c81e1e" stroke-width="6"/>
+<line x1="272" y1="90" x2="332" y2="110" stroke="#ffffff" stroke-width="6" stroke-dasharray="7 7"/>
+<text x="302" y="126" text-anchor="middle" font-size="8.5" fill="#c81e1e" font-weight="bold">can say NO</text>
+<text x="357" y="54" text-anchor="middle" font-size="8.5" fill="#177245">approved: 100</text>
+<line x1="346" y1="96" x2="368" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="368,96 361,92 361,100" fill="#0a7aff"/>
+<rect x="368" y="62" width="142" height="68" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="439" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">3 - EXECUTION SIM</text>
+<text x="439" y="98" text-anchor="middle" font-size="9" fill="#555555">paper fills: mid -/+</text>
+<text x="439" y="112" text-anchor="middle" font-size="9" fill="#555555">spread + slippage (7 bps)</text>
+<text x="439" y="125" text-anchor="middle" font-size="9" fill="#c81e1e" font-weight="bold">LIVE flag: OFF</text>
+<line x1="510" y1="96" x2="528" y2="96" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="528,96 521,92 521,100" fill="#0a7aff"/>
+<rect x="528" y="62" width="140" height="68" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="598" y="82" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PAPER ACCOUNT</text>
+<text x="598" y="98" text-anchor="middle" font-size="9" fill="#555555">cash + position</text>
+<text x="598" y="112" text-anchor="middle" font-size="9" fill="#555555">marked to market</text>
+<text x="598" y="125" text-anchor="middle" font-size="9" fill="#555555">every bar</text>
+<line x1="302" y1="130" x2="302" y2="148" stroke="#c81e1e" stroke-width="1.4"/>
+<polygon points="302,152 298,144 306,144" fill="#c81e1e"/>
+<text x="302" y="168" text-anchor="middle" font-size="9.5" fill="#c81e1e" font-weight="bold">kill switch: day P&amp;L &lt; -$400 &#8594; flatten + halt</text>
+<text x="302" y="184" text-anchor="middle" font-size="9" fill="#555555">day 35: trips at -$749 - and the re-entry attempt an hour later is REJECTED</text>
+<line x1="87" y1="134" x2="87" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="247" y1="134" x2="247" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="357" y1="134" x2="357" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<line x1="519" y1="134" x2="519" y2="192" stroke="#999999" stroke-width="1" stroke-dasharray="4 4"/>
+<rect x="12" y="196" width="656" height="138" rx="8" fill="#fffdf4" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="218" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">4 - JOURNAL + RECONCILIATION: every decision, logged with its features</text>
+<text x="28" y="244" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d11 b0  BUY  req 150 -&gt; got 100 @ 99.71    ret_20 -3.6%    gate: CLIPPED to max 100</text>
+<text x="28" y="264" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d15 b2  SELL 100 @ 102.89                   ret_20 +1.9%    gate: APPROVED (recovery exit)</text>
+<text x="28" y="284" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d35 b2  KILL SWITCH SELL 100 @ 94.10        day P&amp;L -$749   gate: FLATTEN + HALT</text>
+<text x="28" y="304" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">d35 b3  BUY  req 161 -&gt; got 0               ret_20 -12.0%   gate: REJECTED (halted)</text>
+<text x="28" y="324" text-anchor="start" font-size="9.5" fill="#1c1c1e" font-family="monospace">reconcile: paper -$565.15 vs frictionless -$516.90 -&gt; gap $48.25 = friction paid, explained</text>
+<text x="340" y="322" text-anchor="middle" font-size="9" fill="#9a6b00">any OTHER paper-vs-backtest gap = a bug or a leak. Investigate before believing either number.</text>
+<rect x="12" y="348" width="656" height="48" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="368" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Paper first - always. Live money is a config change you EARN with a reconciled journal,</text>
+<text x="340" y="386" text-anchor="middle" font-size="9.5" fill="#1c1c1e">not a default you ship. Same reason an order broadcast ships default OFF.</text>
+</svg>
