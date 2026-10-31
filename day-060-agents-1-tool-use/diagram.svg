@@ -1,0 +1,73 @@
+<svg viewBox="0 0 680 600" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="600" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Tool use: one round-trip, done by hand</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">The model emits a form. Your code validates it, runs it, hands the result back.</text>
+<rect x="12" y="56" width="656" height="318" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE ROUND-TRIP: WHO TOUCHES WHAT</text>
+<rect x="28" y="92" width="110" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="83.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">User</text>
+<text x="83.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">plain-prose</text>
+<text x="83.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">request</text>
+<rect x="166" y="92" width="150" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="241.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Model</text>
+<text x="241.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">picks a tool, fills</text>
+<text x="241.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">the form - runs NOTHING</text>
+<rect x="344" y="92" width="166" height="64" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="427.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">tool_call (JSON)</text>
+<text x="427.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">get_quote + arguments</text>
+<text x="427.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">{"symbol": "NVDA"}</text>
+<rect x="538" y="92" width="122" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="599.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Dispatcher</text>
+<text x="599.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">YOUR code</text>
+<text x="599.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">validate, then run</text>
+<line x1="140" y1="124" x2="164" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="164" y1="124" x2="158" y2="128" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="164" y1="124" x2="158" y2="120" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="318" y1="124" x2="342" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="342" y1="124" x2="336" y2="128" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="342" y1="124" x2="336" y2="120" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="512" y1="124" x2="536" y2="124" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="536" y1="124" x2="530" y2="128" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="536" y1="124" x2="530" y2="120" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="599" y1="158" x2="599" y2="194" stroke="#22a355" stroke-width="1.6"/>
+<line x1="599" y1="194" x2="595" y2="188" stroke="#22a355" stroke-width="1.6"/>
+<line x1="599" y1="194" x2="603" y2="188" stroke="#22a355" stroke-width="1.6"/>
+<rect x="538" y="196" width="122" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="599.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Tool runs</text>
+<text x="599.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">get_quote()</text>
+<text x="599.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">real function</text>
+<rect x="344" y="196" width="166" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="427.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">tool_result</text>
+<text x="427.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">{"price_usd": 187.5}</text>
+<text x="427.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">appended to the chat</text>
+<rect x="166" y="196" width="150" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="241.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Model (again)</text>
+<text x="241.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">reads the result,</text>
+<text x="241.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">writes the answer</text>
+<rect x="28" y="196" width="110" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="83.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Answer</text>
+<text x="83.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">prose reply</text>
+<text x="83.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">back to user</text>
+<line x1="536" y1="228" x2="512" y2="228" stroke="#22a355" stroke-width="1.6"/>
+<line x1="512" y1="228" x2="518" y2="224" stroke="#22a355" stroke-width="1.6"/>
+<line x1="512" y1="228" x2="518" y2="232" stroke="#22a355" stroke-width="1.6"/>
+<line x1="342" y1="228" x2="318" y2="228" stroke="#22a355" stroke-width="1.6"/>
+<line x1="318" y1="228" x2="324" y2="224" stroke="#22a355" stroke-width="1.6"/>
+<line x1="318" y1="228" x2="324" y2="232" stroke="#22a355" stroke-width="1.6"/>
+<line x1="164" y1="228" x2="140" y2="228" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="140" y1="228" x2="146" y2="224" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="140" y1="228" x2="146" y2="232" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="340" y="292" text-anchor="middle" font-size="9.0" fill="#1c1c1e">The model ran NOTHING. It picked a name and filled a form - every real action happened on your side.</text>
+<text x="340" y="312" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Validation sits between the call and the tool: a malformed form never reaches the function.</text>
+<text x="340" y="332" text-anchor="middle" font-size="9.0" fill="#b03030">Rejected in today's code: symbol = 142 (integer, not string) + invented field 'venue' - rejected, not executed.</text>
+<text x="340" y="354" text-anchor="middle" font-size="9.0" fill="#0a54c2">One round-trip, by hand. The model speaks only in messages - before, during, and after the call.</text>
+<rect x="12" y="390" width="656" height="118" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE CONTRACT: THE SCHEMA IS THE INTERFACE</text>
+<text x="28" y="434" text-anchor="start" font-size="9.0" fill="#1c1c1e">name:  get_quote</text>
+<text x="28" y="452" text-anchor="start" font-size="9.0" fill="#1c1c1e">description:  "Last traded price for one ticker symbol."</text>
+<text x="28" y="470" text-anchor="start" font-size="9.0" fill="#1c1c1e">parameters:  symbol - string, REQUIRED, one of [NVDA, META, SPY, HOOD, BTC]</text>
+<text x="340" y="492" text-anchor="middle" font-size="9.0" fill="#5a3fd4">The model sees ONLY this - not your code, not your table. Vague description in, wrong picks out.</text>
+<rect x="12" y="524" width="656" height="60" rx="10" fill="#fdf0f0" stroke="#d64545" stroke-width="1.2"/>
+<text x="340" y="546" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">WHERE IT BREAKS - CALLER PROBLEMS YOUR SIDE MUST ABSORB</text>
+<text x="340" y="568" text-anchor="middle" font-size="8.5" fill="#7a2020">hallucinated args: validate and reject  -  wrong tool, valid args: executes the wrong thing  -  sloppy schema: sloppy calls</text>
+</svg>

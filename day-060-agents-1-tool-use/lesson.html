@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents 1: Tool Use — Schemas In, Tool Calls Out — Day 60 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 60 of 100</span>
+  <h1>Agents 1: Tool Use — Schemas In, Tool Calls Out</h1>
+  <p class="outcome">Tonight you'll be able to: read a tool schema the way you&rsquo;d read an API contract, trace one complete round-trip &mdash; user &rarr; tool_call &rarr; your dispatcher &rarr; tool_result &rarr; answer &mdash; and name the three ways the call breaks before it ever reaches your code.</p>
+
+  <h2>The one idea</h2>
+  <p>A language model is a text machine sealed in a box. It reads messages and produces messages, and that is all it can do: it cannot check a price, write to a database, or run a single line of your code. Every real action a product takes &ldquo;with AI&rdquo; is <em>your</em> code acting. Tool use (also called function calling) is the protocol that bridges the gap &mdash; and once you see it as a protocol, there is nothing mystical left.</p>
+<p><strong>Step 1 &mdash; you offer tools as schemas.</strong> For each capability you are willing to expose, you write a <strong>schema</strong>: a name, a plain-language description, and typed parameters in <strong>JSON Schema</strong> form &mdash; each parameter&rsquo;s type, which ones are required, an <code>enum</code> when the value must come from a fixed list. That schema is the <em>only</em> thing the model ever learns about your tool. It never sees your implementation, your database, or your price table &mdash; just the contract.</p>
+<p><strong>Step 2 &mdash; the model emits a tool_call, not prose.</strong> When a request needs the outside world, the model answers with a structured object instead of a sentence: a tool name plus an <strong>arguments</strong> object that is <em>supposed</em> to match the schema. Hold the key fact in both hands: <strong>the model has run nothing.</strong> It has filled in a form and requested something. It is a caller, not an executor.</p>
+<p><strong>Step 3 &mdash; your dispatcher validates, then executes.</strong> Your code receives the call and checks the arguments against the schema &mdash; types, required fields, enum membership, no extra fields. Only a call that validates reaches the real function. The result is then appended to the conversation as a <strong>tool_result</strong> message, the model reads it, and only then writes the user-facing answer in prose. One round-trip: schema out, call back, result in, answer out. Tonight you do exactly one round-trip at a time, by hand &mdash; no framework, no API key.</p>
+<p><strong>The failure modes, honestly.</strong> (1) <em>Hallucinated arguments</em>: wrong types, invented fields, values that don&rsquo;t exist. The model is a confident form-filler, not a type checker &mdash; validation on your side of the boundary is not optional. (2) <em>Wrong tool picked</em>: every argument validates, the call executes perfectly, and it is still the wrong action &mdash; schemas check shape, never intent. (3) <em>The schema is the real interface design</em>: the model chooses tools and fills fields based entirely on your names and descriptions, so a vague description or a cryptic parameter name degrades a caller you cannot retrain. Writing a good tool schema is API design for a reader who reads literally and improvises confidently. Vendor wrappers differ (one API nests the call under a <code>function</code> key, another calls it a tool-use block) &mdash; the protocol underneath is identical.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You have written API contracts for callers on other teams &mdash; this is the same job, with one twist: <strong>the caller is an eager junior dev who read your docs once, never saw your code, and fills in request bodies from your descriptions plus vibes.</strong> He will cheerfully invent a field that doesn&rsquo;t exist and pass a number where your spec says string. You already know the correct response, because it&rsquo;s the one you use for any untrusted caller: validate at the boundary against the schema, reject with a precise error, never let an unvalidated request reach the handler. The model is a client you can never fire and never fully trust &mdash; so the contract has to do the work. Trading version, one line: the model is the analyst writing the order ticket, your dispatcher is the compliance check, and only validated tickets reach the desk.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 600" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="600" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Tool use: one round-trip, done by hand</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">The model emits a form. Your code validates it, runs it, hands the result back.</text>
+<rect x="12" y="56" width="656" height="318" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE ROUND-TRIP: WHO TOUCHES WHAT</text>
+<rect x="28" y="92" width="110" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="83.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">User</text>
+<text x="83.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">plain-prose</text>
+<text x="83.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">request</text>
+<rect x="166" y="92" width="150" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="241.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Model</text>
+<text x="241.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">picks a tool, fills</text>
+<text x="241.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">the form - runs NOTHING</text>
+<rect x="344" y="92" width="166" height="64" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="427.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">tool_call (JSON)</text>
+<text x="427.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">get_quote + arguments</text>
+<text x="427.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">{"symbol": "NVDA"}</text>
+<rect x="538" y="92" width="122" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="599.0" y="117" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Dispatcher</text>
+<text x="599.0" y="134" text-anchor="middle" font-size="8.5" fill="#555555">YOUR code</text>
+<text x="599.0" y="148" text-anchor="middle" font-size="8.5" fill="#555555">validate, then run</text>
+<line x1="140" y1="124" x2="164" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="164" y1="124" x2="158" y2="128" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="164" y1="124" x2="158" y2="120" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="318" y1="124" x2="342" y2="124" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="342" y1="124" x2="336" y2="128" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="342" y1="124" x2="336" y2="120" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="512" y1="124" x2="536" y2="124" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="536" y1="124" x2="530" y2="128" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="536" y1="124" x2="530" y2="120" stroke="#d99a00" stroke-width="1.6"/>
+<line x1="599" y1="158" x2="599" y2="194" stroke="#22a355" stroke-width="1.6"/>
+<line x1="599" y1="194" x2="595" y2="188" stroke="#22a355" stroke-width="1.6"/>
+<line x1="599" y1="194" x2="603" y2="188" stroke="#22a355" stroke-width="1.6"/>
+<rect x="538" y="196" width="122" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="599.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Tool runs</text>
+<text x="599.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">get_quote()</text>
+<text x="599.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">real function</text>
+<rect x="344" y="196" width="166" height="64" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="427.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">tool_result</text>
+<text x="427.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">{"price_usd": 187.5}</text>
+<text x="427.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">appended to the chat</text>
+<rect x="166" y="196" width="150" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="241.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Model (again)</text>
+<text x="241.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">reads the result,</text>
+<text x="241.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">writes the answer</text>
+<rect x="28" y="196" width="110" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="83.0" y="221" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Answer</text>
+<text x="83.0" y="238" text-anchor="middle" font-size="8.5" fill="#555555">prose reply</text>
+<text x="83.0" y="252" text-anchor="middle" font-size="8.5" fill="#555555">back to user</text>
+<line x1="536" y1="228" x2="512" y2="228" stroke="#22a355" stroke-width="1.6"/>
+<line x1="512" y1="228" x2="518" y2="224" stroke="#22a355" stroke-width="1.6"/>
+<line x1="512" y1="228" x2="518" y2="232" stroke="#22a355" stroke-width="1.6"/>
+<line x1="342" y1="228" x2="318" y2="228" stroke="#22a355" stroke-width="1.6"/>
+<line x1="318" y1="228" x2="324" y2="224" stroke="#22a355" stroke-width="1.6"/>
+<line x1="318" y1="228" x2="324" y2="232" stroke="#22a355" stroke-width="1.6"/>
+<line x1="164" y1="228" x2="140" y2="228" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="140" y1="228" x2="146" y2="224" stroke="#0a7aff" stroke-width="1.6"/>
+<line x1="140" y1="228" x2="146" y2="232" stroke="#0a7aff" stroke-width="1.6"/>
+<text x="340" y="292" text-anchor="middle" font-size="9.0" fill="#1c1c1e">The model ran NOTHING. It picked a name and filled a form - every real action happened on your side.</text>
+<text x="340" y="312" text-anchor="middle" font-size="9.0" fill="#1c1c1e">Validation sits between the call and the tool: a malformed form never reaches the function.</text>
+<text x="340" y="332" text-anchor="middle" font-size="9.0" fill="#b03030">Rejected in today's code: symbol = 142 (integer, not string) + invented field 'venue' - rejected, not executed.</text>
+<text x="340" y="354" text-anchor="middle" font-size="9.0" fill="#0a54c2">One round-trip, by hand. The model speaks only in messages - before, during, and after the call.</text>
+<rect x="12" y="390" width="656" height="118" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE CONTRACT: THE SCHEMA IS THE INTERFACE</text>
+<text x="28" y="434" text-anchor="start" font-size="9.0" fill="#1c1c1e">name:  get_quote</text>
+<text x="28" y="452" text-anchor="start" font-size="9.0" fill="#1c1c1e">description:  "Last traded price for one ticker symbol."</text>
+<text x="28" y="470" text-anchor="start" font-size="9.0" fill="#1c1c1e">parameters:  symbol - string, REQUIRED, one of [NVDA, META, SPY, HOOD, BTC]</text>
+<text x="340" y="492" text-anchor="middle" font-size="9.0" fill="#5a3fd4">The model sees ONLY this - not your code, not your table. Vague description in, wrong picks out.</text>
+<rect x="12" y="524" width="656" height="60" rx="10" fill="#fdf0f0" stroke="#d64545" stroke-width="1.2"/>
+<text x="340" y="546" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">WHERE IT BREAKS - CALLER PROBLEMS YOUR SIDE MUST ABSORB</text>
+<text x="340" y="568" text-anchor="middle" font-size="8.5" fill="#7a2020">hallucinated args: validate and reject  -  wrong tool, valid args: executes the wrong thing  -  sloppy schema: sloppy calls</text>
+</svg>
+    <div class="caption">One round-trip, serpentine: the user asks in prose, the model picks a tool and fills in the tool_call form, your dispatcher validates it against the schema and only then runs the real tool, and the tool_result travels back as a message so the model can write the prose answer. Panel B is the contract the model actually sees &mdash; the schema, and nothing else. The red strip is the honest part: all three failure modes are caller problems, and your side absorbs every one.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, standard library only, no API key, nothing to install &mdash; it runs right in your <code>~/ai-lab</code> venv. The &ldquo;model&rdquo; is a scripted function returning pre-written <code>tool_call</code> dicts; in production that dict arrives inside a real model&rsquo;s response, and everything after it &mdash; validation, dispatch, result &mdash; is the production code you see here, unchanged. Three tools from your world: <code>get_quote</code> over a frozen demo price table (not live quotes), <code>add_watchlist_entry</code> against an in-memory list, and <code>convert_currency</code> at fixed rates. <strong>Part 1</strong> prints the contract exactly as the model sees it. <strong>Part 2</strong> runs three clean round-trips and prints the full transcript &mdash; user, tool_call, dispatcher verdict, tool_result, final answer. <strong>Part 3</strong> feeds the dispatcher one malformed call &mdash; a numeric &ldquo;ticker&rdquo; and an invented <code>venue</code> field &mdash; and shows the precise rejection the model would get back, with the tool never executed.</p>
+  <pre><code>&quot;&quot;&quot;Day 60 - Agents 1: Tool Use / Function Calling.
+
+A language model is a text machine sealed in a box: it reads
+messages and produces messages, and it cannot check a price,
+write a database, or run one line of your code. Tool use is
+the protocol that bridges the gap:
+
+  1. You offer the model TOOLS as schemas - a name, a plain-
+     language description, and typed parameters written as
+     JSON Schema (types, required fields, enums). The schema
+     is the ONLY thing the model knows about your tool. It
+     never sees your implementation.
+  2. When a request needs the outside world, the model does
+     not answer in prose. It emits a structured TOOL_CALL:
+     a tool name plus an arguments object that is supposed
+     to match the schema. A form filled in - not code run.
+     The model has executed nothing; it has requested
+     something.
+  3. YOUR dispatcher validates the arguments against the
+     schema (types, required, enum, no extra fields). Only
+     a call that validates gets executed, by your real code.
+  4. The result goes back into the conversation as a
+     TOOL_RESULT message. The model reads it and writes
+     the final answer in prose. One round-trip, done by
+     hand - that is today&#x27;s whole lesson.
+
+The failure modes are caller problems, and they are honest:
+  - Hallucinated arguments: wrong types, invented fields,
+    made-up values. The model is a confident form-filler,
+    not a type checker - so validation on YOUR side of the
+    boundary is not optional.
+  - Wrong tool picked: every argument validates, the call
+    executes perfectly, and it is still the wrong action.
+    Schemas check shape, not intent.
+  - The description IS the interface: the model picks tools
+    and fills fields from your names and descriptions, so a
+    vague description degrades a caller you cannot retrain.
+    Schema design is interface design.
+
+No API key, no network: the &quot;model&quot; below is a scripted
+function returning pre-written tool_call dicts. In
+production that dict arrives inside a real model&#x27;s response
+(vendor wrappers differ - the protocol is identical), and
+everything after it - validation, dispatch, result - is
+the same production code you see here. Stdlib only, runs
+in the ~/ai-lab venv on the MacBook.
+
+Expected output:
+
+  Part 1 - the contract: 3 tools offered to the model as schemas
+    the full get_quote schema, exactly as the model sees it:
+      {
+        &quot;name&quot;: &quot;get_quote&quot;,
+        &quot;description&quot;: &quot;Last traded price for one ticker symbol.&quot;,
+        &quot;parameters&quot;: {
+          &quot;type&quot;: &quot;object&quot;,
+          &quot;properties&quot;: {
+            &quot;symbol&quot;: {
+              &quot;type&quot;: &quot;string&quot;,
+              &quot;enum&quot;: [
+                &quot;NVDA&quot;,
+                &quot;META&quot;,
+                &quot;SPY&quot;,
+                &quot;HOOD&quot;,
+                &quot;BTC&quot;
+              ]
+            }
+          },
+          &quot;required&quot;: [
+            &quot;symbol&quot;
+          ],
+          &quot;additionalProperties&quot;: false
+        }
+      }
+    the other two, in shorthand:
+    add_watchlist_entry - Add one ticker to the user&#x27;s watchlist, with an optional free-text note.
+      parameters: symbol: string (required); note: string (optional)
+    convert_currency - Convert an amount between currencies at fixed demo rates.
+      parameters: amount: number (required); from_currency: string (required); to_currency: string (required)
+    the model sees ONLY this - never your code, never your data
+  Part 2 - three clean round-trips, transcript in full
+  --- round-trip 1 ---
+    user: What&#x27;s NVDA trading at?
+    model -&gt; tool_call {&quot;id&quot;: &quot;call_1&quot;, &quot;name&quot;: &quot;get_quote&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: &quot;NVDA&quot;}}
+    dispatcher: schema check PASSED for get_quote - executing YOUR code
+    tool -&gt; tool_result {&quot;symbol&quot;: &quot;NVDA&quot;, &quot;price_usd&quot;: 187.5, &quot;source&quot;: &quot;frozen demo table&quot;}
+    model (final answer): NVDA last traded at $187.50 (frozen demo price).
+  --- round-trip 2 ---
+    user: Add HOOD to my watchlist - note: earnings next week.
+    model -&gt; tool_call {&quot;id&quot;: &quot;call_2&quot;, &quot;name&quot;: &quot;add_watchlist_entry&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: &quot;HOOD&quot;, &quot;note&quot;: &quot;earnings next week&quot;}}
+    dispatcher: schema check PASSED for add_watchlist_entry - executing YOUR code
+    tool -&gt; tool_result {&quot;added&quot;: &quot;HOOD&quot;, &quot;note&quot;: &quot;earnings next week&quot;, &quot;watchlist&quot;: [&quot;HOOD&quot;], &quot;size&quot;: 1}
+    model (final answer): Added HOOD to your watchlist with the note &#x27;earnings next week&#x27;. It now has 1 entry.
+  --- round-trip 3 ---
+    user: Convert 250 EUR to USD.
+    model -&gt; tool_call {&quot;id&quot;: &quot;call_3&quot;, &quot;name&quot;: &quot;convert_currency&quot;, &quot;arguments&quot;: {&quot;amount&quot;: 250, &quot;from_currency&quot;: &quot;EUR&quot;, &quot;to_currency&quot;: &quot;USD&quot;}}
+    dispatcher: schema check PASSED for convert_currency - executing YOUR code
+    tool -&gt; tool_result {&quot;amount&quot;: 250, &quot;from&quot;: &quot;EUR&quot;, &quot;to&quot;: &quot;USD&quot;, &quot;converted&quot;: 270.0, &quot;source&quot;: &quot;fixed demo rates&quot;}
+    model (final answer): 250 EUR = 270.00 USD (fixed demo rates).
+  Part 3 - one malformed call: the model improvises
+    user: What&#x27;s the price of ticker 142 on the NASDAQ?
+    model -&gt; tool_call {&quot;id&quot;: &quot;call_4&quot;, &quot;name&quot;: &quot;get_quote&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: 142, &quot;venue&quot;: &quot;NASDAQ&quot;}}
+    dispatcher: schema check FAILED for get_quote - tool NOT executed
+    tool -&gt; tool_result (what the model gets back): ERROR: argument &#x27;symbol&#x27; must be type string, got integer (142); unexpected argument &#x27;venue&#x27; (schema allows: symbol) - tool was NOT executed
+    the precise error goes back as a message, so the model can fix its form -
+    whether it gets that chance, and what happens next, is tomorrow&#x27;s lesson
+  verdict: the model fills in forms; your code validates, executes, and answers for what ran
+&quot;&quot;&quot;
+import json
+
+# ---------- Part 1: the contract - tools offered as schemas ----------
+TICKERS = [&quot;NVDA&quot;, &quot;META&quot;, &quot;SPY&quot;, &quot;HOOD&quot;, &quot;BTC&quot;]
+CURRENCIES = [&quot;USD&quot;, &quot;EUR&quot;, &quot;GBP&quot;, &quot;JPY&quot;]
+
+TOOLS = [
+    {
+        &quot;name&quot;: &quot;get_quote&quot;,
+        &quot;description&quot;: &quot;Last traded price for one ticker symbol.&quot;,
+        &quot;parameters&quot;: {
+            &quot;type&quot;: &quot;object&quot;,
+            &quot;properties&quot;: {
+                &quot;symbol&quot;: {&quot;type&quot;: &quot;string&quot;, &quot;enum&quot;: TICKERS},
+            },
+            &quot;required&quot;: [&quot;symbol&quot;],
+            &quot;additionalProperties&quot;: False,
+        },
+    },
+    {
+        &quot;name&quot;: &quot;add_watchlist_entry&quot;,
+        &quot;description&quot;: &quot;Add one ticker to the user&#x27;s watchlist, &quot;
+                       &quot;with an optional free-text note.&quot;,
+        &quot;parameters&quot;: {
+            &quot;type&quot;: &quot;object&quot;,
+            &quot;properties&quot;: {
+                &quot;symbol&quot;: {&quot;type&quot;: &quot;string&quot;, &quot;enum&quot;: TICKERS},
+                &quot;note&quot;: {&quot;type&quot;: &quot;string&quot;},
+            },
+            &quot;required&quot;: [&quot;symbol&quot;],
+            &quot;additionalProperties&quot;: False,
+        },
+    },
+    {
+        &quot;name&quot;: &quot;convert_currency&quot;,
+        &quot;description&quot;: &quot;Convert an amount between currencies &quot;
+                       &quot;at fixed demo rates.&quot;,
+        &quot;parameters&quot;: {
+            &quot;type&quot;: &quot;object&quot;,
+            &quot;properties&quot;: {
+                &quot;amount&quot;: {&quot;type&quot;: &quot;number&quot;},
+                &quot;from_currency&quot;: {&quot;type&quot;: &quot;string&quot;, &quot;enum&quot;: CURRENCIES},
+                &quot;to_currency&quot;: {&quot;type&quot;: &quot;string&quot;, &quot;enum&quot;: CURRENCIES},
+            },
+            &quot;required&quot;: [&quot;amount&quot;, &quot;from_currency&quot;, &quot;to_currency&quot;],
+            &quot;additionalProperties&quot;: False,
+        },
+    },
+]
+SCHEMAS = {t[&quot;name&quot;]: t for t in TOOLS}
+
+# ---------- the real tools: plain functions, your code ----------
+PRICE_TABLE = {   # frozen demo prices - NOT live quotes
+    &quot;NVDA&quot;: 187.50, &quot;META&quot;: 585.20, &quot;SPY&quot;: 662.10,
+    &quot;HOOD&quot;: 92.40, &quot;BTC&quot;: 97400.00,
+}
+WATCHLIST = []    # in-memory only; gone when the script exits
+RATES_TO_USD = {&quot;USD&quot;: 1.0, &quot;EUR&quot;: 1.08, &quot;GBP&quot;: 1.27, &quot;JPY&quot;: 0.0066}
+
+
+def get_quote(symbol):
+    return {&quot;symbol&quot;: symbol, &quot;price_usd&quot;: PRICE_TABLE[symbol],
+            &quot;source&quot;: &quot;frozen demo table&quot;}
+
+
+def add_watchlist_entry(symbol, note=&quot;&quot;):
+    WATCHLIST.append(symbol)
+    return {&quot;added&quot;: symbol, &quot;note&quot;: note,
+            &quot;watchlist&quot;: list(WATCHLIST), &quot;size&quot;: len(WATCHLIST)}
+
+
+def convert_currency(amount, from_currency, to_currency):
+    usd = amount * RATES_TO_USD[from_currency]
+    return {&quot;amount&quot;: amount, &quot;from&quot;: from_currency, &quot;to&quot;: to_currency,
+            &quot;converted&quot;: round(usd / RATES_TO_USD[to_currency], 2),
+            &quot;source&quot;: &quot;fixed demo rates&quot;}
+
+
+IMPLEMENTATIONS = {
+    &quot;get_quote&quot;: get_quote,
+    &quot;add_watchlist_entry&quot;: add_watchlist_entry,
+    &quot;convert_currency&quot;: convert_currency,
+}
+
+# ---------- the dispatcher: validate first, execute second ----------
+TYPE_CHECKS = {
+    &quot;string&quot;: lambda v: isinstance(v, str),
+    &quot;number&quot;: lambda v: isinstance(v, (int, float))
+    and not isinstance(v, bool),
+    &quot;integer&quot;: lambda v: isinstance(v, int)
+    and not isinstance(v, bool),
+    &quot;boolean&quot;: lambda v: isinstance(v, bool),
+}
+
+
+def json_type(value):
+    if isinstance(value, bool):
+        return &quot;boolean&quot;
+    if isinstance(value, int):
+        return &quot;integer&quot;
+    if isinstance(value, float):
+        return &quot;number&quot;
+    if isinstance(value, str):
+        return &quot;string&quot;
+    if isinstance(value, list):
+        return &quot;array&quot;
+    if isinstance(value, dict):
+        return &quot;object&quot;
+    return &quot;null&quot;
+
+
+def validate(name, args):
+    &quot;&quot;&quot;Return a list of problems with this call ([] = valid).&quot;&quot;&quot;
+    props = SCHEMAS[name][&quot;parameters&quot;][&quot;properties&quot;]
+    required = SCHEMAS[name][&quot;parameters&quot;][&quot;required&quot;]
+    problems = []
+    for field in required:
+        if field not in args:
+            problems.append(f&quot;missing required argument &#x27;{field}&#x27;&quot;)
+    for field, spec in props.items():
+        if field not in args:
+            continue
+        value = args[field]
+        if not TYPE_CHECKS[spec[&quot;type&quot;]](value):
+            problems.append(
+                f&quot;argument &#x27;{field}&#x27; must be type {spec[&#x27;type&#x27;]}, &quot;
+                f&quot;got {json_type(value)} ({value!r})&quot;)
+        elif &quot;enum&quot; in spec and value not in spec[&quot;enum&quot;]:
+            problems.append(
+                f&quot;argument &#x27;{field}&#x27; must be one of {spec[&#x27;enum&#x27;]}, &quot;
+                f&quot;got {value!r}&quot;)
+    for extra in sorted(set(args) - set(props)):
+        problems.append(
+            f&quot;unexpected argument &#x27;{extra}&#x27; &quot;
+            f&quot;(schema allows: {&#x27;, &#x27;.join(props)})&quot;)
+    return problems
+
+
+def dispatch(call):
+    &quot;&quot;&quot;The boundary. Nothing reaches a tool unvalidated.&quot;&quot;&quot;
+    name, args = call[&quot;name&quot;], call[&quot;arguments&quot;]
+    if name not in SCHEMAS:
+        return {&quot;status&quot;: &quot;error&quot;,
+                &quot;content&quot;: f&quot;ERROR: unknown tool &#x27;{name}&#x27;&quot;}
+    problems = validate(name, args)
+    if problems:
+        return {&quot;status&quot;: &quot;rejected&quot;,
+                &quot;content&quot;: &quot;ERROR: &quot; + &quot;; &quot;.join(problems)
+                + &quot; - tool was NOT executed&quot;}
+    return {&quot;status&quot;: &quot;ok&quot;, &quot;content&quot;: IMPLEMENTATIONS[name](**args)}
+
+
+# ---------- the &quot;model&quot;: scripted tool_call dicts ----------
+SCRIPT = {
+    &quot;What&#x27;s NVDA trading at?&quot;:
+        {&quot;name&quot;: &quot;get_quote&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: &quot;NVDA&quot;}},
+    &quot;Add HOOD to my watchlist - note: earnings next week.&quot;:
+        {&quot;name&quot;: &quot;add_watchlist_entry&quot;,
+         &quot;arguments&quot;: {&quot;symbol&quot;: &quot;HOOD&quot;, &quot;note&quot;: &quot;earnings next week&quot;}},
+    &quot;Convert 250 EUR to USD.&quot;:
+        {&quot;name&quot;: &quot;convert_currency&quot;,
+         &quot;arguments&quot;: {&quot;amount&quot;: 250, &quot;from_currency&quot;: &quot;EUR&quot;,
+                       &quot;to_currency&quot;: &quot;USD&quot;}},
+    # The model improvises: a numeric &quot;ticker&quot; and a field
+    # that does not exist in the schema.
+    &quot;What&#x27;s the price of ticker 142 on the NASDAQ?&quot;:
+        {&quot;name&quot;: &quot;get_quote&quot;,
+         &quot;arguments&quot;: {&quot;symbol&quot;: 142, &quot;venue&quot;: &quot;NASDAQ&quot;}},
+}
+
+
+def fake_model(user_text):
+    &quot;&quot;&quot;Stand-in for a real model: returns a tool_call dict.&quot;&quot;&quot;
+    return SCRIPT[user_text]
+
+
+def fake_model_reply(name, result):
+    &quot;&quot;&quot;Stand-in for the model&#x27;s final prose answer.&quot;&quot;&quot;
+    if name == &quot;get_quote&quot;:
+        return (f&quot;{result[&#x27;symbol&#x27;]} last traded at &quot;
+                f&quot;${result[&#x27;price_usd&#x27;]:,.2f} (frozen demo price).&quot;)
+    if name == &quot;add_watchlist_entry&quot;:
+        return (f&quot;Added {result[&#x27;added&#x27;]} to your watchlist with &quot;
+                f&quot;the note &#x27;{result[&#x27;note&#x27;]}&#x27;. &quot;
+                f&quot;It now has {result[&#x27;size&#x27;]} entry.&quot;)
+    return (f&quot;{result[&#x27;amount&#x27;]} {result[&#x27;from&#x27;]} = &quot;
+            f&quot;{result[&#x27;converted&#x27;]:,.2f} {result[&#x27;to&#x27;]} &quot;
+            f&quot;(fixed demo rates).&quot;)
+
+
+def show_schema(tool):
+    params = tool[&quot;parameters&quot;][&quot;properties&quot;]
+    bits = []
+    for field, spec in params.items():
+        req = field in tool[&quot;parameters&quot;][&quot;required&quot;]
+        bits.append(f&quot;{field}: {spec[&#x27;type&#x27;]}&quot;
+                    + (&quot; (required)&quot; if req else &quot; (optional)&quot;))
+    print(f&quot;  {tool[&#x27;name&#x27;]} - {tool[&#x27;description&#x27;]}&quot;)
+    print(f&quot;    parameters: {&#x27;; &#x27;.join(bits)}&quot;)
+
+
+# ---------- run the lesson ----------
+print(&quot;Part 1 - the contract: 3 tools offered to the model as schemas&quot;)
+print(&quot;  the full get_quote schema, exactly as the model sees it:&quot;)
+print(&quot;   &quot;, json.dumps(TOOLS[0], indent=2).replace(&quot;\n&quot;, &quot;\n    &quot;))
+print(&quot;  the other two, in shorthand:&quot;)
+for tool in TOOLS[1:]:
+    show_schema(tool)
+print(&quot;  the model sees ONLY this - never your code, never your data&quot;)
+
+print(&quot;Part 2 - three clean round-trips, transcript in full&quot;)
+requests = [
+    &quot;What&#x27;s NVDA trading at?&quot;,
+    &quot;Add HOOD to my watchlist - note: earnings next week.&quot;,
+    &quot;Convert 250 EUR to USD.&quot;,
+]
+for i, request in enumerate(requests, start=1):
+    call = fake_model(request)
+    call = {&quot;id&quot;: f&quot;call_{i}&quot;, **call}
+    print(f&quot;--- round-trip {i} ---&quot;)
+    print(f&quot;  user: {request}&quot;)
+    print(f&quot;  model -&gt; tool_call {json.dumps(call)}&quot;)
+    outcome = dispatch(call)
+    print(f&quot;  dispatcher: schema check PASSED for {call[&#x27;name&#x27;]} &quot;
+          f&quot;- executing YOUR code&quot;)
+    print(f&quot;  tool -&gt; tool_result {json.dumps(outcome[&#x27;content&#x27;])}&quot;)
+    print(f&quot;  model (final answer): &quot;
+          f&quot;{fake_model_reply(call[&#x27;name&#x27;], outcome[&#x27;content&#x27;])}&quot;)
+
+print(&quot;Part 3 - one malformed call: the model improvises&quot;)
+request = &quot;What&#x27;s the price of ticker 142 on the NASDAQ?&quot;
+call = {&quot;id&quot;: &quot;call_4&quot;, **fake_model(request)}
+print(f&quot;  user: {request}&quot;)
+print(f&quot;  model -&gt; tool_call {json.dumps(call)}&quot;)
+outcome = dispatch(call)
+print(f&quot;  dispatcher: schema check FAILED for {call[&#x27;name&#x27;]} &quot;
+      f&quot;- tool NOT executed&quot;)
+print(f&quot;  tool -&gt; tool_result (what the model gets back): &quot;
+      f&quot;{outcome[&#x27;content&#x27;]}&quot;)
+print(&quot;  the precise error goes back as a message, so the model &quot;
+      &quot;can fix its form -&quot;)
+print(&quot;  whether it gets that chance, and what happens next, &quot;
+      &quot;is tomorrow&#x27;s lesson&quot;)
+print(&quot;verdict: the model fills in forms; your code validates, &quot;
+      &quot;executes, and answers for what ran&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the contract: 3 tools offered to the model as schemas
+  the full get_quote schema, exactly as the model sees it:
+    {
+      &quot;name&quot;: &quot;get_quote&quot;,
+      &quot;description&quot;: &quot;Last traded price for one ticker symbol.&quot;,
+      &quot;parameters&quot;: {
+        &quot;type&quot;: &quot;object&quot;,
+        &quot;properties&quot;: {
+          &quot;symbol&quot;: {
+            &quot;type&quot;: &quot;string&quot;,
+            &quot;enum&quot;: [
+              &quot;NVDA&quot;,
+              &quot;META&quot;,
+              &quot;SPY&quot;,
+              &quot;HOOD&quot;,
+              &quot;BTC&quot;
+            ]
+          }
+        },
+        &quot;required&quot;: [
+          &quot;symbol&quot;
+        ],
+        &quot;additionalProperties&quot;: false
+      }
+    }
+  the other two, in shorthand:
+  add_watchlist_entry - Add one ticker to the user&#x27;s watchlist, with an optional free-text note.
+    parameters: symbol: string (required); note: string (optional)
+  convert_currency - Convert an amount between currencies at fixed demo rates.
+    parameters: amount: number (required); from_currency: string (required); to_currency: string (required)
+  the model sees ONLY this - never your code, never your data
+Part 2 - three clean round-trips, transcript in full
+--- round-trip 1 ---
+  user: What&#x27;s NVDA trading at?
+  model -&gt; tool_call {&quot;id&quot;: &quot;call_1&quot;, &quot;name&quot;: &quot;get_quote&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: &quot;NVDA&quot;}}
+  dispatcher: schema check PASSED for get_quote - executing YOUR code
+  tool -&gt; tool_result {&quot;symbol&quot;: &quot;NVDA&quot;, &quot;price_usd&quot;: 187.5, &quot;source&quot;: &quot;frozen demo table&quot;}
+  model (final answer): NVDA last traded at $187.50 (frozen demo price).
+--- round-trip 2 ---
+  user: Add HOOD to my watchlist - note: earnings next week.
+  model -&gt; tool_call {&quot;id&quot;: &quot;call_2&quot;, &quot;name&quot;: &quot;add_watchlist_entry&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: &quot;HOOD&quot;, &quot;note&quot;: &quot;earnings next week&quot;}}
+  dispatcher: schema check PASSED for add_watchlist_entry - executing YOUR code
+  tool -&gt; tool_result {&quot;added&quot;: &quot;HOOD&quot;, &quot;note&quot;: &quot;earnings next week&quot;, &quot;watchlist&quot;: [&quot;HOOD&quot;], &quot;size&quot;: 1}
+  model (final answer): Added HOOD to your watchlist with the note &#x27;earnings next week&#x27;. It now has 1 entry.
+--- round-trip 3 ---
+  user: Convert 250 EUR to USD.
+  model -&gt; tool_call {&quot;id&quot;: &quot;call_3&quot;, &quot;name&quot;: &quot;convert_currency&quot;, &quot;arguments&quot;: {&quot;amount&quot;: 250, &quot;from_currency&quot;: &quot;EUR&quot;, &quot;to_currency&quot;: &quot;USD&quot;}}
+  dispatcher: schema check PASSED for convert_currency - executing YOUR code
+  tool -&gt; tool_result {&quot;amount&quot;: 250, &quot;from&quot;: &quot;EUR&quot;, &quot;to&quot;: &quot;USD&quot;, &quot;converted&quot;: 270.0, &quot;source&quot;: &quot;fixed demo rates&quot;}
+  model (final answer): 250 EUR = 270.00 USD (fixed demo rates).
+Part 3 - one malformed call: the model improvises
+  user: What&#x27;s the price of ticker 142 on the NASDAQ?
+  model -&gt; tool_call {&quot;id&quot;: &quot;call_4&quot;, &quot;name&quot;: &quot;get_quote&quot;, &quot;arguments&quot;: {&quot;symbol&quot;: 142, &quot;venue&quot;: &quot;NASDAQ&quot;}}
+  dispatcher: schema check FAILED for get_quote - tool NOT executed
+  tool -&gt; tool_result (what the model gets back): ERROR: argument &#x27;symbol&#x27; must be type string, got integer (142); unexpected argument &#x27;venue&#x27; (schema allows: symbol) - tool was NOT executed
+  the precise error goes back as a message, so the model can fix its form -
+  whether it gets that chance, and what happens next, is tomorrow&#x27;s lesson
+verdict: the model fills in forms; your code validates, executes, and answers for what ran</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your transcript shows three <code>PASSED</code> round-trips with the right results &mdash; NVDA at $187.50, the watchlist at size 1 with its note, 250 EUR converted to 270.00 USD &mdash; and the fourth call <strong>rejected before execution</strong>, the error naming both problems: <code>symbol</code> must be type string, got integer (142), and unexpected argument <code>venue</code>. The keeper test, no notes allowed: someone asks &ldquo;who executes the tool?&rdquo; and you answer instantly &mdash; <em>my code does; the model only ever emits a form.</em></p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram&rsquo;s serpentine path until you can trace it with a finger, then run the code and read only Part 3&rsquo;s rejection closely. If you can explain why the validation lives on your side of the boundary &mdash; and why a call can validate perfectly and still be the wrong action &mdash; you have the day.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: one round-trip stops being the whole story &mdash; the model acts, reads the result, and decides what to do next, again and again until the job is done.</p>
+  </div>
+
+  <div class="footer">Day 60 of 100 &middot; Streak: 60 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
