@@ -1,0 +1,46 @@
+<svg viewBox="0 0 680 604" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="604" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Triple-barrier labeling: which barrier does the path touch FIRST?</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">every sample gets a bracket: take-profit +2%, stop -1%, and a 10-bar clock - the label is the first touch</text>
+<rect x="12" y="56" width="656" height="222" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="24" y="76" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE WINNER: take-profit touched first</text>
+<line x1="64" y1="118.0" x2="640" y2="118.0" stroke="#22a355" stroke-width="1.4" stroke-dasharray="6 4"/>
+<line x1="64" y1="198.0" x2="640" y2="198.0" stroke="#999999" stroke-width="1.0"/>
+<line x1="64" y1="238.0" x2="640" y2="238.0" stroke="#d63a2f" stroke-width="1.4" stroke-dasharray="6 4"/>
+<line x1="640.0" y1="84" x2="640.0" y2="262" stroke="#7a5cff" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="60" y="112.0" text-anchor="end" font-size="9" fill="#177245">+2% take</text>
+<text x="60" y="201.0" text-anchor="end" font-size="9" fill="#666666">entry</text>
+<text x="60" y="252.0" text-anchor="end" font-size="9" fill="#d63a2f">-1% stop</text>
+<text x="636.0" y="96" text-anchor="end" font-size="9" fill="#5a3fd4">time barrier (bar 10)</text>
+<polyline points="64.0,198.0 121.6,182.0 179.2,162.0 236.8,170.0 294.4,146.0 352.0,126.0 409.6,106.0" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="409.6" cy="106.0" r="5" fill="#22a355"/>
+<text x="421.6" y="98.0" font-size="10" fill="#177245" font-weight="bold">first touch: +2.3% at bar 6</text>
+<text x="421.6" y="116.0" font-size="10" fill="#177245" font-weight="bold">label +1 (take-profit)</text>
+<rect x="12" y="300" width="310" height="204" rx="10" fill="#ffffff" stroke="#d63a2f" stroke-width="1.2"/>
+<text x="24" y="320" font-size="10" fill="#1c1c1e" font-weight="bold">B - THE LOSER: stop touched first</text>
+<line x1="24" y1="363.4" x2="310" y2="363.4" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="24" y1="427.9" x2="310" y2="427.9" stroke="#999999" stroke-width="1.0"/>
+<line x1="24" y1="460.2" x2="310" y2="460.2" stroke="#d63a2f" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="310.0" y1="330" x2="310.0" y2="486" stroke="#7a5cff" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="28" y="359.4" font-size="8.5" fill="#177245">+2%</text>
+<text x="28" y="472.2" font-size="8.5" fill="#d63a2f">-1%</text>
+<polyline points="24.0,427.9 52.6,437.6 81.2,447.3 109.8,440.8 138.4,457.0 167.0,473.1" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<circle cx="167.0" cy="473.1" r="4.5" fill="#d63a2f"/>
+<text x="175.0" y="459.1" font-size="9.5" fill="#d63a2f" font-weight="bold" text-anchor="start">first touch: -1.4% at bar 5</text>
+<text x="175.0" y="475.1" font-size="9.5" fill="#d63a2f" font-weight="bold" text-anchor="start">label -1 (stop-loss)</text>
+<rect x="368" y="300" width="310" height="204" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="380" y="320" font-size="10" fill="#1c1c1e" font-weight="bold">C - THE WANDERER: no barrier touched</text>
+<line x1="380" y1="363.4" x2="666" y2="363.4" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="380" y1="427.9" x2="666" y2="427.9" stroke="#999999" stroke-width="1.0"/>
+<line x1="380" y1="460.2" x2="666" y2="460.2" stroke="#d63a2f" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="666.0" y1="330" x2="666.0" y2="486" stroke="#7a5cff" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="384" y="359.4" font-size="8.5" fill="#177245">+2%</text>
+<text x="384" y="472.2" font-size="8.5" fill="#d63a2f">-1%</text>
+<polyline points="380.0,427.9 408.6,411.8 437.2,444.0 465.8,402.1 494.4,434.4 523.0,418.2 551.6,447.3 580.2,415.0 608.8,424.7 637.4,437.6 666.0,408.5" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<circle cx="666.0" cy="408.5" r="4.5" fill="#5a3fd4"/>
+<text x="658.0" y="394.5" font-size="9.5" fill="#5a3fd4" font-weight="bold" text-anchor="end">clock runs out at bar 10: +0.6%</text>
+<text x="658.0" y="410.5" font-size="9.5" fill="#5a3fd4" font-weight="bold" text-anchor="end">label 0 (time barrier)</text>
+<rect x="12" y="520" width="656" height="68" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="546" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Path C is the one fixed-horizon labeling gets wrong: it ends up +0.6%, so the naive label says "win" -</text>
+<text x="340" y="564" text-anchor="middle" font-size="10" fill="#1c1c1e">but the trade never reached target and was closed by the clock. On real entries the two labelings disagree 42.6% of the time.</text>
+</svg>

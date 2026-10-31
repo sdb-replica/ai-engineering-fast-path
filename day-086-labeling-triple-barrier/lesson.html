@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labeling: The Triple-Barrier Method — Day 86 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 86 of 100</span>
+  <h1>Labeling: The Triple-Barrier Method</h1>
+  <p class="outcome">Tonight you'll be able to: label any price path the way your trades actually exit &mdash; by whichever barrier is touched <em>first</em>: take-profit, stop-loss, or the clock &mdash; and measure how often that disagrees with the naive &ldquo;up in 10 bars?&rdquo; label (tonight: 42.6% of entries).</p>
+
+  <h2>The one idea</h2>
+  <p>Labels are the answer key: every model you train is, mechanically, a machine for reproducing them. Days 83&ndash;85 were about how hostile this domain is, how backtests lie, and how to build features. None of it survives a bad target variable &mdash; and the standard one is bad. The <strong>fixed-horizon label</strong> asks: <em>is the price higher exactly h bars from now?</em> It has three defects. It is <strong>path-blind</strong>: a trade stopped out at bar 2 that recovers by bar 10 is labeled a win &mdash; a win you never collected. It is <strong>exit-blind</strong>: it never asks how you would actually get out. And it is <strong>magnitude-blind</strong>: +0.1% and +8% get the same label, so the model cannot tell a real move from a coin flip that drifted up.</p>
+<p><strong>The triple-barrier method</strong> (L&oacute;pez de Prado, <em>Advances in Financial Machine Learning</em>) replaces the question. For every sample, draw three barriers from the entry price: an <strong>upper barrier</strong> at +pt% (profit-taking &mdash; tonight +2%), a <strong>lower barrier</strong> at &minus;sl% (stop-loss &mdash; tonight &minus;1%), and a <strong>vertical barrier</strong> at entry + max_hold bars (the time limit &mdash; tonight 10 bars). Walk the path forward and take the <em>first touch</em>: upper first &rarr; label <strong>+1</strong>, lower first &rarr; <strong>&minus;1</strong>, neither before the clock &rarr; <strong>0</strong>.</p>
+<p>Three things follow. <strong>Labels match the trade:</strong> the model learns &ldquo;will this setup reach target before stop, in time?&rdquo; &mdash; the decision actually on the table &mdash; instead of &ldquo;where will price be sitting on an arbitrary future Tuesday?&rdquo; <strong>Labels are path-dependent, and that is the point:</strong> two paths with identical endpoints get different labels whenever one of them stopped you out on the way. <strong>Asymmetry is explicit:</strong> +2%/&minus;1% encodes a 2:1 reward-to-risk bracket, and the class balance moves when the bracket moves &mdash; Part 3 flips it to +1%/&minus;2% and 92 of 204 entries change label on identical prices. The barriers are part of the dataset&rsquo;s meaning, not an afterthought.</p>
+<p>Read tonight&rsquo;s numbers with that lens. The mean realized return per label lands just past its barrier (+2.31% for the +1 class, &minus;1.31% for &minus;1) because a daily close overshoots the touch &mdash; the labels are tracking the bracket&rsquo;s actual P&amp;L. The &minus;1 class is the biggest (48.5%) mostly because the stop sits closer than the target: barrier <em>distance</em> is a prior on class balance. And the headline: fixed-horizon labels <strong>disagree with triple-barrier labels on 42.6% of entries</strong>. Train on the naive answer key and nearly half of it describes a different trade than the one you would have taken. One refinement of L&oacute;pez de Prado&rsquo;s worth filing: in production he scales pt and sl by recent volatility, so the bracket breathes with the regime instead of sitting at fixed percentages &mdash; same method, vol-sized barriers.</p>
+<p><strong>Meta-labeling, one paragraph to close.</strong> Split the job in two: a <em>primary</em> model (any signal you like) predicts the side &mdash; long or short. A second, <em>meta</em> model is then trained on triple-barrier outcomes of the primary&rsquo;s calls to predict whether <em>this</em> call will succeed. Its probability is a quality filter (take the trade only when the meta-model agrees) and a sizing input (bet more when it is confident) &mdash; which is why a mediocre directional model can become a selective, profitable one without ever getting better at direction. Notice what makes it possible: the meta-model needs honest win/lose outcomes per call, and that is exactly what first-touch labels are. Sizing gets its own day (Day 90); tonight, file the name and the dependency.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already label trades this way &mdash; every time you place a <strong>bracket order</strong>. A long entry with a take-profit limit at +2%, a stop at &minus;1%, and an expiry at Friday&rsquo;s bell is a one-cancels-other bundle of exactly these three barriers, and the fill report tells you which leg executed. Nobody describes that trade by where price happened to sit ten days later if the bracket closed it on day three. Triple-barrier labeling is just backfilling that fill report for every historical entry: <em>which leg of my bracket would have filled first?</em> The systems echo, in one line: it is the same three-way outcome as a request under a deadline &mdash; success, error, or timeout &mdash; and you would never train an SLO model on &ldquo;was the server up ten minutes later.&rdquo;</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 604" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="604" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Triple-barrier labeling: which barrier does the path touch FIRST?</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">every sample gets a bracket: take-profit +2%, stop -1%, and a 10-bar clock - the label is the first touch</text>
+<rect x="12" y="56" width="656" height="222" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="24" y="76" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE WINNER: take-profit touched first</text>
+<line x1="64" y1="118.0" x2="640" y2="118.0" stroke="#22a355" stroke-width="1.4" stroke-dasharray="6 4"/>
+<line x1="64" y1="198.0" x2="640" y2="198.0" stroke="#999999" stroke-width="1.0"/>
+<line x1="64" y1="238.0" x2="640" y2="238.0" stroke="#d63a2f" stroke-width="1.4" stroke-dasharray="6 4"/>
+<line x1="640.0" y1="84" x2="640.0" y2="262" stroke="#7a5cff" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="60" y="112.0" text-anchor="end" font-size="9" fill="#177245">+2% take</text>
+<text x="60" y="201.0" text-anchor="end" font-size="9" fill="#666666">entry</text>
+<text x="60" y="252.0" text-anchor="end" font-size="9" fill="#d63a2f">-1% stop</text>
+<text x="636.0" y="96" text-anchor="end" font-size="9" fill="#5a3fd4">time barrier (bar 10)</text>
+<polyline points="64.0,198.0 121.6,182.0 179.2,162.0 236.8,170.0 294.4,146.0 352.0,126.0 409.6,106.0" fill="none" stroke="#0a7aff" stroke-width="2.2"/>
+<circle cx="409.6" cy="106.0" r="5" fill="#22a355"/>
+<text x="421.6" y="98.0" font-size="10" fill="#177245" font-weight="bold">first touch: +2.3% at bar 6</text>
+<text x="421.6" y="116.0" font-size="10" fill="#177245" font-weight="bold">label +1 (take-profit)</text>
+<rect x="12" y="300" width="310" height="204" rx="10" fill="#ffffff" stroke="#d63a2f" stroke-width="1.2"/>
+<text x="24" y="320" font-size="10" fill="#1c1c1e" font-weight="bold">B - THE LOSER: stop touched first</text>
+<line x1="24" y1="363.4" x2="310" y2="363.4" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="24" y1="427.9" x2="310" y2="427.9" stroke="#999999" stroke-width="1.0"/>
+<line x1="24" y1="460.2" x2="310" y2="460.2" stroke="#d63a2f" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="310.0" y1="330" x2="310.0" y2="486" stroke="#7a5cff" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="28" y="359.4" font-size="8.5" fill="#177245">+2%</text>
+<text x="28" y="472.2" font-size="8.5" fill="#d63a2f">-1%</text>
+<polyline points="24.0,427.9 52.6,437.6 81.2,447.3 109.8,440.8 138.4,457.0 167.0,473.1" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<circle cx="167.0" cy="473.1" r="4.5" fill="#d63a2f"/>
+<text x="175.0" y="459.1" font-size="9.5" fill="#d63a2f" font-weight="bold" text-anchor="start">first touch: -1.4% at bar 5</text>
+<text x="175.0" y="475.1" font-size="9.5" fill="#d63a2f" font-weight="bold" text-anchor="start">label -1 (stop-loss)</text>
+<rect x="368" y="300" width="310" height="204" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="380" y="320" font-size="10" fill="#1c1c1e" font-weight="bold">C - THE WANDERER: no barrier touched</text>
+<line x1="380" y1="363.4" x2="666" y2="363.4" stroke="#22a355" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="380" y1="427.9" x2="666" y2="427.9" stroke="#999999" stroke-width="1.0"/>
+<line x1="380" y1="460.2" x2="666" y2="460.2" stroke="#d63a2f" stroke-width="1.2" stroke-dasharray="5 4"/>
+<line x1="666.0" y1="330" x2="666.0" y2="486" stroke="#7a5cff" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="384" y="359.4" font-size="8.5" fill="#177245">+2%</text>
+<text x="384" y="472.2" font-size="8.5" fill="#d63a2f">-1%</text>
+<polyline points="380.0,427.9 408.6,411.8 437.2,444.0 465.8,402.1 494.4,434.4 523.0,418.2 551.6,447.3 580.2,415.0 608.8,424.7 637.4,437.6 666.0,408.5" fill="none" stroke="#0a7aff" stroke-width="2"/>
+<circle cx="666.0" cy="408.5" r="4.5" fill="#5a3fd4"/>
+<text x="658.0" y="394.5" font-size="9.5" fill="#5a3fd4" font-weight="bold" text-anchor="end">clock runs out at bar 10: +0.6%</text>
+<text x="658.0" y="410.5" font-size="9.5" fill="#5a3fd4" font-weight="bold" text-anchor="end">label 0 (time barrier)</text>
+<rect x="12" y="520" width="656" height="68" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="546" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Path C is the one fixed-horizon labeling gets wrong: it ends up +0.6%, so the naive label says "win" -</text>
+<text x="340" y="564" text-anchor="middle" font-size="10" fill="#1c1c1e">but the trade never reached target and was closed by the clock. On real entries the two labelings disagree 42.6% of the time.</text>
+</svg>
+    <div class="caption">Three entries, one bracket (+2% / &minus;1% / 10 bars). A&rsquo;s rally touches the take-profit first; B&rsquo;s slide touches the stop first; C touches nothing and is closed by the clock at +0.6% &mdash; the sample fixed-horizon labeling mislabels as a win. First touch is the label: the path, not the endpoint, decides.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, numpy only &mdash; it runs in your <code>~/ai-lab</code> venv on the MacBook, no downloads, no APIs: the long series is synthesized so you can see its construction. <strong>Part 1</strong> runs <code>triple_barrier()</code> on three hand-designed paths &mdash; one per outcome &mdash; and asserts each label, so the function is proven on cases you can verify by eye against the diagram. <strong>Part 2</strong> labels 204 entries on a 620-bar series (uptrend, downtrend, chop; seeded <code>default_rng(86)</code>, so your run reproduces it bar for bar) and prints the class balance, the mean realized return per label, and the disagreement rate against fixed-horizon labels. <strong>Part 3</strong> re-labels the same entries with the bracket flipped &mdash; same prices, same features, different dataset.</p>
+  <pre><code>&quot;&quot;&quot;Day 86 - Labeling: The Triple-Barrier Method.
+
+Phase G, finance ML capstone. Days 83-85 gave you the
+features; tonight the LABELS - the answer key the model
+trains against. The label IS the question you are asking,
+and the naive question is the wrong one:
+
+    Fixed-horizon label:  &quot;is the price higher exactly
+    10 bars from now?&quot;  It ignores the PATH (the trade
+    could have hit your stop at bar 2 and recovered),
+    ignores your exits, and calls +0.1% and +5% the
+    same thing: &quot;up&quot;.
+
+López de Prado&#x27;s fix (Advances in Financial Machine
+Learning): give every sample THREE barriers, exactly
+like the bracket order you already trade with -
+
+    upper barrier:  profit-take at +pt%   (tonight +2%)
+    lower barrier:  stop-loss  at -sl%    (tonight -1%)
+    vertical barrier: a time limit        (tonight 10 bars)
+
+The label is whichever barrier the path touches FIRST:
++1 take-profit, -1 stop, 0 time-out. Path-dependent,
+asymmetric if you want it, and honest about the trades
+that resolve neither way.
+
+  Part 1  Three hand-designed paths - one per outcome -
+          labeled by triple_barrier(), with asserts.
+          The wanderer is the lesson: fixed-horizon
+          calls it a WIN (+0.60% at bar 10) but the
+          trade never reached target and timed out.
+  Part 2  A 620-bar synthetic series (uptrend, then
+          downtrend, then chop; seeded Generator, no
+          downloads) labeled at 204 entries: the class
+          balance, the mean realized return per label,
+          and the teaching number - how often the
+          fixed-horizon label DISAGREES.
+  Part 3  Barriers are a choice: flip the asymmetry
+          (+1% / -2%) and the same entries relabel -
+          the dataset encodes your exit policy.
+
+Runs on the ~/ai-lab venv: numpy only (free), no
+downloads, no paid APIs. All three Part 1 paths are
+hand-set offsets, every digit exact; Part 2&#x27;s series
+comes from np.random.default_rng(86), stated seed,
+so the run reproduces bar for bar.
+
+Expected output:
+
+  Part 1 - three designed paths, barriers +2.0% / -1.0%, time 10 bars
+    A (climbs) : first touch +2.30% at bar 6  -&gt; label +1  (fixed-horizon: +1)
+    B (slides) : first touch -1.40% at bar 5  -&gt; label -1  (fixed-horizon: -1)
+    C (wanders): no barrier in 10 bars, ends +0.60%  -&gt; label +0  (fixed-horizon: +1)
+    asserts passed: the 3 paths give the 3 distinct labels; fixed-horizon disagrees on 1 of 3
+  Part 2 - 620-bar synthetic series (uptrend / downtrend / chop, seed 86)
+    204 entries (every 3rd bar), same barriers
+    class balance:  +1: 33 (16.2%)   -1: 99 (48.5%)   +0: 72 (35.3%)
+    mean realized return by label:  +1: +2.31%   -1: -1.31%   +0: +0.55%
+    fixed-horizon vs triple-barrier: disagree on 87 of 204 (42.6%)
+  Part 3 - same entries, flipped bracket (+1.0% / -2.0%): labels are policy
+    class balance:  +1: 85 (41.7%)   -1: 50 (24.5%)   +0: 69 (33.8%)
+    92 of 204 entries changed label - same prices, same features, different question
+    verdict: the label is the exit policy written as data - choose the barriers
+             your bracket would actually trade, or the model learns someone else&#x27;s trade
+&quot;&quot;&quot;
+import numpy as np
+
+P0 = 100.0
+PT, SL, MAX_HOLD = 0.02, 0.01, 10   # +2% take, -1% stop, 10-bar clock
+
+
+def triple_barrier(prices, entry, pt=PT, sl=SL, max_hold=MAX_HOLD):
+    &quot;&quot;&quot;Label one sample: which barrier does the path touch FIRST?
+
+    Returns (label, exit_index): +1 profit-take, -1 stop-loss,
+    0 time barrier. Returns are measured from the entry price.
+    &quot;&quot;&quot;
+    last = min(entry + max_hold, len(prices) - 1)
+    for j in range(entry + 1, last + 1):
+        r = prices[j] / prices[entry] - 1.0
+        if r &gt;= pt:
+            return 1, j
+        if r &lt;= -sl:
+            return -1, j
+    return 0, last
+
+
+def fixed_horizon(prices, entry, horizon=MAX_HOLD):
+    &quot;&quot;&quot;The old way: sign of the return exactly `horizon` bars later.&quot;&quot;&quot;
+    last = min(entry + horizon, len(prices) - 1)
+    r = prices[last] / prices[entry] - 1.0
+    return int(r &gt; 0) - int(r &lt; 0)
+
+
+def path_from_offsets(offsets_pct):
+    &quot;&quot;&quot;A price path from hand-set % offsets off the entry price.&quot;&quot;&quot;
+    return P0 * (1.0 + np.asarray(offsets_pct, dtype=float) / 100.0)
+
+
+# ---------- Part 1: three designed paths, one per outcome ----------
+print(&quot;Part 1 - three designed paths, barriers +2.0% / -1.0%, &quot;
+      &quot;time 10 bars&quot;)
+DESIGNED = (
+    (&quot;A (climbs) &quot;, [0, 0.4, 0.9, 0.7, 1.3, 1.8, 2.3], 1),
+    (&quot;B (slides) &quot;, [0, -0.3, -0.6, -0.4, -0.9, -1.4], -1),
+    (&quot;C (wanders)&quot;, [0, 0.5, -0.5, 0.8, -0.2, 0.3, -0.6, 0.4,
+                      0.1, -0.3, 0.6], 0),
+)
+n_disagree = 0
+for name, offsets, want in DESIGNED:
+    path = path_from_offsets(offsets)
+    lab, ex = triple_barrier(path, 0)
+    assert lab == want, (name, lab, want)
+    fh = fixed_horizon(path, 0)
+    n_disagree += int(fh != lab)
+    ret = path[ex] / path[0] - 1.0
+    if lab == 0:
+        what = f&quot;no barrier in {ex} bars, ends {ret:+.2%}&quot;
+    else:
+        what = f&quot;first touch {ret:+.2%} at bar {ex}&quot;
+    print(f&quot;  {name}: {what}  -&gt; label {lab:+d}  &quot;
+          f&quot;(fixed-horizon: {fh:+d})&quot;)
+print(f&quot;  asserts passed: the 3 paths give the 3 distinct labels; &quot;
+      f&quot;fixed-horizon disagrees on {n_disagree} of 3&quot;)
+
+# ---------- Part 2: label a whole series, count the balance ----------
+print(&quot;Part 2 - 620-bar synthetic series (uptrend / downtrend / &quot;
+      &quot;chop, seed 86)&quot;)
+rng = np.random.default_rng(86)
+rets = np.concatenate([
+    rng.normal(0.0012, 0.006, 207),    # trending up
+    rng.normal(-0.0012, 0.006, 207),   # trending down
+    rng.normal(0.0000, 0.004, 206),    # chop
+])
+prices = P0 * np.cumprod(1.0 + rets)
+entries = range(0, len(prices) - MAX_HOLD, 3)
+tb_labels, tb_rets, fh_labels = [], [], []
+for e in entries:
+    lab, ex = triple_barrier(prices, e)
+    tb_labels.append(lab)
+    tb_rets.append(prices[ex] / prices[e] - 1.0)
+    fh_labels.append(fixed_horizon(prices, e))
+tb_labels = np.array(tb_labels)
+tb_rets = np.array(tb_rets)
+fh_labels = np.array(fh_labels)
+n = len(tb_labels)
+bal = &quot;   &quot;.join(
+    f&quot;{s:+d}: {(tb_labels == s).sum()} ({(tb_labels == s).mean():.1%})&quot;
+    for s in (1, -1, 0))
+print(f&quot;  {n} entries (every 3rd bar), same barriers&quot;)
+print(f&quot;  class balance:  {bal}&quot;)
+means = &quot;   &quot;.join(
+    f&quot;{s:+d}: {tb_rets[tb_labels == s].mean():+.2%}&quot;
+    for s in (1, -1, 0))
+print(f&quot;  mean realized return by label:  {means}&quot;)
+dis = int((tb_labels != fh_labels).sum())
+print(f&quot;  fixed-horizon vs triple-barrier: disagree on {dis} of {n} &quot;
+      f&quot;({dis / n:.1%})&quot;)
+
+# ---------- Part 3: flip the asymmetry, the dataset changes ----------
+print(&quot;Part 3 - same entries, flipped bracket (+1.0% / -2.0%): &quot;
+      &quot;labels are policy&quot;)
+flip = np.array([triple_barrier(prices, e, pt=0.01, sl=0.02)[0]
+                 for e in entries])
+bal2 = &quot;   &quot;.join(
+    f&quot;{s:+d}: {(flip == s).sum()} ({(flip == s).mean():.1%})&quot;
+    for s in (1, -1, 0))
+print(f&quot;  class balance:  {bal2}&quot;)
+changed = int((flip != tb_labels).sum())
+print(f&quot;  {changed} of {n} entries changed label - same prices, &quot;
+      f&quot;same features, different question&quot;)
+print(&quot;  verdict: the label is the exit policy written as data - &quot;
+      &quot;choose the barriers&quot;)
+print(&quot;           your bracket would actually trade, or the model &quot;
+      &quot;learns someone else&#x27;s trade&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - three designed paths, barriers +2.0% / -1.0%, time 10 bars
+  A (climbs) : first touch +2.30% at bar 6  -&gt; label +1  (fixed-horizon: +1)
+  B (slides) : first touch -1.40% at bar 5  -&gt; label -1  (fixed-horizon: -1)
+  C (wanders): no barrier in 10 bars, ends +0.60%  -&gt; label +0  (fixed-horizon: +1)
+  asserts passed: the 3 paths give the 3 distinct labels; fixed-horizon disagrees on 1 of 3
+Part 2 - 620-bar synthetic series (uptrend / downtrend / chop, seed 86)
+  204 entries (every 3rd bar), same barriers
+  class balance:  +1: 33 (16.2%)   -1: 99 (48.5%)   +0: 72 (35.3%)
+  mean realized return by label:  +1: +2.31%   -1: -1.31%   +0: +0.55%
+  fixed-horizon vs triple-barrier: disagree on 87 of 204 (42.6%)
+Part 3 - same entries, flipped bracket (+1.0% / -2.0%): labels are policy
+  class balance:  +1: 85 (41.7%)   -1: 50 (24.5%)   +0: 69 (33.8%)
+  92 of 204 entries changed label - same prices, same features, different question
+  verdict: the label is the exit policy written as data - choose the barriers
+           your bracket would actually trade, or the model learns someone else&#x27;s trade</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three parts landing: Part 1&rsquo;s asserts pass (climbs &rarr; <code>+1</code> at bar 6, slides &rarr; <code>&minus;1</code> at bar 5, wanders &rarr; <code>0</code> on the clock &mdash; with fixed-horizon disagreeing on the wanderer); Part 2&rsquo;s class balance (<code>+1: 33</code>, <code>&minus;1: 99</code>, <code>0: 72</code>) with the <strong>87 of 204 (42.6%)</strong> disagreement; and Part 3&rsquo;s flipped bracket changing <code>92</code> labels. The keeper test, no notes: handed any new sample, you can say which barrier its label came from &mdash; and why that label, not the price 10 bars later, is the trade you would actually have lived.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea,&rdquo; study panel C of the diagram until the disagreement makes sense, then run Part 1 only. If you can explain out loud why the wanderer is a <code>0</code> and not a win, you have the method &mdash; Parts 2 and 3 are the evidence at scale.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: walk-forward validation &mdash; tonight&rsquo;s labels overlap in time (neighboring entries share future bars), and tomorrow is about testing on them without ever peeking into the future.</p>
+  </div>
+
+  <div class="footer">Streak: 86 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
