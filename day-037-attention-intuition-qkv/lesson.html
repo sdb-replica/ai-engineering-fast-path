@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention Intuition: Queries, Keys, Values — Day 37 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 37 of 100</span>
+  <h1>Attention Intuition: Queries, Keys, Values</h1>
+  <p class="outcome">Tonight you'll be able to: explain attention as a soft lookup &mdash; each token&rsquo;s query asks, every key advertises, and softmax turns the matches into weights that blend the values &mdash; and read a 3&times;3 weight matrix to say exactly who attends to whom, and by how much.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 36&rsquo;s problem, in one line: an RNN forces everything a sequence knows through one hidden state, passed hand to hand until the early steps fade. Attention deletes the baton pass. <strong>Every token reads every other token directly, in parallel, and mixes what it finds into its own vector.</strong> That mixing &mdash; who reads whom, and how much &mdash; is tonight&rsquo;s whole concept.</p>
+<p>To read, each token plays three roles at once. From its embedding <code>x</code> (Day 15) it builds three vectors through three separate linear projections (Day 24): a <strong>query</strong> <code>q = x&middot;W<sub>Q</sub></code> &mdash; &ldquo;what I&rsquo;m looking for&rdquo;; a <strong>key</strong> <code>k = x&middot;W<sub>K</sub></code> &mdash; &ldquo;what I contain,&rdquo; the advertisement other tokens match against; and a <strong>value</strong> <code>v = x&middot;W<sub>V</sub></code> &mdash; &ldquo;what I actually hand over&rdquo; if someone reads me. Three roles, three different vectors from the same token &mdash; and the split between key and value is the subtle part: what makes a token <em>findable</em> is not what it <em>delivers</em>, so training gets to tune the two separately.</p>
+<p>The read itself is two moves you already own. <strong>Match:</strong> dot each query with every key (Day 12 &mdash; a dot product is a similarity score) to get one row of scores per token. <strong>Weigh:</strong> run softmax over that row (Day 14) and the scores become <em>attention weights</em> &mdash; shares that sum to exactly 1. Then the token&rsquo;s new vector is the weighted blend of everyone&rsquo;s values: <code>out = &Sigma; w<sub>j</sub> &middot; v<sub>j</sub></code>. Nothing here is a hard pick: every token contributes to every other token in proportion to the match. That softness is not a compromise &mdash; it is what keeps the whole lookup differentiable (Day 20&rsquo;s contract), so the projections can be <em>learned</em> instead of hand-designed.</p>
+<p>Read tonight&rsquo;s example before you run it: <code>rally</code> has embedding [1, 0], <code>fades</code> [0, 1], <code>volume</code> [1, 1]. Rally&rsquo;s query dots 1 against its own key, 0 against fades&rsquo;, 1 against volume&rsquo;s &mdash; so after softmax rally spends its read 42% on itself, 16% on fades, 42% on volume. Note <em>why</em>: volume gets read because of what it <em>contains</em> (it carries rally&rsquo;s dim), not because of where it sits. Attention routes by content, not by position in line. Its output, [1.6893, 0.5777], is no longer &ldquo;rally&rdquo; &mdash; it is rally <em>informed by</em> the sentence around it. That is the entire trick, and it is enough to rebuild sequence modeling on.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Think <strong>quorum read with read-repair</strong>, the DynamoDB/Cassandra pattern you know cold: a coordinator doesn&rsquo;t trust one replica &mdash; it fans the read out, compares what comes back, and merges. Attention is that pattern made differentiable. The querying token is the coordinator. Every token is a replica holding a piece of the sequence&rsquo;s state: its <strong>key</strong> is the metadata it advertises (think version/timestamp tags on a read response), its <strong>value</strong> is the actual payload. The coordinator scores each replica&rsquo;s advertisement against what it needs &mdash; and then, instead of read-repair&rsquo;s hard rule &ldquo;newest wins,&rdquo; it takes a <strong>weighted merge of all the payloads</strong>, weighted by match. A hard winner-take-all merge would be an ordinary database lookup: correct, but with no gradient &mdash; nothing upstream could learn from it. The soft merge is the whole invention: proportional contributions are arithmetic, arithmetic is differentiable, so the advertisements themselves (the projections) get trained.</p><p>Trading version, one line: scores are your signals, softmax is the position sizer that turns signals into weights summing to 100%, and values are what each position actually delivers.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 512" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="512" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Attention: every token asks, advertises, and hands over</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">3 tokens, 2-dim embeddings - one soft lookup, no recurrence, no baton pass</text>
+<rect x="12" y="56" width="656" height="116" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - EVERY TOKEN PLAYS THREE ROLES (shown for rally; fades and volume do the same)</text>
+<rect x="28" y="92" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="98" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">rally</text>
+<text x="98" y="132" text-anchor="middle" font-size="8.5" fill="#555555">x = [1, 0] - embedding</text>
+<rect x="196" y="92" width="144" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">QUERY  q = [1, 0]</text>
+<text x="268" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I&#x27;m looking for</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#0a7aff"/>
+<rect x="352" y="92" width="144" height="52" rx="8" fill="#fff4e5" stroke="#d98a00" stroke-width="1.2"/>
+<text x="424" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">KEY  k = [1, 0]</text>
+<text x="424" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I contain (advertised)</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#d98a00" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#d98a00"/>
+<rect x="508" y="92" width="144" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="580" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">VALUE  v = [2, 0]</text>
+<text x="580" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I actually hand over</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#22a355"/>
+<text x="340" y="160" text-anchor="middle" font-size="9.0" fill="#1c1c1e">in a trained net, learned matrices W_Q / W_K / W_V build all three from x - more of theta (Day 34)</text>
+<rect x="12" y="186" width="656" height="158" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - MATCH, THEN SOFTMAX: THE WEIGHT MATRIX (rows = who asks, columns = who answers)</text>
+<text x="179.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">rally</text>
+<text x="237.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">fades</text>
+<text x="295.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">volume</text>
+<text x="142" y="257" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">rally</text>
+<rect x="152" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="179.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<rect x="210" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.1554"/>
+<text x="237.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.1554</text>
+<rect x="268" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="295.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<text x="142" y="283" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">fades</text>
+<rect x="152" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.1554"/>
+<text x="179.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.1554</text>
+<rect x="210" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="237.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<rect x="268" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="295.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<text x="142" y="309" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">volume</text>
+<rect x="152" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.2119"/>
+<text x="179.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.2119</text>
+<rect x="210" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.2119"/>
+<text x="237.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.2119</text>
+<rect x="268" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.5761"/>
+<text x="295.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.5761</text>
+<text x="348" y="248" text-anchor="start" font-size="9.0" fill="#1c1c1e">scores first: rally&#x27;s query dots 1 / 0 / 1</text>
+<text x="348" y="263" text-anchor="start" font-size="9.0" fill="#1c1c1e">against the rally / fades / volume keys -</text>
+<text x="348" y="278" text-anchor="start" font-size="9.0" fill="#1c1c1e">volume&#x27;s key matches as well as its own.</text>
+<text x="348" y="293" text-anchor="start" font-size="9.0" fill="#1c1c1e">softmax (Day 14) turns each row of scores</text>
+<text x="348" y="308" text-anchor="start" font-size="9.0" fill="#1c1c1e">into shares that sum to 1.0000: rally reads</text>
+<text x="348" y="323" text-anchor="start" font-size="9.0" fill="#1c1c1e">42% itself, 16% fades, 42% volume.</text>
+<text x="340" y="332" text-anchor="middle" font-size="9.0" fill="#1c1c1e">the matrix is the routing table: cell (i, j) = how much of token j&#x27;s value flows into token i</text>
+<rect x="12" y="358" width="656" height="140" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="378" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE OUTPUT IS A WEIGHTED BLEND OF VALUES</text>
+<text x="340" y="402" text-anchor="middle" font-size="10.0" fill="#1c1c1e" font-weight="bold">out(rally) = 0.4223 x [2, 0] + 0.1554 x [0, 1] + 0.4223 x [2, 1] = [1.6893, 0.5777]</text>
+<rect x="34" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="134" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out rally: [1.6893, 0.5777]</text>
+<rect x="246" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="346" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out fades: [1.1554, 0.8446]</text>
+<rect x="458" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="558" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out volume: [1.5761, 0.7881]</text>
+<text x="340" y="482" text-anchor="middle" font-size="9.0" fill="#1c1c1e">no output equals its own value - every token leaves carrying context, in one parallel step</text>
+</svg>
+    <div class="caption">Left to right, one lookup: rally&rsquo;s embedding spawns its three roles (query in blue, key in amber, value in green &mdash; fades and volume do the same). Panel B is the heart: scores from query&middot;key, softmaxed into the weight matrix &mdash; the routing table of the sequence, cell (i, j) = how much of token j&rsquo;s value flows into token i. Panel C collects the payload: rally&rsquo;s output is its row of the matrix applied to the three values, worked in full.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, one lookup, every number pencil-checkable. <strong>Part 1</strong> builds the three roles: <code>W<sub>Q</sub></code> and <code>W<sub>K</sub></code> are identity and <code>W<sub>V</sub></code> stretches dim 0 by 2, so you can <em>see</em> the value differ from the key (in a trained net all three are learned &mdash; tonight they are fixed so the arithmetic stays honest). <strong>Part 2</strong> computes scores and the weight matrix, with softmax written by hand (Day 14, max-subtraction included) and cross-checked against <code>torch.softmax</code>. <strong>Part 3</strong> blends the values and works rally&rsquo;s output by hand in the printout. Runs in <code>~/ai-lab</code> on MPS if available, else CPU; no downloads, no RNG.</p>
+  <pre><code>&quot;&quot;&quot;Day 37 - Attention Intuition: Queries, Keys, Values.
+
+Day 36 left the problem: an RNN squeezes a whole sequence
+into one fading hidden state, passed hand to hand. Tonight
+is the fix&#x27;s core idea - attention as a SOFT LOOKUP. No
+token waits for a summary. Every token looks at every other
+token directly and builds its own context blend:
+
+  query - &quot;what I&#x27;m looking for&quot;    (one per token)
+  key   - &quot;what I contain&quot;          (one per token, advertised)
+  value - &quot;what I actually hand over&quot; (one per token)
+
+A query is dotted with every key (Day 12) to get match
+scores; softmax (Day 14) turns one query&#x27;s scores into
+weights that sum to 1; the token&#x27;s new vector is the
+weighted blend of everyone&#x27;s values. Match and delivery
+are separate on purpose: the key is the advertisement,
+the value is the payload.
+
+Three hand-set tokens from a trading sentence - rally,
+fades, volume - with 2-dim embeddings you can follow with
+a pencil:
+
+  Part 1  The three roles. Q and K are the embeddings
+          themselves today (identity projections); V is
+          the embedding stretched by W_V, so you can SEE
+          that the value is not the key. In a trained net,
+          W_Q / W_K / W_V are learned matrices (Day 34:
+          just more of theta) - fixed by hand tonight so
+          every digit is checkable.
+  Part 2  Scores = Q @ K.T, weights = softmax over each
+          row. The weight matrix IS the lesson: read a row
+          and you see who attends to whom. rally splits
+          its read 42/16/42 because volume&#x27;s key matches
+          rally&#x27;s query as strongly as rally&#x27;s own key.
+  Part 3  Outputs = weights @ V. rally&#x27;s output is its
+          blend worked by hand in the printout - and no
+          output equals its own value: every token leaves
+          carrying context, gathered in one parallel step.
+
+Deliberately NOT here: the score-scaling knob and the
+full by-hand derivation (tomorrow, Day 38), and splitting
+this into multiple heads (Day 39). One lookup, done slowly.
+
+Runs on the ~/ai-lab venv: torch only (free), MPS if
+available else CPU (tiny tensors), no CUDA, no paid APIs,
+no downloads. Every weight is set by hand - no RNG, so
+every printed number is exact (reference output below is
+CPU; MPS agrees to printed precision on these values).
+
+Expected output:
+
+  Part 1 - three tokens, three roles each
+    embeddings X - what each token starts with (Day 15):
+      rally   [1.0000, 0.0000]
+      fades   [0.0000, 1.0000]
+      volume  [1.0000, 1.0000]
+    projections today: W_Q = W_K = identity, W_V stretches dim 0 by 2
+    values V = X @ W_V - what each token actually hands over:
+      rally   [2.0000, 0.0000]
+      fades   [0.0000, 1.0000]
+      volume  [2.0000, 1.0000]
+    rally&#x27;s three vectors: q [1.0000, 0.0000]  k [1.0000, 0.0000]  v [2.0000, 0.0000]
+      the key advertises the plain embedding; the value delivers it stretched
+  Part 2 - match scores -&gt; weights: who attends to whom
+    scores = Q @ K.T (Day 12 dot products, one per query-key pair):
+                rally   fades  volume
+      rally    1.0000  0.0000  1.0000
+      fades    0.0000  1.0000  1.0000
+      volume   1.0000  1.0000  2.0000
+    weights = softmax(scores, dim=-1) (Day 14):
+                rally   fades  volume
+      rally    0.4223  0.1554  0.4223
+      fades    0.1554  0.4223  0.4223
+      volume   0.2119  0.2119  0.5761
+    row sums: 1.0000, 1.0000, 1.0000 - every query gets a full 100% to spend
+    manual softmax vs torch.softmax: max diff 0.000000
+    read rally&#x27;s row: 42% itself, 16% fades, 42% volume - volume&#x27;s key
+      matches rally&#x27;s query as strongly as rally&#x27;s own key does
+  Part 3 - outputs: weighted blends of values
+    out = weights @ V:
+      rally   [1.6893, 0.5777]
+      fades   [1.1554, 0.8446]
+      volume  [1.5761, 0.7881]
+    rally by hand: 0.4223*[2, 0] + 0.1554*[0, 1] + 0.4223*[2, 1] = [1.6893, 0.5777]
+    verdict: no output equals its own value - every token leaves
+      carrying context, gathered in one parallel step
+&quot;&quot;&quot;
+import torch
+
+device = torch.device(&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+
+TOKENS = [&quot;rally&quot;, &quot;fades&quot;, &quot;volume&quot;]
+# Hand-set 2-dim embeddings (Day 15). rally carries dim 0,
+# fades carries dim 1, volume carries both.
+X = torch.tensor([[1.0, 0.0],
+                  [0.0, 1.0],
+                  [1.0, 1.0]], device=device)
+# Projections: learned matrices in a real net (more of theta,
+# Day 34). Hand-set tonight: identity for Q and K, and a
+# stretch for V so the value visibly differs from the key.
+W_Q = torch.eye(2, device=device)
+W_K = torch.eye(2, device=device)
+W_V = torch.tensor([[2.0, 0.0],
+                    [0.0, 1.0]], device=device)
+
+Q = X @ W_Q                                    # what I&#x27;m looking for
+K = X @ W_K                                    # what I contain
+V = X @ W_V                                    # what I hand over
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+
+def table(M):
+    print(&quot;    &quot; + &quot; &quot; * 7 + &quot;&quot;.join(f&quot;{t:&gt;8}&quot; for t in TOKENS))
+    for name, row in zip(TOKENS, M.tolist()):
+        print(f&quot;    {name:&lt;7}&quot; + &quot;&quot;.join(f&quot;{v:8.4f}&quot; for v in row))
+
+
+# ---------- Part 1: three tokens, three roles each ----------
+print(&quot;Part 1 - three tokens, three roles each&quot;)
+print(&quot;  embeddings X - what each token starts with (Day 15):&quot;)
+for name, row in zip(TOKENS, X.tolist()):
+    print(f&quot;    {name:&lt;7} [{fmt(torch.tensor(row))}]&quot;)
+print(&quot;  projections today: W_Q = W_K = identity, &quot;
+      &quot;W_V stretches dim 0 by 2&quot;)
+print(&quot;  values V = X @ W_V - what each token actually hands over:&quot;)
+for name, row in zip(TOKENS, V.tolist()):
+    print(f&quot;    {name:&lt;7} [{fmt(torch.tensor(row))}]&quot;)
+print(f&quot;  rally&#x27;s three vectors: q [{fmt(Q[0])}]  &quot;
+      f&quot;k [{fmt(K[0])}]  v [{fmt(V[0])}]&quot;)
+print(&quot;    the key advertises the plain embedding; &quot;
+      &quot;the value delivers it stretched&quot;)
+
+# ---------- Part 2: scores -&gt; weights ----------
+print(&quot;Part 2 - match scores -&gt; weights: who attends to whom&quot;)
+scores = Q @ K.T                               # Day 12: dot products
+print(&quot;  scores = Q @ K.T (Day 12 dot products, &quot;
+      &quot;one per query-key pair):&quot;)
+table(scores)
+# Softmax by hand (Day 14, with its max-subtraction fix),
+# cross-checked against torch&#x27;s built-in.
+e = torch.exp(scores - scores.max(dim=-1, keepdim=True).values)
+weights = e / e.sum(dim=-1, keepdim=True)
+diff = (weights - torch.softmax(scores, dim=-1)).abs().max().item()
+print(&quot;  weights = softmax(scores, dim=-1) (Day 14):&quot;)
+table(weights)
+print(f&quot;  row sums: {fmt(weights.sum(dim=-1))} - every query &quot;
+      &quot;gets a full 100% to spend&quot;)
+print(f&quot;  manual softmax vs torch.softmax: max diff {diff:.6f}&quot;)
+print(&quot;  read rally&#x27;s row: 42% itself, 16% fades, 42% volume &quot;
+      &quot;- volume&#x27;s key&quot;)
+print(&quot;    matches rally&#x27;s query as strongly as rally&#x27;s own key does&quot;)
+
+# ---------- Part 3: outputs are blends of values ----------
+print(&quot;Part 3 - outputs: weighted blends of values&quot;)
+out = weights @ V
+print(&quot;  out = weights @ V:&quot;)
+for name, row in zip(TOKENS, out.tolist()):
+    print(f&quot;    {name:&lt;7} [{fmt(torch.tensor(row))}]&quot;)
+hand = weights[0, 0] * V[0] + weights[0, 1] * V[1] \
+    + weights[0, 2] * V[2]
+print(&quot;  rally by hand: 0.4223*[2, 0] + 0.1554*[0, 1] &quot;
+      f&quot;+ 0.4223*[2, 1] = [{fmt(hand)}]&quot;)
+print(&quot;  verdict: no output equals its own value - every token leaves&quot;)
+print(&quot;    carrying context, gathered in one parallel step&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - three tokens, three roles each
+  embeddings X - what each token starts with (Day 15):
+    rally   [1.0000, 0.0000]
+    fades   [0.0000, 1.0000]
+    volume  [1.0000, 1.0000]
+  projections today: W_Q = W_K = identity, W_V stretches dim 0 by 2
+  values V = X @ W_V - what each token actually hands over:
+    rally   [2.0000, 0.0000]
+    fades   [0.0000, 1.0000]
+    volume  [2.0000, 1.0000]
+  rally&#x27;s three vectors: q [1.0000, 0.0000]  k [1.0000, 0.0000]  v [2.0000, 0.0000]
+    the key advertises the plain embedding; the value delivers it stretched
+Part 2 - match scores -&gt; weights: who attends to whom
+  scores = Q @ K.T (Day 12 dot products, one per query-key pair):
+              rally   fades  volume
+    rally    1.0000  0.0000  1.0000
+    fades    0.0000  1.0000  1.0000
+    volume   1.0000  1.0000  2.0000
+  weights = softmax(scores, dim=-1) (Day 14):
+              rally   fades  volume
+    rally    0.4223  0.1554  0.4223
+    fades    0.1554  0.4223  0.4223
+    volume   0.2119  0.2119  0.5761
+  row sums: 1.0000, 1.0000, 1.0000 - every query gets a full 100% to spend
+  manual softmax vs torch.softmax: max diff 0.000000
+  read rally&#x27;s row: 42% itself, 16% fades, 42% volume - volume&#x27;s key
+    matches rally&#x27;s query as strongly as rally&#x27;s own key does
+Part 3 - outputs: weighted blends of values
+  out = weights @ V:
+    rally   [1.6893, 0.5777]
+    fades   [1.1554, 0.8446]
+    volume  [1.5761, 0.7881]
+  rally by hand: 0.4223*[2, 0] + 0.1554*[0, 1] + 0.4223*[2, 1] = [1.6893, 0.5777]
+  verdict: no output equals its own value - every token leaves
+    carrying context, gathered in one parallel step</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches on all four checks: the weight matrix rows <code>0.4223 / 0.1554 / 0.4223</code>, <code>0.1554 / 0.4223 / 0.4223</code>, <code>0.2119 / 0.2119 / 0.5761</code>; row sums exactly <code>1.0000, 1.0000, 1.0000</code>; manual-vs-built-in softmax max diff <code>0.000000</code>; and rally&rsquo;s hand blend landing on <code>[1.6893, 0.5777]</code>. The keeper test, no notes: point at any row of the matrix and say, in plain words, who that token read, by how much, and why the match came out that way &mdash; then say what the key/value split buys. If you can, you own the core idea of the transformer; everything after tonight is machinery around this lookup.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study Panel B of the diagram until you can predict rally&rsquo;s row before looking, then run the code and check only two numbers by hand: rally&rsquo;s weights (softmax of 1, 0, 1) and its output blend. If both match, you have the concept &mdash; Parts 1 and 3 are the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the same lookup with the training wheels off &mdash; you compute it end to end by hand in torch, meet the one knob tonight deliberately left out, and find out why it has to be there.</p>
+  </div>
+
+  <div class="footer">Streak: 37 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<svg viewBox="0 0 680 512" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="512" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Attention: every token asks, advertises, and hands over</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">3 tokens, 2-dim embeddings - one soft lookup, no recurrence, no baton pass</text>
+<rect x="12" y="56" width="656" height="116" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - EVERY TOKEN PLAYS THREE ROLES (shown for rally; fades and volume do the same)</text>
+<rect x="28" y="92" width="140" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="98" y="114" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">rally</text>
+<text x="98" y="132" text-anchor="middle" font-size="8.5" fill="#555555">x = [1, 0] - embedding</text>
+<rect x="196" y="92" width="144" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">QUERY  q = [1, 0]</text>
+<text x="268" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I&#x27;m looking for</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#0a7aff"/>
+<rect x="352" y="92" width="144" height="52" rx="8" fill="#fff4e5" stroke="#d98a00" stroke-width="1.2"/>
+<text x="424" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">KEY  k = [1, 0]</text>
+<text x="424" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I contain (advertised)</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#d98a00" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#d98a00"/>
+<rect x="508" y="92" width="144" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="580" y="114" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">VALUE  v = [2, 0]</text>
+<text x="580" y="132" text-anchor="middle" font-size="8.5" fill="#555555">what I actually hand over</text>
+<line x1="170" y1="118" x2="194" y2="118" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="194,118 187,114 187,122" fill="#22a355"/>
+<text x="340" y="160" text-anchor="middle" font-size="9.0" fill="#1c1c1e">in a trained net, learned matrices W_Q / W_K / W_V build all three from x - more of theta (Day 34)</text>
+<rect x="12" y="186" width="656" height="158" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - MATCH, THEN SOFTMAX: THE WEIGHT MATRIX (rows = who asks, columns = who answers)</text>
+<text x="179.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">rally</text>
+<text x="237.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">fades</text>
+<text x="295.0" y="232" text-anchor="middle" font-size="9.0" fill="#1c1c1e" font-weight="bold">volume</text>
+<text x="142" y="257" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">rally</text>
+<rect x="152" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="179.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<rect x="210" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.1554"/>
+<text x="237.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.1554</text>
+<rect x="268" y="242" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="295.0" y="257" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<text x="142" y="283" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">fades</text>
+<rect x="152" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.1554"/>
+<text x="179.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.1554</text>
+<rect x="210" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="237.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<rect x="268" y="268" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.4223"/>
+<text x="295.0" y="283" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.4223</text>
+<text x="142" y="309" text-anchor="end" font-size="9.0" fill="#1c1c1e" font-weight="bold">volume</text>
+<rect x="152" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.2119"/>
+<text x="179.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.2119</text>
+<rect x="210" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.2119"/>
+<text x="237.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.2119</text>
+<rect x="268" y="294" width="54" height="22" rx="4" fill="#7a5cff" stroke="#7a5cff" stroke-width="0.8" fill-opacity="0.5761"/>
+<text x="295.0" y="309" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.5761</text>
+<text x="348" y="248" text-anchor="start" font-size="9.0" fill="#1c1c1e">scores first: rally&#x27;s query dots 1 / 0 / 1</text>
+<text x="348" y="263" text-anchor="start" font-size="9.0" fill="#1c1c1e">against the rally / fades / volume keys -</text>
+<text x="348" y="278" text-anchor="start" font-size="9.0" fill="#1c1c1e">volume&#x27;s key matches as well as its own.</text>
+<text x="348" y="293" text-anchor="start" font-size="9.0" fill="#1c1c1e">softmax (Day 14) turns each row of scores</text>
+<text x="348" y="308" text-anchor="start" font-size="9.0" fill="#1c1c1e">into shares that sum to 1.0000: rally reads</text>
+<text x="348" y="323" text-anchor="start" font-size="9.0" fill="#1c1c1e">42% itself, 16% fades, 42% volume.</text>
+<text x="340" y="332" text-anchor="middle" font-size="9.0" fill="#1c1c1e">the matrix is the routing table: cell (i, j) = how much of token j&#x27;s value flows into token i</text>
+<rect x="12" y="358" width="656" height="140" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="378" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE OUTPUT IS A WEIGHTED BLEND OF VALUES</text>
+<text x="340" y="402" text-anchor="middle" font-size="10.0" fill="#1c1c1e" font-weight="bold">out(rally) = 0.4223 x [2, 0] + 0.1554 x [0, 1] + 0.4223 x [2, 1] = [1.6893, 0.5777]</text>
+<rect x="34" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="134" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out rally: [1.6893, 0.5777]</text>
+<rect x="246" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="346" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out fades: [1.1554, 0.8446]</text>
+<rect x="458" y="416" width="200" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="558" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">out volume: [1.5761, 0.7881]</text>
+<text x="340" y="482" text-anchor="middle" font-size="9.0" fill="#1c1c1e">no output equals its own value - every token leaves carrying context, in one parallel step</text>
+</svg>
