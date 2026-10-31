@@ -1,0 +1,58 @@
+<svg viewBox="0 0 680 536" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="536" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Pretraining: the same Day 42 loop, three scales of compute</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Bars are LOG scale - every gridline is 10x the one before. Linear would make the first two bars invisible.</text>
+<rect x="12" y="56" width="656" height="262" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<line x1="40.0" y1="70" x2="40.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="40.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^12</text>
+<line x1="90.0" y1="70" x2="90.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="90.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^13</text>
+<line x1="140.0" y1="70" x2="140.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="140.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^14</text>
+<line x1="190.0" y1="70" x2="190.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="190.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^15</text>
+<line x1="240.0" y1="70" x2="240.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="240.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^16</text>
+<line x1="290.0" y1="70" x2="290.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="290.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^17</text>
+<line x1="340.0" y1="70" x2="340.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="340.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^18</text>
+<line x1="390.0" y1="70" x2="390.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="390.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^19</text>
+<line x1="440.0" y1="70" x2="440.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="440.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^20</text>
+<line x1="490.0" y1="70" x2="490.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="490.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^21</text>
+<line x1="540.0" y1="70" x2="540.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="540.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^22</text>
+<line x1="590.0" y1="70" x2="590.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="590.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^23</text>
+<line x1="640.0" y1="70" x2="640.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="640.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^24</text>
+<text x="340.0" y="312" text-anchor="middle" font-size="8.5" fill="#555555">training compute C, in FLOPs (log scale)</text>
+<text x="40" y="78" font-size="10.5" fill="#1c1c1e" font-weight="bold">YOUR DAY 42 GPT  -  the campfire</text>
+<text x="40" y="93" font-size="8.5" fill="#555555">814,643 params  |  2.46M tokens processed (2,357 chars x 1,043 epochs)</text>
+<rect x="40" y="100" width="54.0" height="18" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="102.0" y="113" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 1.2e+13 FLOPs</text>
+<text x="40" y="144" font-size="10.5" fill="#1c1c1e" font-weight="bold">GPT-2 XL  (reported config)</text>
+<text x="40" y="159" font-size="8.5" fill="#555555">1.5B params  |  ~10B tokens, seen about once</text>
+<rect x="40" y="166" width="397.7" height="18" rx="4" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="429.7" y="179" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 9.0e+19 FLOPs</text>
+<text x="40" y="210" font-size="10.5" fill="#1c1c1e" font-weight="bold">LLAMA-3-CLASS RUN  (reported)</text>
+<text x="40" y="225" font-size="8.5" fill="#555555">8B params  |  15T tokens, seen about once</text>
+<rect x="40" y="232" width="592.9" height="18" rx="4" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="624.9" y="245" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 7.2e+23 FLOPs</text>
+<rect x="12" y="330" width="656" height="62" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="354" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">C ~ 6 x N x D   -   the only formula tonight</text>
+<text x="340.0" y="372" text-anchor="middle" font-size="9.0" fill="#1c1c1e">forward ~2 FLOPs per param per token (Day 12) + backward ~4 (Day 23) = 6. Same loop at every rung - only N and D move.</text>
+<text x="340.0" y="386" text-anchor="middle" font-size="9.0" fill="#0a54c2">campfire to power grid: 7.49e+06 x to GPT-2, 5.99e+10 x to a frontier-class run - same physics</text>
+<rect x="12" y="404" width="656" height="84" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="424" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">WHERE THE COMPUTE GOES: PRETRAINING vs EVERYTHING AFTER (Days 52-56)</text>
+<rect x="40" y="434" width="598" height="18" rx="4" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<rect x="636" y="434" width="2" height="18" fill="#d99a00" stroke="none"/>
+<text x="52" y="447" font-size="9.5" fill="#1c1c1e" font-weight="bold">pretraining: 99.9993% of total compute</text>
+<text x="340.0" y="470" text-anchor="middle" font-size="9.0" fill="#1c1c1e">fine-tuning the same 8B on 100M tokens = 1/150,000 of pretraining - the 2px sliver at the right edge</text>
+<text x="340.0" y="482" text-anchor="middle" font-size="9.0" fill="#177245">pretraining buys the capability; everything after just steers it</text>
+<text x="340.0" y="512" text-anchor="middle" font-size="8.5" fill="#888888">Model figures are reported / approximate: GPT-2 ~10B WebText tokens (commonly cited); Llama-3-class 15T tokens (Meta, reported).</text>
+<text x="340.0" y="526" text-anchor="middle" font-size="8.5" fill="#888888">GPU time at the stated assumption (one H100, 3.0e14 FLOP/s sustained): GPT-2 XL 3.47 GPU-days - Llama-3-class 27,778 GPU-days.</text>
+</svg>

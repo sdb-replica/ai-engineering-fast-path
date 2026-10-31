@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pretraining: What It Actually Is — Day 51 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 51 of 100</span>
+  <h1>Pretraining: What It Actually Is</h1>
+  <p class="outcome">Tonight you'll be able to: read any model announcement off three numbers &mdash; N, D, and C &asymp; 6ND &mdash; explain why your Day 42 GPT memorized while frontier models generalize, and why every Phase D lesson after tonight lives in a rounding error.</p>
+
+  <h2>The one idea</h2>
+  <p><strong>Pretraining</strong> is the first, giant phase of making a language model: start from random weights, run next-token prediction (Day 14's task, Day 42's loop) on raw text, and let the optimizer grind the loss down. The model that comes out is a <strong>base model</strong> &mdash; a pure text predictor, nothing more. Phase D starts here because everything after tonight (Days 52&ndash;56) is small print on top of this one run.</p>
+<p><strong>There is no new algorithm.</strong> A frontier pretraining run is your Day 42 script with three dials turned: <strong>N</strong>, the parameter count; <strong>D</strong>, the training tokens processed; and <strong>C</strong>, the compute, measured in FLOPs (floating-point operations &mdash; the multiply-adds, Day 12). The dials are welded together by the one formula in tonight's diagram: <strong>C &asymp; 6ND</strong>. The 6 is not magic: a token's forward pass costs ~2 FLOPs per parameter it touches, and the backward pass costs about twice the forward (Day 23's blame flows through every weight twice). 2 + 4 = 6, per parameter, per token. It ignores attention's own smaller term, and it is still the formula the industry budgets clusters with.</p>
+<p><strong>Scale changes the data relationship, not just the bill.</strong> Your Day 42 corpus was 2,357 characters, and training recycled it ~1,043 times &mdash; memorization was mathematically guaranteed, which is why the greedy sample recited lines. A frontier run inverts that: ~15 trillion tokens against 8B parameters is 1,875 tokens per parameter, seen roughly once. The model <em>cannot</em> memorize its corpus; the only way to keep the loss falling is to compress &mdash; to learn the grammar, facts, code patterns, and reasoning shapes that generated the text. Generalization isn't a virtue the lab chose; at that ratio it's the only option left.</p>
+<p><strong>The data is a curated mixture, not a scrape.</strong> One honest paragraph: a real corpus blends filtered web crawl, books, code, encyclopedias, and papers, then survives deduplication, quality filtering, and decontamination (scrubbing test-set answers out). The mixture ratios &mdash; how much code, how much math, how much of which languages &mdash; are product decisions that shape the final model's skills, and most of the actual engineering hours in a pretraining program go into that pipeline, not the model code. It's an ETL system with SLOs, run by people with your skill set.</p>
+<p><strong>And then the strange part: capabilities nobody trained for show up.</strong> Nobody writes a loss term for translation, arithmetic, or summarizing &mdash; yet as next-token loss falls far enough, a base model starts doing all three, plus answering questions in context from a few examples. Labs call these <em>emergent</em> capabilities. The honest caveat: researchers argue about whether the jumps are truly sudden or partly an artifact of how we score them. What nobody argues with is the direction &mdash; predicting text well enough, at enough scale, forces a model to internalize a working model of the world that produced the text. That is what the 99.9993% buys.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Your Day 42 run is a <strong>campfire</strong>; a pretraining run is a <strong>power grid</strong>. Same physics &mdash; combustion then, combustion now; cross-entropy then, cross-entropy now &mdash; and nobody would call a grid "just a bigger campfire" with a straight face, because at grid scale entirely new phenomena become the job: transmission losses, load balancing, cascading failures, a control room watching telemetry (Day 31's loss curves, staffed by hundreds). The loop didn't change. The scale changed what the loop <em>is</em>. Systems version, since it's your native tongue: it's the same binary &mdash; Conveyor on one laptop is a demo, Conveyor at exabyte scale is a different discipline, and the discipline lives in the scale, not the code.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 536" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="536" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Pretraining: the same Day 42 loop, three scales of compute</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Bars are LOG scale - every gridline is 10x the one before. Linear would make the first two bars invisible.</text>
+<rect x="12" y="56" width="656" height="262" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<line x1="40.0" y1="70" x2="40.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="40.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^12</text>
+<line x1="90.0" y1="70" x2="90.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="90.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^13</text>
+<line x1="140.0" y1="70" x2="140.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="140.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^14</text>
+<line x1="190.0" y1="70" x2="190.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="190.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^15</text>
+<line x1="240.0" y1="70" x2="240.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="240.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^16</text>
+<line x1="290.0" y1="70" x2="290.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="290.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^17</text>
+<line x1="340.0" y1="70" x2="340.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="340.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^18</text>
+<line x1="390.0" y1="70" x2="390.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="390.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^19</text>
+<line x1="440.0" y1="70" x2="440.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="440.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^20</text>
+<line x1="490.0" y1="70" x2="490.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="490.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^21</text>
+<line x1="540.0" y1="70" x2="540.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="540.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^22</text>
+<line x1="590.0" y1="70" x2="590.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="590.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^23</text>
+<line x1="640.0" y1="70" x2="640.0" y2="282" stroke="#e5e5e5" stroke-width="1.0"/>
+<text x="640.0" y="300" text-anchor="middle" font-size="8.0" fill="#888888">10^24</text>
+<text x="340.0" y="312" text-anchor="middle" font-size="8.5" fill="#555555">training compute C, in FLOPs (log scale)</text>
+<text x="40" y="78" font-size="10.5" fill="#1c1c1e" font-weight="bold">YOUR DAY 42 GPT  -  the campfire</text>
+<text x="40" y="93" font-size="8.5" fill="#555555">814,643 params  |  2.46M tokens processed (2,357 chars x 1,043 epochs)</text>
+<rect x="40" y="100" width="54.0" height="18" rx="4" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="102.0" y="113" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 1.2e+13 FLOPs</text>
+<text x="40" y="144" font-size="10.5" fill="#1c1c1e" font-weight="bold">GPT-2 XL  (reported config)</text>
+<text x="40" y="159" font-size="8.5" fill="#555555">1.5B params  |  ~10B tokens, seen about once</text>
+<rect x="40" y="166" width="397.7" height="18" rx="4" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="429.7" y="179" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 9.0e+19 FLOPs</text>
+<text x="40" y="210" font-size="10.5" fill="#1c1c1e" font-weight="bold">LLAMA-3-CLASS RUN  (reported)</text>
+<text x="40" y="225" font-size="8.5" fill="#555555">8B params  |  15T tokens, seen about once</text>
+<rect x="40" y="232" width="592.9" height="18" rx="4" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="624.9" y="245" text-anchor="end" font-size="9.5" fill="#1c1c1e" font-weight="bold">C = 7.2e+23 FLOPs</text>
+<rect x="12" y="330" width="656" height="62" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="354" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">C ~ 6 x N x D   -   the only formula tonight</text>
+<text x="340.0" y="372" text-anchor="middle" font-size="9.0" fill="#1c1c1e">forward ~2 FLOPs per param per token (Day 12) + backward ~4 (Day 23) = 6. Same loop at every rung - only N and D move.</text>
+<text x="340.0" y="386" text-anchor="middle" font-size="9.0" fill="#0a54c2">campfire to power grid: 7.49e+06 x to GPT-2, 5.99e+10 x to a frontier-class run - same physics</text>
+<rect x="12" y="404" width="656" height="84" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="424" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">WHERE THE COMPUTE GOES: PRETRAINING vs EVERYTHING AFTER (Days 52-56)</text>
+<rect x="40" y="434" width="598" height="18" rx="4" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<rect x="636" y="434" width="2" height="18" fill="#d99a00" stroke="none"/>
+<text x="52" y="447" font-size="9.5" fill="#1c1c1e" font-weight="bold">pretraining: 99.9993% of total compute</text>
+<text x="340.0" y="470" text-anchor="middle" font-size="9.0" fill="#1c1c1e">fine-tuning the same 8B on 100M tokens = 1/150,000 of pretraining - the 2px sliver at the right edge</text>
+<text x="340.0" y="482" text-anchor="middle" font-size="9.0" fill="#177245">pretraining buys the capability; everything after just steers it</text>
+<text x="340.0" y="512" text-anchor="middle" font-size="8.5" fill="#888888">Model figures are reported / approximate: GPT-2 ~10B WebText tokens (commonly cited); Llama-3-class 15T tokens (Meta, reported).</text>
+<text x="340.0" y="526" text-anchor="middle" font-size="8.5" fill="#888888">GPU time at the stated assumption (one H100, 3.0e14 FLOP/s sustained): GPT-2 XL 3.47 GPU-days - Llama-3-class 27,778 GPU-days.</text>
+</svg>
+    <div class="caption">Three runs of the identical training loop on a log scale. Left: your Day 42 GPT &mdash; 814,643 params, a 2,357-char corpus recycled ~1,043 times, 1.20e+13 FLOPs. Middle: GPT-2 XL (reported config). Right: a Llama-3-class run (reported) &mdash; 5.99e+10 times your compute. Bottom: the split that frames Phase D &mdash; pretraining is 99.9993% of the total compute; fine-tuning is the 2-pixel sliver.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Pure arithmetic tonight &mdash; stdlib Python, no torch, runs anywhere in seconds, every digit exact. <strong>Part 1</strong> prices your Day 42 run with C &asymp; 6ND (tokens processed = 1,200 steps &times; batch 32 &times; 64 chars). <strong>Part 2</strong> prices two published configs with the same formula &mdash; GPT-2 XL and a Llama-3-class run; their N and D are <em>reported / approximate</em> figures, as labeled, while the arithmetic on them is exact. <strong>Part 3</strong> turns FLOPs into GPU-days at one stated assumption (an H100 sustaining 3.0e14 FLOP/s, ~30% of peak). <strong>Part 4</strong> computes the pretrain-vs-fine-tune split that the rest of Phase D lives inside.</p>
+  <pre><code>&quot;&quot;&quot;Day 51 - Pretraining: What It Actually Is.
+
+Phase D opener. There is no new training loop tonight.
+Pretraining is the Day 42 loop - read text, predict the next
+token, cross-entropy, backward, step - run at civilizational
+scale. What changes is not the algorithm; it is three dials:
+
+    N  parameters        (Day 42: 814,643 - GPT-2: billions)
+    D  training tokens   (Day 42: 2.4K chars, seen ~1,043x -
+                          frontier runs: trillions, seen ~once)
+    C  compute, in FLOPs (floating-point operations)
+
+and the three are welded together by one rule of thumb:
+
+    C ~ 6 * N * D
+
+Why 6? One token&#x27;s forward pass costs about 2 FLOPs per
+parameter (a multiply + an add for every weight it touches,
+Day 12), and the backward pass costs about twice the
+forward (Day 23&#x27;s blame has to flow through every weight
+again, both ways). 2 + 4 = 6 FLOPs per parameter per token.
+It is an approximation - it ignores attention&#x27;s own term -
+and it is the formula the whole industry budgets with.
+
+  Part 1  Your Day 42 run, priced. Tokens processed =
+          1,200 steps x batch 32 x 64 chars. Same corpus
+          recycled ~1,043 times: that is why it memorized.
+  Part 2  Two published configs, priced with the same
+          formula. GPT-2 XL (1.5B params, ~10B tokens,
+          reported figures) and a Llama-3-class run (8B
+          params, 15T tokens, reported &quot;over 15 trillion&quot;).
+          Ratios vs Day 42 are the lesson: scale is not
+          a dial you nudge, it is orders of magnitude.
+  Part 3  GPU time. At one stated assumption - an H100
+          sustaining 3.0e14 FLOP/s in a real training run
+          (roughly 30% of its peak; big models never see
+          peak) - turn FLOPs into GPU-days.
+  Part 4  The split that frames all of Phase D. Fine-tune
+          the same 8B model on a large SFT corpus (100M
+          tokens) and its compute is a rounding error next
+          to pretraining. Days 52-56 live in that sliver:
+          pretraining is where the capability - and the
+          bill - is; everything after is steering.
+
+Published model figures are reported / approximate, as
+labeled - GPT-2&#x27;s token count is the commonly cited ~10B
+for WebText, Llama 3&#x27;s 15T is Meta&#x27;s reported &quot;over 15
+trillion tokens&quot;. The arithmetic on them is exact.
+
+Runs anywhere: pure stdlib Python, no torch needed, no
+downloads, no APIs. Deterministic - every number below
+is reproducible to the digit.
+
+Expected output:
+
+  Part 1 - your Day 42 run, priced with C ~ 6ND
+    N = 814,643 params, corpus = 2,357 chars
+    D = 1,200 steps x 32 batch x 64 chars = 2,457,600 tokens processed
+    corpus recycled: 1042.7 epochs (why it memorized, Day 42)
+    C = 6 x 814,643 x 2,457,600 = 1.20e+13 FLOPs
+  Part 2 - published configs, same formula (reported / approximate)
+    GPT-2 XL:        N = 1.50e+09, D = 1.00e+10  -&gt;  C = 9.00e+19 FLOPs  (7.49e+06 x Day 42)
+      tokens per param: 6.7
+    Llama-3-class:   N = 8.00e+09, D = 1.50e+13  -&gt;  C = 7.20e+23 FLOPs  (5.99e+10 x Day 42)
+      tokens per param: 1,875.0
+  Part 3 - GPU time at 3.0e14 FLOP/s per H100 (stated assumption)
+    Day 42 run:      0.0400 GPU-seconds (your MacBook took minutes - a 815K model cannot fill even one GPU; the rate assumes a big model can)
+    GPT-2 XL:        3.47 GPU-days
+    Llama-3-class:   27,778 GPU-days = 76.1 GPU-years on ONE H100
+      ...or about 13.6 days on 2,048 H100s (illustrative arithmetic, not Meta&#x27;s actual schedule)
+  Part 4 - pretrain vs fine-tune: where Phase D&#x27;s compute lives
+    pretrain 8B on 15T tokens:      C = 7.20e+23 FLOPs
+    fine-tune 8B on 100M tokens:    C = 4.80e+18 FLOPs
+    fine-tune is 1/150,000 of pretraining - pretraining share of total: 99.9993%
+    verdict: pretraining buys the capability; Days 52-56 just steer it
+&quot;&quot;&quot;
+
+
+def flops(n_params, n_tokens):
+    &quot;&quot;&quot;The industry rule of thumb: C ~ 6 * N * D.&quot;&quot;&quot;
+    return 6 * n_params * n_tokens
+
+
+# ---------- Part 1: your Day 42 run, priced ----------
+print(&quot;Part 1 - your Day 42 run, priced with C ~ 6ND&quot;)
+N42 = 814_643                      # Day 42&#x27;s exact parameter count
+CORPUS = 2_357                     # chars of Shakespeare (Day 42)
+D42 = 1_200 * 32 * 64              # steps x batch x context
+C42 = flops(N42, D42)
+print(f&quot;  N = {N42:,} params, corpus = {CORPUS:,} chars&quot;)
+print(f&quot;  D = 1,200 steps x 32 batch x 64 chars = {D42:,} tokens &quot;
+      &quot;processed&quot;)
+print(f&quot;  corpus recycled: {D42 / CORPUS:.1f} epochs &quot;
+      &quot;(why it memorized, Day 42)&quot;)
+print(f&quot;  C = 6 x {N42:,} x {D42:,} = {C42:.2e} FLOPs&quot;)
+
+# ---------- Part 2: published configs, same formula ----------
+print(&quot;Part 2 - published configs, same formula &quot;
+      &quot;(reported / approximate)&quot;)
+CONFIGS = (
+    (&quot;GPT-2 XL:&quot;, 1.5e9, 1.0e10),        # WebText, ~10B tokens
+    (&quot;Llama-3-class:&quot;, 8.0e9, 1.5e13),   # reported: 15T+ tokens
+)
+for name, n, d in CONFIGS:
+    c = flops(n, d)
+    print(f&quot;  {name:&lt;16} N = {n:.2e}, D = {d:.2e}  -&gt;  &quot;
+          f&quot;C = {c:.2e} FLOPs  ({c / C42:.2e} x Day 42)&quot;)
+    print(f&quot;    tokens per param: {d / n:,.1f}&quot;)
+
+# ---------- Part 3: GPU time at a stated assumption ----------
+print(&quot;Part 3 - GPU time at 3.0e14 FLOP/s per H100 &quot;
+      &quot;(stated assumption)&quot;)
+RATE = 3.0e14                      # ~30% of H100 peak, sustained
+DAY = 86_400                       # seconds
+print(f&quot;  Day 42 run:      {C42 / RATE:.4f} GPU-seconds &quot;
+      &quot;(your MacBook took minutes - a 815K model cannot fill &quot;
+      &quot;even one GPU; the rate assumes a big model can)&quot;)
+for name, n, d in CONFIGS:
+    gpu_days = flops(n, d) / RATE / DAY
+    extra = (f&quot; = {gpu_days / 365.25:.1f} GPU-years on ONE H100&quot;
+             if gpu_days &gt; 1_000 else &quot;&quot;)
+    days = (f&quot;{gpu_days:,.0f}&quot; if gpu_days &gt;= 100
+            else f&quot;{gpu_days:.2f}&quot;)
+    print(f&quot;  {name:&lt;16} {days} GPU-days{extra}&quot;)
+llama_days = flops(8.0e9, 1.5e13) / RATE / DAY
+print(f&quot;    ...or about {llama_days / 2048:.1f} days on 2,048 H100s &quot;
+      &quot;(illustrative arithmetic, not Meta&#x27;s actual schedule)&quot;)
+
+# ---------- Part 4: pretrain vs fine-tune ----------
+print(&quot;Part 4 - pretrain vs fine-tune: where Phase D&#x27;s compute &quot;
+      &quot;lives&quot;)
+C_PRE = flops(8.0e9, 1.5e13)
+C_FT = flops(8.0e9, 1.0e8)         # a large SFT corpus: 100M tokens
+print(f&quot;  pretrain 8B on 15T tokens:      C = {C_PRE:.2e} FLOPs&quot;)
+print(f&quot;  fine-tune 8B on 100M tokens:    C = {C_FT:.2e} FLOPs&quot;)
+print(f&quot;  fine-tune is 1/{C_PRE / C_FT:,.0f} of pretraining - &quot;
+      f&quot;pretraining share of total: &quot;
+      f&quot;{100 * C_PRE / (C_PRE + C_FT):.4f}%&quot;)
+print(&quot;  verdict: pretraining buys the capability; &quot;
+      &quot;Days 52-56 just steer it&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - your Day 42 run, priced with C ~ 6ND
+  N = 814,643 params, corpus = 2,357 chars
+  D = 1,200 steps x 32 batch x 64 chars = 2,457,600 tokens processed
+  corpus recycled: 1042.7 epochs (why it memorized, Day 42)
+  C = 6 x 814,643 x 2,457,600 = 1.20e+13 FLOPs
+Part 2 - published configs, same formula (reported / approximate)
+  GPT-2 XL:        N = 1.50e+09, D = 1.00e+10  -&gt;  C = 9.00e+19 FLOPs  (7.49e+06 x Day 42)
+    tokens per param: 6.7
+  Llama-3-class:   N = 8.00e+09, D = 1.50e+13  -&gt;  C = 7.20e+23 FLOPs  (5.99e+10 x Day 42)
+    tokens per param: 1,875.0
+Part 3 - GPU time at 3.0e14 FLOP/s per H100 (stated assumption)
+  Day 42 run:      0.0400 GPU-seconds (your MacBook took minutes - a 815K model cannot fill even one GPU; the rate assumes a big model can)
+  GPT-2 XL:        3.47 GPU-days
+  Llama-3-class:   27,778 GPU-days = 76.1 GPU-years on ONE H100
+    ...or about 13.6 days on 2,048 H100s (illustrative arithmetic, not Meta&#x27;s actual schedule)
+Part 4 - pretrain vs fine-tune: where Phase D&#x27;s compute lives
+  pretrain 8B on 15T tokens:      C = 7.20e+23 FLOPs
+  fine-tune 8B on 100M tokens:    C = 4.80e+18 FLOPs
+  fine-tune is 1/150,000 of pretraining - pretraining share of total: 99.9993%
+  verdict: pretraining buys the capability; Days 52-56 just steer it</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints <code>C = 1.20e+13 FLOPs</code> for Day 42, the two ratios (<code>7.49e+06 x</code> and <code>5.99e+10 x</code>), <code>27,778 GPU-days</code> for the Llama-3-class run, and the split: <code>99.9993%</code>. The keeper test, no notes: someone announces a model with N params trained on D tokens &mdash; you produce C and a GPU-days estimate on the spot, and you can say where the 6 comes from and why Day 42 memorized while a 15-trillion-token run cannot.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea" and study the ladder until the three bars feel obvious, then run the code once and narrate it: where the 6 comes from, why 1,043 epochs forced memorization, and why fine-tuning is a sliver. If you can do that narration without looking, you have Day 51 &mdash; the mixture and emergence paragraphs are a second pass.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: the base model will happily complete your sentence &mdash; but ask it a question and it may just ask three more. There's a second, far cheaper training phase that teaches it to follow instructions instead, and Phase D's remaining days all live in its budget.</p>
+  </div>
+
+  <div class="footer">Streak: 51 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
