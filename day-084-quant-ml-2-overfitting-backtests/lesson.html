@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quant ML 2: The #1 Killer — Overfitting Backtests — Day 84 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  table { border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; }
+  th, td { border: 1px solid #ddd; padding: 4px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+    th, td { border-color: #444; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 84 of 100</span>
+  <h1>Quant ML 2: The #1 Killer — Overfitting Backtests</h1>
+  <p class="outcome">Tonight you'll be able to: put a price on luck in any backtest — compute the luck bar for the number of variants actually tried, watch the best of 1,000 pure-noise strategies print a 2.32 Sharpe, and watch its year-1 crown collapse on data it was never tuned on — so from tonight, a winner has to clear the bar for <em>your</em> N, not just beat zero.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 83&rsquo;s verdict: in markets the signal is a whisper and the noise is a stadium. Tonight is the trap that stadium sets for anyone who backtests more than once — which is everyone.</p>
+  <p><strong>A backtest never reports the strategy you tried. It reports the best of everything you tried.</strong> Run one strategy on pure noise — true Sharpe exactly 0 — over T days, and its measured Sharpe is a draw centered on 0 with spread s = &radic;(252/T) annualized: about 0.71 for two years of daily data. Now run N variants and keep the winner. You are no longer sampling that bell curve; you are sampling its <strong>maximum</strong>, and the maximum is a different animal:</p>
+  <p style="text-align:center"><strong>E[best of N] &asymp; s &middot; &radic;(2 ln N)</strong> — the expected best Sharpe of N zero-edge strategies.</p>
+  <p>It grows slowly (a log under a square root) but it never stops, and at honest N it is enormous:</p>
+  <table>
+    <tr><th>variants tried (N)</th><th>10</th><th>100</th><th>1,000</th></tr>
+    <tr><td>expected best Sharpe, pure luck (2 yrs data)</td><td>~1.1</td><td>~1.8</td><td>~2.3</td></tr>
+  </table>
+  <p>Nothing in that table is a tail event or bad luck — those are the <em>averages</em> of luck. The refined version is Bailey &amp; L&oacute;pez de Prado&rsquo;s expected maximum (the engine inside their <strong>deflated Sharpe ratio</strong>, 2014): E[max] &asymp; s &middot; [(1&minus;&gamma;)&middot;&Phi;<sup>&minus;1</sup>(1 &minus; 1/N) + &gamma;&middot;&Phi;<sup>&minus;1</sup>(1 &minus; 1/(N&middot;e))], where &Phi;<sup>&minus;1</sup> is the normal quantile and &gamma; &asymp; 0.5772. Tonight&rsquo;s code uses it as-is; the envelope &radic;(2 ln N) is its leading term — at N = 1,000 it overshoots (2.63 vs 2.30), so read the envelope as <em>the scale luck reaches for</em> and the BLdP number as <em>what luck produces on average</em>.</p>
+  <p>Two honest wrinkles. <strong>First, the max is itself a draw.</strong> Tonight&rsquo;s realized best-of-10 spiked to 1.52, well above its ~1.1 expectation, while the best-of-1,000 landed at 2.32 on an expectation of 2.30. Any single sweep realizes one sample of the max — sometimes tamer than the table, sometimes wilder. The table is the average over many sweeps, and it is already damning. <strong>Second, your real N is bigger than your spreadsheet.</strong> Every lookback you eyeballed and rejected counts. Every &ldquo;what if I add a filter&rdquo; you tested in your head counts. A small Pine grid — 10 lookbacks &times; 8 thresholds &times; 5 symbols — is 400 trials before lunch, and 400 trials on two years of data carries a luck bar around 2. And correlated variants (ten lookbacks of the same indicator) make the <em>effective</em> N smaller than the nominal count — BLdP&rsquo;s machinery absorbs that through the spread of the trial Sharpes — but since you can&rsquo;t measure the effective N exactly, the conservative move is to count the nominal one.</p>
+  <p>The fixes are discipline, not cleverness. <strong>Count trials honestly</strong> — log every variant you run (Day 67&rsquo;s experiment tracker exists for exactly this). <strong>Hold out data you never tune on</strong> and judge once: tonight&rsquo;s split-sample crowns a year-1 winner at 3.47 and watches it post 0.51 in year 2, ranked #312 of 1,000, while year 1&rsquo;s top 10 <em>average</em> &minus;0.24 out of sample against +0.01 for the whole field. That&rsquo;s the winner&rsquo;s curse with the mask off. <strong>Cut knobs</strong> — every parameter multiplies N. And <strong>demand the winner clear the luck bar for your N</strong>, not zero. Day 87 turns the holdout into a system (walk-forward); tonight is the number that tells you why you need one.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>It&rsquo;s the <strong>false-page problem</strong> from your own world. Wire 1,000 monitors to a perfectly healthy fleet, each with a small false-alarm rate, and you will be paged — constantly — by a system where nothing is wrong. The <em>any-of-many</em> view of noisy gauges is biased by construction: nobody gets paged by the 990 quiet monitors. A parameter sweep is a fleet of 1,000 gauges strapped to noise, and the backtest reports only the one that paged loudest. Same shape in A/B testing (ship the best of 1,000 config tweaks measured on noise and you&rsquo;ve shipped the luckiest measurement, not the best config) and in fuzzing (run long enough against <em>correct</em> code and the strangest input in the corpus is strange by selection). Trading translation, one line: every Pine sweep you&rsquo;ve ever run was tonight&rsquo;s experiment with your strategy names taped over the bars.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+<svg viewBox="0 0 680 396" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="396" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">1,000 pure-noise strategies: the right tail is selection, not skill</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">annualized Sharpe of each strategy over 504 days - every true Sharpe is exactly 0</text>
+<line x1="56.0" y1="316.0" x2="648.0" y2="316.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="50.0" y="319.0" text-anchor="end" font-size="8.5" fill="#888888">0</text>
+<line x1="56.0" y1="255.5" x2="648.0" y2="255.5" stroke="#e5e5e5" stroke-width="1"/>
+<text x="50.0" y="258.5" text-anchor="end" font-size="8.5" fill="#888888">60</text>
+<line x1="56.0" y1="195.0" x2="648.0" y2="195.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="50.0" y="198.0" text-anchor="end" font-size="8.5" fill="#888888">120</text>
+<line x1="56.0" y1="134.5" x2="648.0" y2="134.5" stroke="#e5e5e5" stroke-width="1"/>
+<text x="50.0" y="137.5" text-anchor="end" font-size="8.5" fill="#888888">180</text>
+<line x1="56.0" y1="74.0" x2="648.0" y2="74.0" stroke="#e5e5e5" stroke-width="1"/>
+<text x="50.0" y="77.0" text-anchor="end" font-size="8.5" fill="#888888">240</text>
+<rect x="56.0" y="315.0" width="40.8" height="1.0" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="76.4" y="311.0" text-anchor="middle" font-size="8" fill="#555555">1</text>
+<rect x="98.3" y="315.0" width="40.8" height="1.0" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="118.7" y="311.0" text-anchor="middle" font-size="8" fill="#555555">1</text>
+<rect x="140.6" y="305.9" width="40.8" height="10.1" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="161.0" y="301.9" text-anchor="middle" font-size="8" fill="#555555">10</text>
+<rect x="182.9" y="285.8" width="40.8" height="30.2" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="203.2" y="281.8" text-anchor="middle" font-size="8" fill="#555555">30</text>
+<rect x="225.1" y="231.3" width="40.8" height="84.7" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="245.5" y="227.3" text-anchor="middle" font-size="8" fill="#555555">84</text>
+<rect x="267.4" y="160.7" width="40.8" height="155.3" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="287.8" y="156.7" text-anchor="middle" font-size="8" fill="#555555">154</text>
+<rect x="309.7" y="90.1" width="40.8" height="225.9" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="330.1" y="86.1" text-anchor="middle" font-size="8" fill="#555555">224</text>
+<rect x="352.0" y="101.2" width="40.8" height="214.8" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="372.4" y="97.2" text-anchor="middle" font-size="8" fill="#555555">213</text>
+<rect x="394.3" y="167.8" width="40.8" height="148.2" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="414.7" y="163.8" text-anchor="middle" font-size="8" fill="#555555">147</text>
+<rect x="436.6" y="227.3" width="40.8" height="88.7" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="457.0" y="223.3" text-anchor="middle" font-size="8" fill="#555555">88</text>
+<rect x="478.9" y="280.7" width="40.8" height="35.3" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="499.2" y="276.7" text-anchor="middle" font-size="8" fill="#555555">35</text>
+<rect x="521.1" y="305.9" width="40.8" height="10.1" fill="#bcd7ff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="541.5" y="301.9" text-anchor="middle" font-size="8" fill="#555555">10</text>
+<rect x="563.4" y="313.0" width="40.8" height="3.0" fill="#f3b8b8" stroke="#d64545" stroke-width="0.8"/>
+<text x="583.8" y="309.0" text-anchor="middle" font-size="8" fill="#555555">3</text>
+<rect x="605.7" y="316.0" width="40.8" height="0.0" fill="#f3b8b8" stroke="#d64545" stroke-width="0.8"/>
+<line x1="352.0" y1="66.0" x2="352.0" y2="316.0" stroke="#1c1c1e" stroke-width="1.4"/>
+<text x="352.0" y="60.0" text-anchor="middle" font-size="9" fill="#1c1c1e" font-weight="bold">true Sharpe = 0</text>
+<line x1="512.8" y1="120.0" x2="512.8" y2="316.0" stroke="#d64545" stroke-width="1.8"/>
+<text x="507.8" y="108.0" text-anchor="end" font-size="9.5" fill="#b02a2a" font-weight="bold">best of 10: 1.52</text>
+<line x1="524.4" y1="96.0" x2="524.4" y2="316.0" stroke="#d64545" stroke-width="1.8"/>
+<text x="519.4" y="84.0" text-anchor="end" font-size="9.5" fill="#b02a2a" font-weight="bold">best of 100: 1.63</text>
+<line x1="597.7" y1="72.0" x2="597.7" y2="316.0" stroke="#d64545" stroke-width="1.8"/>
+<text x="592.7" y="60.0" text-anchor="end" font-size="9.5" fill="#b02a2a" font-weight="bold">best of 1000: 2.32</text>
+<text x="140.6" y="332.0" text-anchor="middle" font-size="9" fill="#555555">-2</text>
+<text x="246.3" y="332.0" text-anchor="middle" font-size="9" fill="#555555">-1</text>
+<text x="352.0" y="332.0" text-anchor="middle" font-size="9" fill="#555555">+0</text>
+<text x="457.7" y="332.0" text-anchor="middle" font-size="9" fill="#555555">+1</text>
+<text x="563.4" y="332.0" text-anchor="middle" font-size="9" fill="#555555">+2</text>
+<text x="340.0" y="350.0" text-anchor="middle" font-size="9.5" fill="#555555">annualized Sharpe (504 days of noise)</text>
+<text x="340.0" y="386.0" text-anchor="middle" font-size="9.5" fill="#b02a2a" font-weight="bold">the max marches right as N grows: luck scales like sqrt(2 ln N) - a 2.32 Sharpe from nothing</text>
+</svg>
+    <div class="caption">All 1,000 strategies are pure noise — true Sharpe exactly 0 — so the bell sits on zero, spread s &asymp; 0.71, just as theory says. The red markers are the nested winners from tonight&rsquo;s run: the best of the first 10 (1.52), of the first 100 (1.63), of all 1,000 (2.32). Nothing about the strategies changed as N grew — only the size of the haystack the needle was selected from.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, numpy only, fixed seed (84) — every digit reproduces. <strong>Part 1</strong> generates 1,000 noise strategies &times; 504 days and prints the best annualized Sharpe at N = 10 / 100 / 1,000 against both predictions (same s, same annualization on every column — apples to apples). <strong>Part 2</strong> inverts the envelope: how few tries does luck need to <em>expect</em> a 2.0 Sharpe, and how many noise strategies clear 1.0 and 1.5 by chance alone. <strong>Part 3</strong> is the honesty test: crown the best of 1,000 on year 1 only, then read its year-2 Sharpe and its rank. <strong>Part 4</strong> prints tonight&rsquo;s luck bar and the three fixes.</p>
+  <pre><code>&quot;&quot;&quot;Day 84 - Quant ML 2: The #1 Killer - Overfitting Backtests.
+
+Day 8 said &quot;overfitting = curve-fitting a backtest&quot; and left it
+as intuition. Today it gets a number. Run a thousand pure-noise
+&quot;strategies&quot; - daily returns drawn from a distribution with
+true mean ZERO, no edge anywhere - and look at the best one.
+It will show a Sharpe ratio most traders would brag about.
+Not because you got unlucky: because the MAXIMUM of N tries is
+a different distribution from a single try, and its expected
+value grows like sqrt(2 ln N).
+
+  Part 1  Best-of-N on noise. 1000 noise strategies x 504 days
+          (2 years). Print the best annualized Sharpe for
+          N = 10, 100, 1000 next to two predictions:
+            - the back-of-envelope bar: s * sqrt(2 ln N)
+            - the refined Bailey &amp; Lopez de Prado expected max
+          where s = sqrt(252/504) = 0.7071 is the standard
+          error of one annualized Sharpe estimate on 504 days
+          of noise: a single Sharpe estimate over T days has
+          std 1/sqrt(T) in daily units (Lo 2002), and
+          annualizing multiplies by sqrt(252).
+  Part 2  The flip side: how FEW trials luck needs. Solve the
+          envelope for a 2.0 Sharpe, and count how many of the
+          1000 noise strategies clear 1.0 and 1.5 by chance.
+  Part 3  The honesty test: split-sample. Crown the best of
+          1000 on year 1 only, then read its year-2 Sharpe.
+          If the edge was selection, it collapses to ~0.
+  Part 4  The luck bar for tonight&#x27;s N, and the three fixes:
+          count trials honestly, keep an untouched holdout,
+          cut knobs (each knob multiplies N).
+
+Correlated variants caveat (in the lesson): real parameter
+sweeps are correlated, so the effective N is smaller than the
+nominal count - the deflated Sharpe handles it through the
+variance of the trial Sharpes. Counting nominal N is the
+conservative choice, and it is the one used here.
+
+Runs on the ~/ai-lab venv: numpy only, no downloads, no paid
+APIs, fixed seed (84) - every digit below reproduces exactly.
+
+Expected output:
+
+  Part 1 - best-of-N on pure noise (true Sharpe of every strategy = 0)
+    one Sharpe estimate on 504 noise days: std s = sqrt(252/504) = 0.7071
+    best of    10 tries: 1.52   envelope s*sqrt(2 ln N) = 1.52   BLdP expected max = 1.11
+    best of   100 tries: 1.63   envelope s*sqrt(2 ln N) = 2.15   BLdP expected max = 1.79
+    best of  1000 tries: 2.32   envelope s*sqrt(2 ln N) = 2.63   BLdP expected max = 2.30
+  Part 2 - how little luck needs
+    trials for luck ALONE to expect a 2.0 Sharpe: ~55
+    noise strategies (of 1000) with Sharpe &gt; 1.0: 90
+    noise strategies (of 1000) with Sharpe &gt; 1.5: 18
+    P(at least one of 100 noise tries clears 1.5) = 81.9%
+  Part 3 - split-sample: crown on year 1, judge on year 2
+    year-1 winner: strategy #210  year-1 Sharpe 3.47  (best of 1000 on 252 days)
+    the same strategy, year 2: Sharpe 0.51  (rank #312 of 1000)
+    year-2 Sharpe of year-1&#x27;s top 10, average: -0.24
+    year-2 Sharpe of all 1000, average: 0.01
+  Part 4 - the luck bar and the fixes
+    after 1000 tries on 2 years of data, luck alone expects a best Sharpe of 2.30
+    a winner has to CLEAR that bar, not just 0 - and then
+    survive data it was never tuned on (Part 3).
+    fixes: log every trial (Day 67), hold out untouched
+    data, and cut knobs - every knob multiplies N.
+&quot;&quot;&quot;
+import numpy as np
+from statistics import NormalDist
+
+SEED = 84
+DAYS = 504                    # 2 years of daily bars
+YEAR = 252                    # trading days per year
+N_MAX = 1000                  # strategies in the sweep
+VOL = 0.01                    # 1% daily vol; Sharpe is scale-free
+
+Z = NormalDist()              # standard normal: cdf / inv_cdf
+GAMMA = 0.5772156649          # Euler-Mascheroni constant
+
+rng = np.random.default_rng(SEED)
+# 1000 &quot;strategies&quot;, each 504 days of PURE NOISE. True mean = 0.
+rets = rng.normal(0.0, VOL, size=(N_MAX, DAYS))
+
+
+def ann_sharpe(r):
+    &quot;&quot;&quot;Annualized Sharpe of daily returns along the last axis.&quot;&quot;&quot;
+    return r.mean(axis=-1) / r.std(axis=-1, ddof=1) * np.sqrt(YEAR)
+
+
+def expected_max(n, s):
+    &quot;&quot;&quot;Bailey &amp; Lopez de Prado&#x27;s expected maximum Sharpe of n
+    independent zero-edge trials whose Sharpe estimates have
+    std s:  s * [(1-g) Z(1 - 1/n) + g Z(1 - 1/(n e))].&quot;&quot;&quot;
+    a = Z.inv_cdf(1 - 1 / n)
+    b = Z.inv_cdf(1 - 1 / (n * np.e))
+    return s * ((1 - GAMMA) * a + GAMMA * b)
+
+
+# One noise strategy&#x27;s annualized Sharpe estimate over 504 days
+# has std s = sqrt(252)/sqrt(504): 1/sqrt(T) in daily units,
+# annualized by sqrt(252). Both prediction formulas use THIS s,
+# and the empirical maxima come from the same Sharpe numbers -
+# apples to apples.
+S_ERR = np.sqrt(YEAR / DAYS)
+
+print(&quot;Part 1 - best-of-N on pure noise (true Sharpe of every &quot;
+      &quot;strategy = 0)&quot;)
+print(f&quot;  one Sharpe estimate on {DAYS} noise days: std &quot;
+      f&quot;s = sqrt({YEAR}/{DAYS}) = {S_ERR:.4f}&quot;)
+S = ann_sharpe(rets)
+for n in (10, 100, 1000):
+    emp = S[:n].max()
+    env = S_ERR * np.sqrt(2 * np.log(n))
+    ref = expected_max(n, S_ERR)
+    print(f&quot;  best of {n:&gt;5} tries: {emp:.2f}   envelope &quot;
+          f&quot;s*sqrt(2 ln N) = {env:.2f}   BLdP expected max &quot;
+          f&quot;= {ref:.2f}&quot;)
+
+print(&quot;Part 2 - how little luck needs&quot;)
+n_for_2 = int(np.ceil(np.exp(0.5 * (2.0 / S_ERR) ** 2)))
+print(f&quot;  trials for luck ALONE to expect a 2.0 Sharpe: &quot;
+      f&quot;~{n_for_2}&quot;)
+for bar in (1.0, 1.5):
+    k = int((S &gt; bar).sum())
+    print(f&quot;  noise strategies (of {N_MAX}) with Sharpe &gt; &quot;
+          f&quot;{bar}: {k}&quot;)
+p1 = 1 - Z.cdf(1.5 / S_ERR)
+print(f&quot;  P(at least one of 100 noise tries clears 1.5) &quot;
+      f&quot;= {1 - (1 - p1) ** 100:.1%}&quot;)
+
+print(&quot;Part 3 - split-sample: crown on year 1, judge on year 2&quot;)
+S1 = ann_sharpe(rets[:, :YEAR])
+S2 = ann_sharpe(rets[:, YEAR:])
+best = int(S1.argmax())
+rank2 = int((S2 &gt; S2[best]).sum()) + 1
+top10 = S1.argsort()[::-1][:10]
+print(f&quot;  year-1 winner: strategy #{best}  year-1 Sharpe &quot;
+      f&quot;{S1[best]:.2f}  (best of {N_MAX} on {YEAR} days)&quot;)
+print(f&quot;  the same strategy, year 2: Sharpe {S2[best]:.2f}  &quot;
+      f&quot;(rank #{rank2} of {N_MAX})&quot;)
+print(f&quot;  year-2 Sharpe of year-1&#x27;s top 10, average: &quot;
+      f&quot;{S2[top10].mean():.2f}&quot;)
+print(f&quot;  year-2 Sharpe of all {N_MAX}, average: &quot;
+      f&quot;{S2.mean():.2f}&quot;)
+
+print(&quot;Part 4 - the luck bar and the fixes&quot;)
+print(f&quot;  after {N_MAX} tries on 2 years of data, luck alone &quot;
+      f&quot;expects a best Sharpe of {expected_max(N_MAX, S_ERR):.2f}&quot;)
+print(&quot;  a winner has to CLEAR that bar, not just 0 - and then&quot;)
+print(&quot;  survive data it was never tuned on (Part 3).&quot;)
+print(&quot;  fixes: log every trial (Day 67), hold out untouched&quot;)
+print(&quot;  data, and cut knobs - every knob multiplies N.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - best-of-N on pure noise (true Sharpe of every strategy = 0)
+  one Sharpe estimate on 504 noise days: std s = sqrt(252/504) = 0.7071
+  best of    10 tries: 1.52   envelope s*sqrt(2 ln N) = 1.52   BLdP expected max = 1.11
+  best of   100 tries: 1.63   envelope s*sqrt(2 ln N) = 2.15   BLdP expected max = 1.79
+  best of  1000 tries: 2.32   envelope s*sqrt(2 ln N) = 2.63   BLdP expected max = 2.30
+Part 2 - how little luck needs
+  trials for luck ALONE to expect a 2.0 Sharpe: ~55
+  noise strategies (of 1000) with Sharpe &gt; 1.0: 90
+  noise strategies (of 1000) with Sharpe &gt; 1.5: 18
+  P(at least one of 100 noise tries clears 1.5) = 81.9%
+Part 3 - split-sample: crown on year 1, judge on year 2
+  year-1 winner: strategy #210  year-1 Sharpe 3.47  (best of 1000 on 252 days)
+  the same strategy, year 2: Sharpe 0.51  (rank #312 of 1000)
+  year-2 Sharpe of year-1&#x27;s top 10, average: -0.24
+  year-2 Sharpe of all 1000, average: 0.01
+Part 4 - the luck bar and the fixes
+  after 1000 tries on 2 years of data, luck alone expects a best Sharpe of 2.30
+  a winner has to CLEAR that bar, not just 0 - and then
+  survive data it was never tuned on (Part 3).
+  fixes: log every trial (Day 67), hold out untouched
+  data, and cut knobs - every knob multiplies N.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run reproduces the four anchors: best of 1,000 = <strong>2.32</strong> against a BLdP expected max of <strong>2.30</strong> (luck, predicted to two decimals); <strong>~55</strong> trials for luck alone to expect a 2.0 Sharpe; 90 of 1,000 noise strategies over 1.0 without a single real edge among them; and the year-1 winner&rsquo;s collapse <strong>3.47 &rarr; 0.51</strong>, rank #312, with year 1&rsquo;s top 10 averaging &minus;0.24 out of sample. The keeper test, no notes: someone shows you a backtest — you ask &ldquo;how many variants did you try, including the ones you threw away?&rdquo;, compute s&middot;&radic;(2 ln N) on the spot, and say whether the winner cleared the luck bar or just won the lottery it entered 1,000 times.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and run the code. Spend your minutes on two lines: Part 1&rsquo;s best-of-1000 row (2.32 printed by pure noise, predicted at 2.30) and Part 3&rsquo;s winner collapse (3.47 &rarr; 0.51). If you can state the luck-bar formula and the three fixes from memory, you have the day — Part 2&rsquo;s arithmetic is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: what actually goes <em>into</em> a market model — returns, volatility, and the microstructure basics — and why raw price is almost never the right input.</p>
+  </div>
+
+  <div class="footer">Streak: 84 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
