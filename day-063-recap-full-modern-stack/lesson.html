@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recap: The Full Modern Stack on One Page — Day 63 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 63 of 100</span>
+  <h1>Recap: The Full Modern Stack on One Page</h1>
+  <p class="outcome">Tonight you'll be able to: compress all of Phase D (Days 51–62) into one sentence you can carry into any system-design interview — <em>a frontier model is a pretrained next-token engine, taught manners by SFT, steered by preferences (RM/DPO) or checkers (RLVR), measured by evals, given fresh facts by RAG, and given hands by tools — and serving it is a separate discipline (Phase E)</em> — and read the whole stack as one manifest: artifact in, artifact out, compute share per stage.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 20 compressed Phase A into a sentence, Day 34 did Phase B, Day 50 did Phase C. Phase D gets the same treatment tonight. Here is the sentence, and then we take it apart:</p>
+<p><strong>A frontier model is a pretrained next-token engine, taught manners by SFT, steered by preferences (RM/DPO) or checkers (RLVR), measured by evals, given fresh facts by RAG, and given hands by tools — and serving it is a separate discipline (Phase E).</strong></p>
+<p><strong>Build (Days 51–53).</strong> Everything starts as Day 50's machine, trained the Day 42 way — predict the next token — but on a pile so large that Day 51 needed its own arithmetic (C ≈ 6ND) to describe it. The output is a <em>base model</em>: immensely capable, no manners. SFT (Day 52) teaches the manners with (prompt, response) pairs and response-only loss. LoRA (Day 53) is not a stage but a <em>way to run stages</em>: freeze θ, train a tiny low-rank patch, merge it back — the difference between rebuilding a binary and shipping a hotfix.</p>
+<p><strong>Steer (Days 54–56).</strong> SFT can only clone demonstrations, so the stack adds two ways to say "better" without writing the perfect answer. <em>Preferences:</em> humans rank two responses, a reward model learns the ranking (Day 54), or DPO skips the middleman and trains on the pairs directly (Day 55). <em>Checkers:</em> where an answer can be verified — code compiles, math checks — RLVR (Day 56) pays the model only for work that passes, no human taste involved.</p>
+<p><strong>Measure (Day 57).</strong> Evals are the gate between "a checkpoint" and "a product." Benchmarks, slice analysis, vibes checks — imperfect instruments, honestly labeled as such on Day 57, but the rule stands: no scorecard, no ship. Nothing crosses into the served world without passing through this slot.</p>
+<p><strong>Attach at serving time (Days 58–62).</strong> The last four days change nothing about θ. RAG (Days 58–59) bolts fresh facts onto the request — retrieve chunks, stuff them into the prompt — because facts rot faster than models retrain. Tool use and the agent loop (Days 60–61) bolt on hands: the model calls functions, observes results, repeats. Prompt engineering (Day 62) is the cheapest attachment of all: structure in the request itself. Facts, hands, and steering text all live <em>outside</em> the artifact.</p>
+<p><strong>The economics are the punchline.</strong> In tonight's code, one plausible run of every stage is priced with 6ND: pretraining takes <strong>99.9893%</strong> of the training compute — one pretraining run equals 23,333 SFT runs. That asymmetry is <em>why</em> the stack has this shape. You train the expensive engine once, steer it for pocket change, and attach everything perishable at serving time. And serving itself — latency, batching, cost per token — is a whole separate discipline, which is why it gets its own phase starting tomorrow.</p>
+<p>Every Phase D day is a slot in this picture: 51–53 build, 54–56 steer, 57 measures, 58–62 attach. If a new technique confuses you next year, ask which slot it changes. It will be one of the four.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Read the stack as a <strong>release pipeline you already know how to run</strong>. Pretraining is building the base OS image: the whole build farm, occupied for weeks, producing one artifact everything else derives from. SFT and LoRA are configuration layers on that image — tiny, fast, rebuilt a hundred times while the base image is built once. Preferences and RLVR are the review process that shapes what the team ships; evals are CI — the gate an artifact does not pass, it does not deploy. Then production is a different world with different on-call rules: the running service reads fresh state from a database instead of baking it into the image (RAG), calls downstream APIs instead of growing the binary (tools), and takes its behavior from the request and config, not from a rebuild (prompts). Build-time versus run-time — the oldest split in your world — is the whole diagram.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 676" font-family="system-ui, sans-serif" role="img" aria-label="The full modern stack as one vertical pipeline">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d99a00"/></marker>
+  </defs>
+  <text x="26" y="151" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="2" fill="#7a5cff" transform="rotate(-90 26 151)">RUN TIME</text>
+  <text x="26" y="472" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="2" fill="#0a54c2" transform="rotate(-90 26 472)">BUILD TIME</text>
+  <line x1="150" y1="232" x2="288" y2="232" stroke="#ccc" stroke-dasharray="4 4"/>
+  <line x1="312" y1="232" x2="450" y2="232" stroke="#ccc" stroke-dasharray="4 4"/>
+<rect x="170" y="16" width="260" height="42" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.6"/>
+    <text x="300.0" y="36" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">SERVED PRODUCT</text>
+    <text x="300.0" y="54" text-anchor="middle" font-size="10.5" fill="#555">the answer (or action) the user gets</text>
+<rect x="170" y="82" width="260" height="138" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.6"/>
+    <text x="300.0" y="102" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">SERVING — per request</text>
+    <text x="300.0" y="120" text-anchor="middle" font-size="10.5" fill="#555">assemble the prompt, generate,</text>
+    <text x="300.0" y="136" text-anchor="middle" font-size="10.5" fill="#555">call tools, observe, answer</text>
+    <text x="300.0" y="152" text-anchor="middle" font-size="10.5" fill="#555">the loop runs per request</text>
+    <text x="300.0" y="168" text-anchor="middle" font-size="10.5" fill="#555">Phase E is this box, full-time</text>
+<rect x="170" y="244" width="260" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+    <text x="300.0" y="264" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">θ — THE ALIGNED MODEL</text>
+    <text x="300.0" y="282" text-anchor="middle" font-size="10.5" fill="#555">one frozen, versioned artifact</text>
+<rect x="170" y="310" width="260" height="42" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.6"/>
+    <text x="300.0" y="330" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">57 · EVALS — the gate</text>
+    <text x="300.0" y="348" text-anchor="middle" font-size="10.5" fill="#555">scorecard: ship / no-ship</text>
+<rect x="170" y="376" width="260" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+    <text x="300.0" y="396" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">54–56 · STEER</text>
+    <text x="300.0" y="414" text-anchor="middle" font-size="10.5" fill="#555">preferences: reward model / DPO</text>
+    <text x="300.0" y="430" text-anchor="middle" font-size="10.5" fill="#555">checkers: RLVR grades it</text>
+<rect x="170" y="452" width="260" height="42" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+    <text x="300.0" y="472" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">52 · SFT</text>
+    <text x="300.0" y="490" text-anchor="middle" font-size="10.5" fill="#555">instruction pairs teach manners</text>
+<rect x="170" y="518" width="260" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.6"/>
+    <text x="300.0" y="538" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">51 · PRETRAINING</text>
+    <text x="300.0" y="556" text-anchor="middle" font-size="10.5" fill="#555">next-token prediction at scale</text>
+    <text x="300.0" y="572" text-anchor="middle" font-size="10.5" fill="#555">≈ 99.99% of training FLOPs</text>
+<rect x="170" y="594" width="260" height="42" rx="8" fill="#f5f5f5" stroke="#999" stroke-width="1.6"/>
+    <text x="300.0" y="614" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">RAW DATA — the pile</text>
+    <text x="300.0" y="632" text-anchor="middle" font-size="10.5" fill="#555">web text · code · books</text>
+<rect x="478" y="90" width="192" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+    <text x="574.0" y="110" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">58–59 · RAG</text>
+    <text x="574.0" y="128" text-anchor="middle" font-size="10" fill="#555">fresh facts, per request</text>
+<rect x="478" y="140" width="192" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+    <text x="574.0" y="160" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">60–61 · TOOLS + LOOP</text>
+    <text x="574.0" y="178" text-anchor="middle" font-size="10" fill="#555">hands: act, observe, repeat</text>
+<rect x="478" y="190" width="192" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+    <text x="574.0" y="210" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">62 · PROMPTS</text>
+    <text x="574.0" y="228" text-anchor="middle" font-size="10" fill="#555">steer the request itself</text>
+<rect x="478" y="452" width="192" height="42" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.6"/>
+    <text x="574.0" y="472" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c1c1e">53 · LoRA / QLoRA</text>
+    <text x="574.0" y="490" text-anchor="middle" font-size="10" fill="#555">the cheap patch, any stage</text>
+  <line x1="300" y1="594" x2="300" y2="572" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="518" x2="300" y2="496" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="452" x2="300" y2="430" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="376" x2="300" y2="354" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="310" x2="300" y2="288" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="244" x2="300" y2="222" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="300" y1="82" x2="300" y2="60" stroke="#888" stroke-width="1.8" marker-end="url(#arr)"/>
+  <line x1="476" y1="111" x2="434" y2="111" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrA)"/>
+  <line x1="476" y1="161" x2="434" y2="161" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrA)"/>
+  <line x1="476" y1="211" x2="434" y2="211" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrA)"/>
+  <line x1="476" y1="473" x2="434" y2="473" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrA)"/>
+  <text x="340" y="664" text-anchor="middle" font-size="10" fill="#777">read bottom-up: data in at the floor, product out at the roof · every tag is a day you did</text>
+</svg>
+    <div class="caption">The one page to keep. Bottom: build time — raw data becomes a base model (51), learns manners (52, cheaply patched by 53), gets steered (54–56), and must pass the gate (57) before it counts as an artifact. Top: run time — the frozen model is served per request, with RAG, tools and prompts attached at serving time (58–62), never baked in. Phase E lives inside the serving box.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three views of the stack, in pure stdlib arithmetic — tonight the artifact <em>is</em> the map. The program is a <strong>stack manifest</strong>: the pipeline written the way you'd draw it in a system-design interview. <strong>Part 1</strong> prints the artifact chain — every stage's input and output, Day 51 to Day 62. <strong>Part 2</strong> prices each training stage with Day 51's rule (C ≈ 6ND, reference model 7B parameters) and prints its share of the total. <strong>Part 3</strong> groups the twelve days into four slots, prints the sentence, and asserts the verdict: shares sum to 100%, and pretraining alone is over 99.9% of it.</p>
+  <pre><code>&quot;&quot;&quot;Day 63 - Recap: The Full Modern Stack on One Page.
+
+Phase D recap, same treatment as Days 20, 34 and 50: one
+carry sentence, a slot map of every day in the phase, and a
+small artifact that makes the map executable. The sentence:
+
+    A frontier model is a pretrained next-token engine,
+    taught manners by SFT, steered by preferences (RM/DPO)
+    or checkers (RLVR), measured by evals, given fresh
+    facts by RAG, and given hands by tools - and serving
+    it is a separate discipline (Phase E).
+
+Tonight the map becomes a MANIFEST: the stack written the
+way you would draw it in a system-design interview. Every
+stage declares its input artifact, its output artifact,
+the data it eats, and its share of the training compute -
+counted with Day 51&#x27;s rule of thumb, C ~ 6 * N * D (six
+times parameters times tokens seen).
+
+Reference model, stated so the arithmetic is checkable:
+N = 7e9 parameters, pretrained on 1.4e12 tokens. The
+post-training token counts are one plausible run of each
+stage, stated in the table - change them and the verdict
+does not move, because pretraining is not ahead by a
+little. It is ahead by four orders of magnitude.
+
+  Part 1  The artifact chain: what each stage hands the
+          next - corpus to base model to instruct model
+          to aligned model to frozen artifact - plus the
+          two serving-time attachments, which train
+          nothing: RAG&#x27;s index and the agent&#x27;s tools.
+  Part 2  The compute table: 6ND per training stage and
+          each stage&#x27;s share of the total. Evals spend
+          inference, not gradient; serving stages spend
+          nothing at build time at all.
+  Part 3  The slot map + checks: build (51-53), steer
+          (54-56), measure (57), serve-time (58-62) -
+          and the printed sentence, for your notes.
+
+Pure stdlib, deterministic arithmetic only - no RNG, no
+torch needed, no APIs, no downloads. Runs as-is in the
+~/ai-lab venv on the MacBook.
+
+Expected output:
+
+  Part 1 - the stack as an artifact chain (Days 51-62)
+    Day 51  Pretraining   raw text corpus -&gt; base model (theta)
+    Day 52  SFT           base model -&gt; instruct model
+    Day 53  LoRA run      instruct model -&gt; adapter (delta-W)
+    Day 54  Reward model  instruct model -&gt; reward model r(x, y)
+    Day 55  DPO           instruct model -&gt; aligned model
+    Day 56  RLVR          instruct model -&gt; reasoning model
+    Day 57  Evals         candidate model -&gt; scorecard: ship / no-ship
+    Day 58  RAG index     his documents -&gt; vector index
+    Day 59  RAG loop      vector index + question -&gt; grounded answer
+    Day 60  Tool use      aligned model -&gt; model that calls functions
+    Day 61  Agent loop    model + tools -&gt; agent: plan-act-observe
+    Day 62  Prompts       any request -&gt; structured request
+    read it bottom-up in the diagram: every arrow is a
+    handoff you could version, store, and roll back.
+  Part 2 - training compute by stage (C ~ 6ND, Day 51)
+    day  stage             tokens      FLOPs  share
+     51  Pretraining     1.40e+12   5.88e+22  99.9893%
+     52  SFT             6.00e+07   2.52e+18  0.0043%
+     53  LoRA run        1.00e+07   4.20e+17  0.0007%
+     54  Reward model    2.00e+07   8.40e+17  0.0014%
+     55  DPO             1.00e+07   4.20e+17  0.0007%
+     56  RLVR            5.00e+07   2.10e+18  0.0036%
+     57  Evals                  -          -  no training
+     58  RAG index              -          -  no training
+     59  RAG loop               -          -  no training
+     60  Tool use               -          -  no training
+     61  Agent loop             -          -  no training
+     62  Prompts                -          -  no training
+    total training compute: 5.88e+22 FLOPs
+    one pretraining run = 23,333 SFT runs
+    everything after Day 51 is a rounding error in FLOPs -
+    which is exactly why the stack is economical: train the
+    engine once, steer it cheaply, attach facts and hands
+    at serving time instead of retraining.
+  Part 3 - the slot map
+    BUILD (51-53)      make the engine, then teach it manners - LoRA is how you run these stages cheaply
+    STEER (54-56)      preferences point it (RM, DPO); checkers grade it (RLVR) - two ways to say &#x27;better&#x27;
+    MEASURE (57)       evals are the gate between a checkpoint and a product - no scorecard, no ship
+    SERVE-TIME (58-62) RAG bolts on fresh facts, tools bolt on hands, prompts steer the request - zero retraining
+    the sentence:
+      A frontier model is a pretrained next-token engine, taught manners
+      by SFT, steered by preferences (RM/DPO) or checkers (RLVR),
+      measured by evals, given fresh facts by RAG, and given hands by
+      tools - and serving it is a separate discipline (Phase E).
+    checks: shares sum to 100.0000% - pretraining share 99.9893% &gt; 99.9% - serving stages train 0 parameters
+  verdict: twelve days, four slots, one pipeline - if a new technique confuses you, ask which slot it changes.
+&quot;&quot;&quot;
+import textwrap
+
+N = 7_000_000_000  # reference model: 7B parameters
+
+
+def flops(tokens):
+    &quot;&quot;&quot;Day 51&#x27;s rule: training compute ~ 6 * N * D FLOPs.&quot;&quot;&quot;
+    return 6 * N * tokens
+
+
+# The manifest. tokens=None marks a stage that runs no
+# gradient training: a gate (evals) or a serving-time
+# attachment (RAG, tools, the agent loop, prompts).
+STAGES = [
+    # day, stage, input artifact, output artifact, data, train tokens
+    (51, &quot;Pretraining&quot;, &quot;raw text corpus&quot;, &quot;base model (theta)&quot;,
+     &quot;unlabeled tokens&quot;, 1_400_000_000_000),
+    (52, &quot;SFT&quot;, &quot;base model&quot;, &quot;instruct model&quot;,
+     &quot;(prompt, response) pairs&quot;, 60_000_000),
+    (53, &quot;LoRA run&quot;, &quot;instruct model&quot;, &quot;adapter (delta-W)&quot;,
+     &quot;task pairs, 0.1% of theta trained&quot;, 10_000_000),
+    (54, &quot;Reward model&quot;, &quot;instruct model&quot;, &quot;reward model r(x, y)&quot;,
+     &quot;chosen / rejected pairs&quot;, 20_000_000),
+    (55, &quot;DPO&quot;, &quot;instruct model&quot;, &quot;aligned model&quot;,
+     &quot;the same pairs, no RM trained&quot;, 10_000_000),
+    (56, &quot;RLVR&quot;, &quot;instruct model&quot;, &quot;reasoning model&quot;,
+     &quot;problems + a checker&quot;, 50_000_000),
+    (57, &quot;Evals&quot;, &quot;candidate model&quot;, &quot;scorecard: ship / no-ship&quot;,
+     &quot;benchmark sets (inference only)&quot;, None),
+    (58, &quot;RAG index&quot;, &quot;his documents&quot;, &quot;vector index&quot;,
+     &quot;chunks + embeddings&quot;, None),
+    (59, &quot;RAG loop&quot;, &quot;vector index + question&quot;, &quot;grounded answer&quot;,
+     &quot;top-k chunks in the prompt&quot;, None),
+    (60, &quot;Tool use&quot;, &quot;aligned model&quot;, &quot;model that calls functions&quot;,
+     &quot;tool schemas (JSON)&quot;, None),
+    (61, &quot;Agent loop&quot;, &quot;model + tools&quot;, &quot;agent: plan-act-observe&quot;,
+     &quot;tool results, fed back&quot;, None),
+    (62, &quot;Prompts&quot;, &quot;any request&quot;, &quot;structured request&quot;,
+     &quot;instructions + examples&quot;, None),
+]
+
+# ---------- Part 1: the artifact chain ----------
+print(&quot;Part 1 - the stack as an artifact chain (Days 51-62)&quot;)
+for day, stage, inp, out, data, _ in STAGES:
+    print(f&quot;  Day {day}  {stage:&lt;13} {inp} -&gt; {out}&quot;)
+print(&quot;  read it bottom-up in the diagram: every arrow is a&quot;)
+print(&quot;  handoff you could version, store, and roll back.&quot;)
+
+# ---------- Part 2: who eats the compute ----------
+print(&quot;Part 2 - training compute by stage (C ~ 6ND, Day 51)&quot;)
+total = sum(flops(t) for *_, t in STAGES if t)
+print(f&quot;  {&#x27;day&#x27;:&gt;3}  {&#x27;stage&#x27;:&lt;13} {&#x27;tokens&#x27;:&gt;10}  &quot;
+      f&quot;{&#x27;FLOPs&#x27;:&gt;9}  share&quot;)
+for day, stage, _, _, _, t in STAGES:
+    if t is None:
+        print(f&quot;  {day:&gt;3}  {stage:&lt;13} {&#x27;-&#x27;:&gt;10}  {&#x27;-&#x27;:&gt;9}  &quot;
+              &quot;no training&quot;)
+    else:
+        share = 100.0 * flops(t) / total
+        print(f&quot;  {day:&gt;3}  {stage:&lt;13} {t:&gt;10.2e}  &quot;
+              f&quot;{flops(t):&gt;9.2e}  {share:.4f}%&quot;)
+pre_share = 100.0 * flops(STAGES[0][5]) / total
+print(f&quot;  total training compute: {total:.2e} FLOPs&quot;)
+print(f&quot;  one pretraining run = &quot;
+      f&quot;{flops(STAGES[0][5]) // flops(STAGES[1][5]):,} SFT runs&quot;)
+print(&quot;  everything after Day 51 is a rounding error in FLOPs -&quot;)
+print(&quot;  which is exactly why the stack is economical: train the&quot;)
+print(&quot;  engine once, steer it cheaply, attach facts and hands&quot;)
+print(&quot;  at serving time instead of retraining.&quot;)
+
+# ---------- Part 3: the slot map + the sentence ----------
+print(&quot;Part 3 - the slot map&quot;)
+SLOTS = [
+    (&quot;BUILD (51-53)&quot;, &quot;make the engine, then teach it manners - &quot;
+     &quot;LoRA is how you run these stages cheaply&quot;),
+    (&quot;STEER (54-56)&quot;, &quot;preferences point it (RM, DPO); checkers &quot;
+     &quot;grade it (RLVR) - two ways to say &#x27;better&#x27;&quot;),
+    (&quot;MEASURE (57)&quot;, &quot;evals are the gate between a checkpoint &quot;
+     &quot;and a product - no scorecard, no ship&quot;),
+    (&quot;SERVE-TIME (58-62)&quot;, &quot;RAG bolts on fresh facts, tools bolt &quot;
+     &quot;on hands, prompts steer the request - zero retraining&quot;),
+]
+for name, desc in SLOTS:
+    print(f&quot;  {name:&lt;18} {desc}&quot;)
+SENTENCE = (&quot;A frontier model is a pretrained next-token engine, &quot;
+            &quot;taught manners by SFT, steered by preferences (RM/DPO) &quot;
+            &quot;or checkers (RLVR), measured by evals, given fresh &quot;
+            &quot;facts by RAG, and given hands by tools - and serving &quot;
+            &quot;it is a separate discipline (Phase E).&quot;)
+print(&quot;  the sentence:&quot;)
+for line in textwrap.wrap(SENTENCE, 66):
+    print(f&quot;    {line}&quot;)
+shares_sum = sum(100.0 * flops(t) / total
+                 for *_, t in STAGES if t)
+assert abs(shares_sum - 100.0) &lt; 1e-6
+assert pre_share &gt; 99.9
+print(f&quot;  checks: shares sum to {shares_sum:.4f}% - pretraining &quot;
+      f&quot;share {pre_share:.4f}% &gt; 99.9% - serving stages train &quot;
+      &quot;0 parameters&quot;)
+print(&quot;verdict: twelve days, four slots, one pipeline - if a new &quot;
+      &quot;technique confuses you, ask which slot it changes.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - the stack as an artifact chain (Days 51-62)
+  Day 51  Pretraining   raw text corpus -&gt; base model (theta)
+  Day 52  SFT           base model -&gt; instruct model
+  Day 53  LoRA run      instruct model -&gt; adapter (delta-W)
+  Day 54  Reward model  instruct model -&gt; reward model r(x, y)
+  Day 55  DPO           instruct model -&gt; aligned model
+  Day 56  RLVR          instruct model -&gt; reasoning model
+  Day 57  Evals         candidate model -&gt; scorecard: ship / no-ship
+  Day 58  RAG index     his documents -&gt; vector index
+  Day 59  RAG loop      vector index + question -&gt; grounded answer
+  Day 60  Tool use      aligned model -&gt; model that calls functions
+  Day 61  Agent loop    model + tools -&gt; agent: plan-act-observe
+  Day 62  Prompts       any request -&gt; structured request
+  read it bottom-up in the diagram: every arrow is a
+  handoff you could version, store, and roll back.
+Part 2 - training compute by stage (C ~ 6ND, Day 51)
+  day  stage             tokens      FLOPs  share
+   51  Pretraining     1.40e+12   5.88e+22  99.9893%
+   52  SFT             6.00e+07   2.52e+18  0.0043%
+   53  LoRA run        1.00e+07   4.20e+17  0.0007%
+   54  Reward model    2.00e+07   8.40e+17  0.0014%
+   55  DPO             1.00e+07   4.20e+17  0.0007%
+   56  RLVR            5.00e+07   2.10e+18  0.0036%
+   57  Evals                  -          -  no training
+   58  RAG index              -          -  no training
+   59  RAG loop               -          -  no training
+   60  Tool use               -          -  no training
+   61  Agent loop             -          -  no training
+   62  Prompts                -          -  no training
+  total training compute: 5.88e+22 FLOPs
+  one pretraining run = 23,333 SFT runs
+  everything after Day 51 is a rounding error in FLOPs -
+  which is exactly why the stack is economical: train the
+  engine once, steer it cheaply, attach facts and hands
+  at serving time instead of retraining.
+Part 3 - the slot map
+  BUILD (51-53)      make the engine, then teach it manners - LoRA is how you run these stages cheaply
+  STEER (54-56)      preferences point it (RM, DPO); checkers grade it (RLVR) - two ways to say &#x27;better&#x27;
+  MEASURE (57)       evals are the gate between a checkpoint and a product - no scorecard, no ship
+  SERVE-TIME (58-62) RAG bolts on fresh facts, tools bolt on hands, prompts steer the request - zero retraining
+  the sentence:
+    A frontier model is a pretrained next-token engine, taught manners
+    by SFT, steered by preferences (RM/DPO) or checkers (RLVR),
+    measured by evals, given fresh facts by RAG, and given hands by
+    tools - and serving it is a separate discipline (Phase E).
+  checks: shares sum to 100.0000% - pretraining share 99.9893% &gt; 99.9% - serving stages train 0 parameters
+verdict: twelve days, four slots, one pipeline - if a new technique confuses you, ask which slot it changes.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints the whole stack: Part 1's twelve-stage artifact chain (corpus → base model → instruct model → aligned model, plus the serving-time attachments), Part 2's compute table with pretraining at <strong>99.9893%</strong> and the line <em>one pretraining run = 23,333 SFT runs</em>, and Part 3's checks line confirming the shares sum to 100.0000%. The keeper test, no notes allowed: someone says "frontier model pipeline" and you say the sentence — then take any technique they name and file it: build, steer, measure, or attach.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea" and study the diagram until you can redraw it: a vertical pipeline, four build-time stages under one frozen artifact, attachments hanging off the serving box. Then run the code and read only Part 2's table — the 99.9893% is the number that explains the entire architecture of the industry. If you can say the sentence and explain why RAG is drawn on the side instead of in the column, you have the recap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase E opens — we climb inside the serving box at the top of tonight's diagram, where the question stops being "how do we build it" and becomes "how do we run it for a thousand people at once."</p>
+  </div>
+
+  <div class="footer">Streak: 63 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
