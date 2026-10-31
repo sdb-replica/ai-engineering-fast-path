@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FSDP &amp; DeepSpeed: Shard the State, Gather Just in Time — Day 76 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 76 of 100</span>
+  <h1>FSDP &amp; DeepSpeed: Shard the State, Gather Just in Time</h1>
+  <p class="outcome">Tonight you'll be able to: read any FSDP or DeepSpeed ZeRO setup and say exactly what is sharded at each stage, what one GPU actually holds for a 7B and a 70B model, and what the sharding costs on the wire &mdash; in numbers you computed yourself.</p>
+
+  <h2>The one idea</h2>
+  <p>Three days of problem, one day of product. Day 73 priced the wall: training state runs about 16 bytes per parameter, so a 70B model owes 1,120 GB before a single activation. Day 74&rsquo;s data parallelism (DP) scaled the compute but not the bill &mdash; every GPU holds a full replica of the model, so every GPU owes the full 16 bytes per parameter, and adding GPUs does not move the per-GPU debt. Day 75 split the model itself across devices. Tonight is the third answer, and the one you will actually meet in job descriptions: keep data parallelism&rsquo;s simple shape &mdash; every worker trains on its own shard of the data, all workers step in lockstep &mdash; but <strong>shard the training state instead of replicating it</strong>. Two frameworks automate it: <strong>FSDP</strong> (Fully Sharded Data Parallel, built into PyTorch) and <strong>DeepSpeed</strong> (Microsoft&rsquo;s training library), whose <strong>ZeRO</strong> &mdash; Zero Redundancy Optimizer &mdash; stages are the ladder in tonight&rsquo;s diagram. Same core trick, two addresses.</p>
+<p><strong>The one idea:</strong> of the 16 bytes per parameter, almost none of it is needed by a given GPU at a given moment. To compute one layer, a GPU needs <em>that layer&rsquo;s</em> parameters &mdash; all of them, briefly &mdash; and nothing else. So each GPU permanently owns 1/N of everything: 1/N of the parameter shards, 1/N of the gradients, 1/N of the optimizer states. When a layer&rsquo;s turn comes in the forward pass, the fleet <strong>all-gathers</strong> that layer&rsquo;s full parameters from their owners (the collective where everyone ends up holding everyone&rsquo;s pieces &mdash; Day 74&rsquo;s vocabulary), the layer computes, and the gathered copy is dropped. The backward pass gathers it again, and the layer&rsquo;s gradients are <strong>reduce-scattered</strong> &mdash; summed across the fleet and left as shards with their owners &mdash; so each GPU&rsquo;s optimizer step updates only the shard it owns. The full model exists on any one GPU only one layer at a time: a working set, not a residence. Per-GPU memory falls toward 16/N bytes per parameter; what grows is traffic on the wire. That trade &mdash; memory for bandwidth &mdash; is the entire lesson, and Part 3 prices it.</p>
+<p>One bookkeeping note before the ladder. Day 73 sliced the 16 as fp32 master (4) + fp32 grads (4) + Adam m (4) + v (4), and warned that frameworks mix dtypes differently. ZeRO&rsquo;s own slicing &mdash; tonight&rsquo;s, because the stages are defined over it &mdash; is bf16 params, the compute copy (2) + bf16 grads (2) + optimizer states (12) = fp32 master (4) + m (4) + v (4). Same 16 total. What matters is what the stages shard, and optimizer states are 12 of the 16 bytes &mdash; which is why they go first.</p>
+<p><strong>The ladder.</strong> <strong>ZeRO-1</strong> shards only the optimizer states: params and grads stay whole on every GPU (2 + 2), the states divide by N &mdash; 4 + 12/N bytes per parameter. <strong>ZeRO-2</strong> shards the gradients too: 2 + 14/N. <strong>ZeRO-3</strong> shards the parameters themselves: 16/N, nothing replicated. That stage is FSDP&rsquo;s default full sharding, which is why the two names share a row in every table tonight. Read Part 1&rsquo;s table by its shape, not its digits: stage 1 takes the biggest single bite, each further stage buys less at N=8 and more at N=64, and only stage 3 makes residency fall without limit as the fleet grows. And notice what is <em>not</em> in these numbers: activations (Day 73) remain a per-GPU bill on top &mdash; sharding the state does not shard your micro-batch.</p>
+<p><strong>The honest cost is communication</strong>, and it lands in two places. First, volume: stages 1 and 2 sync the same gradient bytes plain DP does (the ZeRO paper&rsquo;s own accounting &mdash; a reduce-scatter moves what an all-reduce moves), but stage 3 must also move the parameters themselves: a full all-gather in the forward pass and another in the backward, plus the gradient reduce-scatter &mdash; 1.5&times; DP&rsquo;s total traffic per step, priced in Part 3 at Day 74&rsquo;s 50 GB/s. Second, latency: a layer cannot start until its gather lands, so the frameworks <strong>prefetch</strong> &mdash; gather layer k+1 while layer k computes &mdash; overlapping the wire with the math. When the overlap works you pay mostly volume; when the interconnect is slow (no NVLink inside the node, thin Ethernet between nodes), the gathers sit exposed and sharding can train <em>slower</em> than a smaller model on plain DP. Sharding is not free memory. It is memory bought with bandwidth, at an exchange rate your interconnect sets.</p>
+<p><strong>When each applies.</strong> If model + states fit per GPU with room for activations, plain DDP (PyTorch&rsquo;s DistributedDataParallel) is the right answer and sharding is pure overhead. If the optimizer states are the overflow &mdash; the classic 7B&ndash;13B fine-tune that almost fits &mdash; ZeRO-1 or ZeRO-2 is the sweet spot: most of the memory win, none of the extra wire traffic. If even the parameters don&rsquo;t fit, or you are pretraining at 70B+, it is ZeRO-3 / FSDP, on hardware with the interconnect to feed it. Between the frameworks: FSDP lives inside PyTorch and wraps your model module by module (the sharding unit is a wrapped block, usually one transformer layer), so it composes with the rest of the PyTorch stack; DeepSpeed is a separate library driven by a JSON config, climbs the same ladder by stage number, and adds ZeRO-Offload / ZeRO-Infinity &mdash; spilling shards to CPU RAM or NVMe when even 16/N is too much. The two usages, as sketches:</p>
+<p><strong>Sketch &mdash; not run today</strong> (a multi-GPU job; the MacBook has one GPU). PyTorch FSDP:</p>
+<pre><code>import torch
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+
+model = FSDP(model, auto_wrap_policy=transformer_auto_wrap_policy)
+# training loop unchanged: each wrapped block's params are
+# all-gathered for its forward/backward, then freed again</code></pre>
+<p><strong>Sketch &mdash; not run today</strong> (same reason). DeepSpeed ZeRO, where the config carries the decision:</p>
+<pre><code># ds_config.json: { "zero_optimization": { "stage": 3 } }
+import deepspeed
+
+model, optimizer, _, _ = deepspeed.initialize(
+    model=model, model_parameters=model.parameters(),
+    config="ds_config.json")
+# same loop either way - the stage number climbs the ladder</code></pre>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You have run this design for years &mdash; it is replication vs sharding, the storage trade in a new uniform. Plain DP is full replication: every node stores every object, reads never leave the node, and the capacity bill is the dataset times the fleet. ZeRO is sharding with fetch-on-read: each node owns a shard, a read materializes the object locally, uses it, and evicts it &mdash; the gathered layer is a cache entry whose lifetime is one layer&rsquo;s compute, and prefetch is readahead. You would never replicate 1.12 TB to 64 nodes just to avoid fetches; the frameworks simply refuse to do the GPU version of it. And the failure mode is the familiar one too: shard over a slow link and the fetches &mdash; not the disks, here not the FLOPs &mdash; become the system.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 606" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="606" fill="#ffffff"/>
+<text x="340" y="26" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">The ZeRO ladder: shard more, hold less (70B model, N = 64 GPUs)</text>
+<text x="340" y="44" text-anchor="middle" font-size="9.5" fill="#666666">One row per stage - each box is one GPU, and every GPU in the row holds the same thing</text>
+<rect x="96" y="54" width="12" height="9" fill="#0a7aff"/>
+<text x="112" y="62" font-size="9" fill="#1c1c1e">params (bf16)</text>
+<rect x="204.2" y="54" width="12" height="9" fill="#22a355"/>
+<text x="220.2" y="62" font-size="9" fill="#1c1c1e">grads (bf16)</text>
+<rect x="307.0" y="54" width="12" height="9" fill="#d99a00"/>
+<text x="323.0" y="62" font-size="9" fill="#1c1c1e">optimizer states: fp32 master + Adam m + v</text>
+<text x="12" y="98" font-size="11" fill="#1c1c1e" font-weight="bold">Plain DP</text>
+<text x="12" y="114" font-size="8.5" fill="#555555">replicate everything</text>
+<text x="12" y="134" font-size="12.5" fill="#1c1c1e" font-weight="bold">1120.0 GB/GPU</text>
+<text x="12" y="150" font-size="8" fill="#555555">P 2.00 · G 2.00 · O 12.00</text>
+<text x="12" y="162" font-size="8" fill="#555555">B per param, held</text>
+<rect x="150" y="76" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="158" y="90" font-size="8.5" fill="#666666">GPU 1</text>
+<text x="158" y="110" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="172" y="98" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="172" y="98" width="92" height="15" fill="#0a7aff"/>
+<text x="218.0" y="109.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="158" y="132" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="172" y="120" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="172" y="120" width="92" height="15" fill="#22a355"/>
+<text x="218.0" y="131.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="158" y="154" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="172" y="142" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="172" y="142" width="92" height="15" fill="#d99a00"/>
+<text x="218.0" y="153.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">12 B - all of it</text>
+<rect x="282" y="76" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="290" y="90" font-size="8.5" fill="#666666">GPU 2</text>
+<text x="290" y="110" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="304" y="98" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="304" y="98" width="92" height="15" fill="#0a7aff"/>
+<text x="350.0" y="109.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="290" y="132" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="304" y="120" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="304" y="120" width="92" height="15" fill="#22a355"/>
+<text x="350.0" y="131.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="290" y="154" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="304" y="142" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="304" y="142" width="92" height="15" fill="#d99a00"/>
+<text x="350.0" y="153.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">12 B - all of it</text>
+<rect x="414" y="76" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="422" y="90" font-size="8.5" fill="#666666">GPU 3</text>
+<text x="422" y="110" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="436" y="98" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="436" y="98" width="92" height="15" fill="#0a7aff"/>
+<text x="482.0" y="109.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="422" y="132" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="436" y="120" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="436" y="120" width="92" height="15" fill="#22a355"/>
+<text x="482.0" y="131.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="422" y="154" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="436" y="142" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="436" y="142" width="92" height="15" fill="#d99a00"/>
+<text x="482.0" y="153.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">12 B - all of it</text>
+<rect x="546" y="76" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="554" y="90" font-size="8.5" fill="#666666">GPU 4</text>
+<text x="554" y="110" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="568" y="98" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="568" y="98" width="92" height="15" fill="#0a7aff"/>
+<text x="614.0" y="109.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="554" y="132" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="568" y="120" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="568" y="120" width="92" height="15" fill="#22a355"/>
+<text x="614.0" y="131.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="554" y="154" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="568" y="142" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="568" y="142" width="92" height="15" fill="#d99a00"/>
+<text x="614.0" y="153.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">12 B - all of it</text>
+<line x1="12" y1="182" x2="668" y2="182" stroke="#e5e5e5" stroke-width="1"/>
+<text x="12" y="214" font-size="11" fill="#1c1c1e" font-weight="bold">ZeRO-1</text>
+<text x="12" y="230" font-size="8.5" fill="#555555">shard optimizer states</text>
+<text x="12" y="250" font-size="12.5" fill="#1c1c1e" font-weight="bold">293.1 GB/GPU</text>
+<text x="12" y="266" font-size="8" fill="#555555">P 2.00 · G 2.00 · O 0.19</text>
+<text x="12" y="278" font-size="8" fill="#555555">B per param, held</text>
+<rect x="150" y="192" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="158" y="206" font-size="8.5" fill="#666666">GPU 1</text>
+<text x="158" y="226" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="172" y="214" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="172" y="214" width="92" height="15" fill="#0a7aff"/>
+<text x="218.0" y="225.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="158" y="248" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="172" y="236" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="172" y="236" width="92" height="15" fill="#22a355"/>
+<text x="218.0" y="247.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="158" y="270" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="172" y="258" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="172" y="258" width="7" height="15" fill="#d99a00"/>
+<text x="183" y="269.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="282" y="192" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="290" y="206" font-size="8.5" fill="#666666">GPU 2</text>
+<text x="290" y="226" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="304" y="214" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="304" y="214" width="92" height="15" fill="#0a7aff"/>
+<text x="350.0" y="225.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="290" y="248" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="304" y="236" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="304" y="236" width="92" height="15" fill="#22a355"/>
+<text x="350.0" y="247.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="290" y="270" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="304" y="258" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="304" y="258" width="7" height="15" fill="#d99a00"/>
+<text x="315" y="269.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="414" y="192" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="422" y="206" font-size="8.5" fill="#666666">GPU 3</text>
+<text x="422" y="226" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="436" y="214" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="436" y="214" width="92" height="15" fill="#0a7aff"/>
+<text x="482.0" y="225.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="422" y="248" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="436" y="236" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="436" y="236" width="92" height="15" fill="#22a355"/>
+<text x="482.0" y="247.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="422" y="270" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="436" y="258" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="436" y="258" width="7" height="15" fill="#d99a00"/>
+<text x="447" y="269.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="546" y="192" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="554" y="206" font-size="8.5" fill="#666666">GPU 4</text>
+<text x="554" y="226" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="568" y="214" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="568" y="214" width="92" height="15" fill="#0a7aff"/>
+<text x="614.0" y="225.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="554" y="248" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="568" y="236" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="568" y="236" width="92" height="15" fill="#22a355"/>
+<text x="614.0" y="247.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="554" y="270" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="568" y="258" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="568" y="258" width="7" height="15" fill="#d99a00"/>
+<text x="579" y="269.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<line x1="12" y1="298" x2="668" y2="298" stroke="#e5e5e5" stroke-width="1"/>
+<text x="12" y="330" font-size="11" fill="#1c1c1e" font-weight="bold">ZeRO-2</text>
+<text x="12" y="346" font-size="8.5" fill="#555555">+ shard gradients</text>
+<text x="12" y="366" font-size="12.5" fill="#1c1c1e" font-weight="bold">155.3 GB/GPU</text>
+<text x="12" y="382" font-size="8" fill="#555555">P 2.00 · G 0.03 · O 0.19</text>
+<text x="12" y="394" font-size="8" fill="#555555">B per param, held</text>
+<rect x="150" y="308" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="158" y="322" font-size="8.5" fill="#666666">GPU 1</text>
+<text x="158" y="342" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="172" y="330" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="172" y="330" width="92" height="15" fill="#0a7aff"/>
+<text x="218.0" y="341.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="158" y="364" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="172" y="352" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="172" y="352" width="7" height="15" fill="#22a355"/>
+<text x="183" y="363.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="158" y="386" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="172" y="374" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="172" y="374" width="7" height="15" fill="#d99a00"/>
+<text x="183" y="385.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="282" y="308" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="290" y="322" font-size="8.5" fill="#666666">GPU 2</text>
+<text x="290" y="342" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="304" y="330" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="304" y="330" width="92" height="15" fill="#0a7aff"/>
+<text x="350.0" y="341.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="290" y="364" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="304" y="352" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="304" y="352" width="7" height="15" fill="#22a355"/>
+<text x="315" y="363.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="290" y="386" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="304" y="374" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="304" y="374" width="7" height="15" fill="#d99a00"/>
+<text x="315" y="385.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="414" y="308" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="422" y="322" font-size="8.5" fill="#666666">GPU 3</text>
+<text x="422" y="342" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="436" y="330" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="436" y="330" width="92" height="15" fill="#0a7aff"/>
+<text x="482.0" y="341.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="422" y="364" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="436" y="352" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="436" y="352" width="7" height="15" fill="#22a355"/>
+<text x="447" y="363.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="422" y="386" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="436" y="374" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="436" y="374" width="7" height="15" fill="#d99a00"/>
+<text x="447" y="385.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="546" y="308" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="554" y="322" font-size="8.5" fill="#666666">GPU 4</text>
+<text x="554" y="342" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="568" y="330" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="568" y="330" width="92" height="15" fill="#0a7aff"/>
+<text x="614.0" y="341.5" text-anchor="middle" font-size="8.5" fill="#ffffff" font-weight="bold">2 B - all of it</text>
+<text x="554" y="364" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="568" y="352" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="568" y="352" width="7" height="15" fill="#22a355"/>
+<text x="579" y="363.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="554" y="386" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="568" y="374" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="568" y="374" width="7" height="15" fill="#d99a00"/>
+<text x="579" y="385.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<line x1="12" y1="414" x2="668" y2="414" stroke="#e5e5e5" stroke-width="1"/>
+<text x="12" y="446" font-size="11" fill="#1c1c1e" font-weight="bold">ZeRO-3 / FSDP</text>
+<text x="12" y="462" font-size="8.5" fill="#555555">+ shard parameters</text>
+<text x="12" y="482" font-size="12.5" fill="#1c1c1e" font-weight="bold">17.5 GB/GPU</text>
+<text x="12" y="498" font-size="8" fill="#555555">P 0.03 · G 0.03 · O 0.19</text>
+<text x="12" y="510" font-size="8" fill="#555555">B per param, held</text>
+<rect x="150" y="424" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="158" y="438" font-size="8.5" fill="#666666">GPU 1</text>
+<text x="158" y="458" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="172" y="446" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="172" y="446" width="7" height="15" fill="#0a7aff"/>
+<text x="183" y="457.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="158" y="480" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="172" y="468" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="172" y="468" width="7" height="15" fill="#22a355"/>
+<text x="183" y="479.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="158" y="502" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="172" y="490" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="172" y="490" width="7" height="15" fill="#d99a00"/>
+<text x="183" y="501.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="282" y="424" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="290" y="438" font-size="8.5" fill="#666666">GPU 2</text>
+<text x="290" y="458" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="304" y="446" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="304" y="446" width="7" height="15" fill="#0a7aff"/>
+<text x="315" y="457.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="290" y="480" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="304" y="468" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="304" y="468" width="7" height="15" fill="#22a355"/>
+<text x="315" y="479.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="290" y="502" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="304" y="490" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="304" y="490" width="7" height="15" fill="#d99a00"/>
+<text x="315" y="501.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="414" y="424" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="422" y="438" font-size="8.5" fill="#666666">GPU 3</text>
+<text x="422" y="458" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="436" y="446" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="436" y="446" width="7" height="15" fill="#0a7aff"/>
+<text x="447" y="457.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="422" y="480" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="436" y="468" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="436" y="468" width="7" height="15" fill="#22a355"/>
+<text x="447" y="479.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="422" y="502" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="436" y="490" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="436" y="490" width="7" height="15" fill="#d99a00"/>
+<text x="447" y="501.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<rect x="546" y="424" width="122" height="88" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+<text x="554" y="438" font-size="8.5" fill="#666666">GPU 4</text>
+<text x="554" y="458" font-size="9" fill="#0a7aff" font-weight="bold">P</text>
+<rect x="568" y="446" width="92" height="15" fill="#f4f4f5" stroke="#0a7aff" stroke-width="0.8"/>
+<rect x="568" y="446" width="7" height="15" fill="#0a7aff"/>
+<text x="579" y="457.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="554" y="480" font-size="9" fill="#22a355" font-weight="bold">G</text>
+<rect x="568" y="468" width="92" height="15" fill="#f4f4f5" stroke="#22a355" stroke-width="0.8"/>
+<rect x="568" y="468" width="7" height="15" fill="#22a355"/>
+<text x="579" y="479.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="554" y="502" font-size="9" fill="#d99a00" font-weight="bold">O</text>
+<rect x="568" y="490" width="92" height="15" fill="#f4f4f5" stroke="#d99a00" stroke-width="0.8"/>
+<rect x="568" y="490" width="7" height="15" fill="#d99a00"/>
+<text x="579" y="501.5" font-size="8.5" fill="#1c1c1e">your 1/64 slice</text>
+<text x="340" y="536" text-anchor="middle" font-size="9.5" fill="#1c1c1e">A sliver is your 1/64 slice. The other 63/64 lives on the other GPUs and is all-gathered</text>
+<text x="340" y="552" text-anchor="middle" font-size="9.5" fill="#1c1c1e">per layer, just in time, then dropped. Full-width strip = the whole component, replicated.</text>
+<text x="340" y="572" text-anchor="middle" font-size="9.5" fill="#0a54c2">ZeRO-3 per GPU = Day 73's 1,120 GB total / 64 = 17.5 GB. FSDP (PyTorch) shards like ZeRO-3; DeepSpeed ZeRO climbs the ladder.</text>
+</svg>
+    <div class="caption">The ladder at 70B on 64 GPUs. Each row is one stage; the four boxes are four of the 64 GPUs, all holding the same thing. Inside a GPU: P = params (bf16, 2 B/param unsharded), G = grads (2 B), O = optimizer states (12 B) &mdash; a full-width strip means the component is replicated whole, a sliver means this GPU keeps only its 1/64 shard and the rest is all-gathered per layer, just in time. Watch the amber strip: it holds 12 of the 16 bytes, so ZeRO-1&rsquo;s single move does most of the work; by ZeRO-3 / FSDP nothing is replicated and one GPU&rsquo;s 1,120 GB bill is 17.5 GB.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>No GPUs tonight &mdash; the runnable artifact is the accounting itself, pure standard library. <strong>Part 1</strong> prints the ladder as a table: per-GPU static memory for 7B and 70B under plain DP vs ZeRO-1/2/3 at N=8 and N=64. <strong>Part 2</strong> cashes Day 73&rsquo;s check: ZeRO-3&rsquo;s per-GPU number is exactly the perfect split Day 73 could only divide on paper. <strong>Part 3</strong> moves the bill to the wire and prices stage 3&rsquo;s extra traffic at Day 74&rsquo;s 50 GB/s. The FSDP and DeepSpeed snippets above are labeled sketches for multi-GPU jobs &mdash; but every number below runs, here and on the MacBook.</p>
+  <pre><code>&quot;&quot;&quot;Day 76 - FSDP &amp; DeepSpeed: Shard the State, Gather Just in Time.
+
+Days 73-75 priced the problem three ways. Day 73: training
+state costs ~16 bytes per parameter, and plain data parallel
+(Day 74) makes EVERY GPU pay all 16 - replicate the model,
+replicate the bill. Day 75 split the model itself. Tonight
+is the third answer, and it is the one the frameworks -
+PyTorch FSDP and Microsoft&#x27;s DeepSpeed ZeRO - automate:
+
+    Shard the state across the data-parallel workers, and
+    all-gather each layer&#x27;s parameters just in time to
+    compute with them, then drop the gathered copy.
+
+THE RECIPE (ZeRO slicing - same 16 total as Day 73, cut
+differently; frameworks shuffle which copy wears which
+dtype, the 16 and the sharding structure are what matter):
+  bf16 params (compute copy) ... 2 bytes  replicated in DP,
+                                 ZeRO-1, ZeRO-2; sharded in 3
+  bf16 gradients ............... 2 bytes  replicated in DP and
+                                 ZeRO-1; sharded from ZeRO-2 on
+  optimizer states ............ 12 bytes  fp32 master weights 4
+                                 + Adam m 4 + v 4; replicated
+                                 only in plain DP, sharded from
+                                 ZeRO-1 on
+  TOTAL ........................ 16 bytes per parameter
+
+THE LADDER (DeepSpeed ZeRO stages; FSDP&#x27;s default full
+sharding is ZeRO-3&#x27;s twin):
+  ZeRO-1  shard optimizer states:  per GPU 4 + 12/N B/param
+  ZeRO-2  + shard gradients:       per GPU 2 + 14/N B/param
+  ZeRO-3  + shard parameters:      per GPU 16/N   B/param
+
+  Part 1  Per-GPU static memory for 7B and 70B under plain
+          DP vs ZeRO-1/2/3 at N=8 and N=64 - the ladder as
+          a table. Activations are NOT in these numbers:
+          they are Day 73&#x27;s separate, per-GPU bill.
+  Part 2  The stand-still test, revisited: ZeRO-3 per-GPU
+          memory is Day 73&#x27;s total divided by N - the
+          perfect split Day 73 could only hypothesize.
+  Part 3  The honest cost, on the wire. Stages 1-2 sync the
+          same gradient bytes as DP (the ZeRO paper&#x27;s own
+          accounting). Stage 3 adds two all-gathers of the
+          full params per step - forward and backward - for
+          1.5x DP&#x27;s traffic, priced at Day 74&#x27;s 50 GB/s.
+
+Runs anywhere: pure standard library, no torch, no GPU,
+no downloads, no APIs. The whole lesson is counting bytes
+and bytes-on-wires, so it runs on the MacBook ~/ai-lab
+venv in milliseconds.
+
+Expected output:
+
+  Part 1 - per-GPU static memory: one 16 B/param bill, four holders
+    recipe (ZeRO slicing): bf16 params 2 + bf16 grads 2 + states 12
+    states = fp32 master 4 + Adam m 4 + v 4; total 16 B/param -
+    Day 73&#x27;s same 16, re-sliced (frameworks shuffle the dtypes)
+    7B model - GB resident per GPU (no activations):
+      stage          B/param     @ N=8  B/param    @ N=64
+      plain DP         16.00     112.0    16.00     112.0
+      ZeRO-1            5.50      38.5     4.19      29.3
+      ZeRO-2            3.75      26.2     2.22      15.5
+      ZeRO-3 / FSDP     2.00      14.0     0.25       1.8
+    70B model - GB resident per GPU (no activations):
+      stage          B/param     @ N=8  B/param    @ N=64
+      plain DP         16.00    1120.0    16.00    1120.0
+      ZeRO-1            5.50     385.0     4.19     293.1
+      ZeRO-2            3.75     262.5     2.22     155.3
+      ZeRO-3 / FSDP     2.00     140.0     0.25      17.5
+  Part 2 - the stand-still test (Day 73), answered
+    Day 73: 70B static total = 1120 GB = 14 cards&#x27; worth IF split perfectly
+    plain DP never splits it: every GPU owes all 1120 GB, at any fleet size
+    ZeRO-3 @ N=64: 17.5 GB per GPU - Day 73&#x27;s total / 64 exactly,
+      the perfect split achieved; headroom on an 80 GB card: 62.5 GB
+      for activations + the one layer gathered at a time
+    7B ZeRO-3 @ N=8: 14.0 GB per GPU - Day 73 needed 2 cards to hold it
+  Part 3 - sync traffic per step (N=64): the honest cost
+    ring factor (N-1)/N = 63/64; effective link 50 GB/s (Day 74)
+    7B: full params 14 GB, full grads 14 GB (bf16)
+      plain DP / ZeRO-1 / ZeRO-2: all-reduce grads = 27.6 GB -&gt; 0.55 s
+      ZeRO-3 / FSDP: gathers 13.8 + 13.8 + reduce-scatter 13.8 = 41.3 GB -&gt; 0.83 s
+    70B: full params 140 GB, full grads 140 GB (bf16)
+      plain DP / ZeRO-1 / ZeRO-2: all-reduce grads = 275.6 GB -&gt; 5.51 s
+      ZeRO-3 / FSDP: gathers 137.8 + 137.8 + reduce-scatter 137.8 = 413.4 GB -&gt; 8.27 s
+    ratio: exactly 1.50x DP&#x27;s traffic, for up to 64x less resident memory
+    verdict: memory traded for bandwidth. On NVLink /
+    InfiniBand that trade wins, with prefetch hiding the
+    gathers; on slow links the same sharding loses.
+&quot;&quot;&quot;
+import math
+
+GB = 1e9                      # gigabytes as sold: 10^9 bytes
+GPU_GB = 80                   # one H100/A100-class card
+LINK_GBs = 50                 # Day 74&#x27;s effective interconnect
+
+# The 16 bytes, ZeRO slicing (see docstring).
+PARAMS = 2                    # bf16 compute copy
+GRADS = 2                     # bf16 gradients
+STATES = 12                   # fp32 master 4 + Adam m 4 + v 4
+TOTAL = PARAMS + GRADS + STATES          # 16 B/param
+
+STAGES = (&quot;plain DP&quot;, &quot;ZeRO-1&quot;, &quot;ZeRO-2&quot;, &quot;ZeRO-3 / FSDP&quot;)
+
+
+def bpp(stage, n):
+    &quot;&quot;&quot;Bytes per parameter RESIDENT on one GPU, fleet size n.&quot;&quot;&quot;
+    if stage == &quot;plain DP&quot;:
+        return float(TOTAL)
+    if stage == &quot;ZeRO-1&quot;:      # shard optimizer states only
+        return PARAMS + GRADS + STATES / n
+    if stage == &quot;ZeRO-2&quot;:      # + shard gradients
+        return PARAMS + (GRADS + STATES) / n
+    return TOTAL / n           # ZeRO-3 / FSDP: shard everything
+
+
+# ---------- Part 1: the ladder as a table ----------
+print(&quot;Part 1 - per-GPU static memory: one 16 B/param bill, &quot;
+      &quot;four holders&quot;)
+print(&quot;  recipe (ZeRO slicing): bf16 params 2 + bf16 grads 2 &quot;
+      &quot;+ states 12&quot;)
+print(&quot;  states = fp32 master 4 + Adam m 4 + v 4; total 16 &quot;
+      &quot;B/param -&quot;)
+print(&quot;  Day 73&#x27;s same 16, re-sliced (frameworks shuffle the &quot;
+      &quot;dtypes)&quot;)
+for label, pb in ((&quot;7B&quot;, 7), (&quot;70B&quot;, 70)):
+    print(f&quot;  {label} model - GB resident per GPU &quot;
+          &quot;(no activations):&quot;)
+    print(f&quot;    {&#x27;stage&#x27;:&lt;14} {&#x27;B/param&#x27;:&gt;7} {&#x27;@ N=8&#x27;:&gt;9} &quot;
+          f&quot;{&#x27;B/param&#x27;:&gt;8} {&#x27;@ N=64&#x27;:&gt;9}&quot;)
+    for stage in STAGES:
+        b8, b64 = bpp(stage, 8), bpp(stage, 64)
+        print(f&quot;    {stage:&lt;14} {b8:&gt;7.2f} {b8 * pb:&gt;9.1f} &quot;
+              f&quot;{b64:&gt;8.2f} {b64 * pb:&gt;9.1f}&quot;)
+
+# ---------- Part 2: the stand-still test, answered ----------
+print(&quot;Part 2 - the stand-still test (Day 73), answered&quot;)
+total70 = 70 * TOTAL
+print(f&quot;  Day 73: 70B static total = {total70:.0f} GB = &quot;
+      f&quot;{math.ceil(total70 / GPU_GB)} cards&#x27; worth IF split &quot;
+      &quot;perfectly&quot;)
+print(f&quot;  plain DP never splits it: every GPU owes all &quot;
+      f&quot;{total70:.0f} GB, at any fleet size&quot;)
+z3_70 = bpp(&quot;ZeRO-3 / FSDP&quot;, 64) * 70
+print(f&quot;  ZeRO-3 @ N=64: {z3_70:.1f} GB per GPU - Day 73&#x27;s &quot;
+      &quot;total / 64 exactly,&quot;)
+print(f&quot;    the perfect split achieved; headroom on an 80 GB &quot;
+      f&quot;card: {GPU_GB - z3_70:.1f} GB&quot;)
+print(&quot;    for activations + the one layer gathered at a time&quot;)
+z3_7 = bpp(&quot;ZeRO-3 / FSDP&quot;, 8) * 7
+print(f&quot;  7B ZeRO-3 @ N=8: {z3_7:.1f} GB per GPU - Day 73 &quot;
+      &quot;needed 2 cards to hold it&quot;)
+
+# ---------- Part 3: the bill moves to the wire ----------
+print(&quot;Part 3 - sync traffic per step (N=64): the honest cost&quot;)
+RING = (64 - 1) / 64           # Day 74&#x27;s ring factor (N-1)/N
+print(f&quot;  ring factor (N-1)/N = 63/64; effective link &quot;
+      f&quot;{LINK_GBs} GB/s (Day 74)&quot;)
+for label, pb in ((&quot;7B&quot;, 7), (&quot;70B&quot;, 70)):
+    p_gb = pb * PARAMS         # full params, bf16
+    g_gb = pb * GRADS          # full grads, bf16
+    dp = 2 * RING * g_gb                   # one grad all-reduce
+    gather = RING * p_gb                   # one param all-gather
+    rs = RING * g_gb                       # grad reduce-scatter
+    z3 = 2 * gather + rs          # fwd + bwd gathers + rs
+    print(f&quot;  {label}: full params {p_gb:.0f} GB, full grads &quot;
+          f&quot;{g_gb:.0f} GB (bf16)&quot;)
+    print(f&quot;    plain DP / ZeRO-1 / ZeRO-2: all-reduce grads &quot;
+          f&quot;= {dp:.1f} GB -&gt; {dp / LINK_GBs:.2f} s&quot;)
+    print(f&quot;    ZeRO-3 / FSDP: gathers {gather:.1f} + &quot;
+          f&quot;{gather:.1f} + reduce-scatter {rs:.1f} = &quot;
+          f&quot;{z3:.1f} GB -&gt; {z3 / LINK_GBs:.2f} s&quot;)
+print(&quot;  ratio: exactly 1.50x DP&#x27;s traffic, for up to 64x &quot;
+      &quot;less resident memory&quot;)
+print(&quot;  verdict: memory traded for bandwidth. On NVLink /&quot;)
+print(&quot;  InfiniBand that trade wins, with prefetch hiding the&quot;)
+print(&quot;  gathers; on slow links the same sharding loses.&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - per-GPU static memory: one 16 B/param bill, four holders
+  recipe (ZeRO slicing): bf16 params 2 + bf16 grads 2 + states 12
+  states = fp32 master 4 + Adam m 4 + v 4; total 16 B/param -
+  Day 73&#x27;s same 16, re-sliced (frameworks shuffle the dtypes)
+  7B model - GB resident per GPU (no activations):
+    stage          B/param     @ N=8  B/param    @ N=64
+    plain DP         16.00     112.0    16.00     112.0
+    ZeRO-1            5.50      38.5     4.19      29.3
+    ZeRO-2            3.75      26.2     2.22      15.5
+    ZeRO-3 / FSDP     2.00      14.0     0.25       1.8
+  70B model - GB resident per GPU (no activations):
+    stage          B/param     @ N=8  B/param    @ N=64
+    plain DP         16.00    1120.0    16.00    1120.0
+    ZeRO-1            5.50     385.0     4.19     293.1
+    ZeRO-2            3.75     262.5     2.22     155.3
+    ZeRO-3 / FSDP     2.00     140.0     0.25      17.5
+Part 2 - the stand-still test (Day 73), answered
+  Day 73: 70B static total = 1120 GB = 14 cards&#x27; worth IF split perfectly
+  plain DP never splits it: every GPU owes all 1120 GB, at any fleet size
+  ZeRO-3 @ N=64: 17.5 GB per GPU - Day 73&#x27;s total / 64 exactly,
+    the perfect split achieved; headroom on an 80 GB card: 62.5 GB
+    for activations + the one layer gathered at a time
+  7B ZeRO-3 @ N=8: 14.0 GB per GPU - Day 73 needed 2 cards to hold it
+Part 3 - sync traffic per step (N=64): the honest cost
+  ring factor (N-1)/N = 63/64; effective link 50 GB/s (Day 74)
+  7B: full params 14 GB, full grads 14 GB (bf16)
+    plain DP / ZeRO-1 / ZeRO-2: all-reduce grads = 27.6 GB -&gt; 0.55 s
+    ZeRO-3 / FSDP: gathers 13.8 + 13.8 + reduce-scatter 13.8 = 41.3 GB -&gt; 0.83 s
+  70B: full params 140 GB, full grads 140 GB (bf16)
+    plain DP / ZeRO-1 / ZeRO-2: all-reduce grads = 275.6 GB -&gt; 5.51 s
+    ZeRO-3 / FSDP: gathers 137.8 + 137.8 + reduce-scatter 137.8 = 413.4 GB -&gt; 8.27 s
+  ratio: exactly 1.50x DP&#x27;s traffic, for up to 64x less resident memory
+  verdict: memory traded for bandwidth. On NVLink /
+  InfiniBand that trade wins, with prefetch hiding the
+  gathers; on slow links the same sharding loses.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run prints Part 1&rsquo;s checkpoint digits &mdash; 70B: plain DP 1120.0 GB at every N, ZeRO-3 at 140.0 GB (N=8) and 17.5 GB (N=64); 7B ZeRO-3 at N=64 down to 1.8 GB &mdash; and Part 3&rsquo;s verdict pair: 275.6 GB/step for DP vs 413.4 GB/step for ZeRO-3 at 70B, a ratio of exactly 1.50&times;. Keeper test, no notes: someone shows you a DeepSpeed config with <code>"stage": 2</code> on a fleet of 8 &mdash; you can say what is sharded (optimizer states + gradients), what is still replicated (the bf16 params), what one GPU holds for a 13B model (2 + 14/8 = 3.75 B/param &asymp; 48.8 GB), and that its wire bill matches plain DP&rsquo;s.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, climb the diagram&rsquo;s ladder until you can name what each stage shards, then run Part 1 only. If you can say why stage 1 takes the biggest bite (12 of the 16 bytes are optimizer states) and why stage 3 alone scales to 16/N, you have the day &mdash; Parts 2 and 3 are the receipts.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: half the bytes in tonight&rsquo;s recipe wear a 16-bit dtype &mdash; why training in half precision mostly just works, and the one silent way it fails.</p>
+  </div>
+
+  <div class="footer">Streak: 76 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
