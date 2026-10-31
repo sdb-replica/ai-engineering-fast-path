@@ -1,0 +1,57 @@
+<svg viewBox="0 0 680 372" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<text x="340" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#1c1c1e">The production eval harness: cases -&gt; runner -&gt; scorers -&gt; slices -&gt; gate</text>
+<rect x="10" y="40" width="148" height="54" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="84.0" y="59" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">CASES.JSONL</text>
+<text x="84.0" y="75" text-anchor="middle" font-size="9.5" fill="#555555">12 cases - 3 slices</text>
+<text x="84.0" y="88" text-anchor="middle" font-size="9.5" fill="#555555">each names its scorer</text>
+<line x1="158" y1="67" x2="168" y2="67" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="168,63 176,67 168,71" fill="#1c1c1e"/>
+<rect x="176" y="40" width="140" height="54" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="246.0" y="59" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">RUNNER</text>
+<text x="246.0" y="75" text-anchor="middle" font-size="9.5" fill="#555555">candidate(input)</text>
+<text x="246.0" y="88" text-anchor="middle" font-size="9.5" fill="#555555">one case at a time</text>
+<line x1="316" y1="67" x2="326" y2="67" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="326,63 334,67 326,71" fill="#1c1c1e"/>
+<rect x="334" y="40" width="140" height="54" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="404.0" y="59" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">CANDIDATE</text>
+<text x="404.0" y="75" text-anchor="middle" font-size="9.5" fill="#555555">careful / sloppy</text>
+<text x="404.0" y="88" text-anchor="middle" font-size="9.5" fill="#555555">any str -&gt; str callable</text>
+<line x1="474" y1="67" x2="484" y2="67" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="484,63 492,67 484,71" fill="#1c1c1e"/>
+<rect x="492" y="40" width="178" height="54" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+<text x="581.0" y="59" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0a54c2">SCORERS</text>
+<text x="581.0" y="75" text-anchor="middle" font-size="9.5" fill="#555555">exact - contains</text>
+<text x="581.0" y="88" text-anchor="middle" font-size="9.5" fill="#555555">json_schema - keyword_rubric</text>
+<text x="340" y="114" text-anchor="middle" font-size="9.5" fill="#555555">cases are data: one JSON object per line - adding a case is adding a line in a diff</text>
+<text x="340" y="142" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1c1c1e">The report slices it - the gate decides</text>
+<rect x="10" y="154" width="392" height="118" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1.5"/>
+<text x="26" y="176" font-size="11.5" font-weight="700" fill="#1c1c1e">SLICE REPORT</text>
+<text x="150" y="176" text-anchor="middle" font-size="9.5" font-weight="700" fill="#555555">extraction</text>
+<text x="228" y="176" text-anchor="middle" font-size="9.5" font-weight="700" fill="#555555">format</text>
+<text x="292" y="176" text-anchor="middle" font-size="9.5" font-weight="700" fill="#555555">refusal</text>
+<text x="352" y="176" text-anchor="middle" font-size="9.5" font-weight="700" fill="#555555">overall</text>
+<text x="26" y="208" font-size="11" font-weight="700" fill="#1c1c1e">careful</text>
+<text x="150" y="208" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1c1e">1.0000</text>
+<text x="228" y="208" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1c1e">1.0000</text>
+<text x="292" y="208" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1c1e">1.0000</text>
+<text x="352" y="208" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1c1e">1.0000</text>
+<text x="26" y="240" font-size="11" font-weight="700" fill="#1c1c1e">sloppy</text>
+<text x="150" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#d64545">0.2500</text>
+<text x="228" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#d64545">0.5000</text>
+<text x="292" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#d64545">0.2500</text>
+<text x="352" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#d64545">0.3333</text>
+<text x="26" y="262" font-size="9.5" fill="#555555">the headline (0.3333) is the least useful number on the page - the slices say where it broke</text>
+<line x1="402" y1="213" x2="412" y2="213" stroke="#1c1c1e" stroke-width="1.6"/>
+<polygon points="412,209 420,213 412,217" fill="#1c1c1e"/>
+<rect x="420" y="154" width="250" height="118" rx="8" fill="#ffffff" stroke="#cccccc" stroke-width="1.5"/>
+<text x="436" y="176" font-size="11.5" font-weight="700" fill="#1c1c1e">REGRESSION GATE</text>
+<text x="436" y="192" font-size="9.5" fill="#555555">baseline: overall &gt;= 0.80, slices &gt;= 0.75</text>
+<circle cx="446" cy="214" r="7" fill="#22a355"/>
+<text x="462" y="218" font-size="11" font-weight="700" fill="#1c1c1e">careful - PASS - exit 0</text>
+<circle cx="446" cy="240" r="7" fill="#d64545"/>
+<text x="462" y="244" font-size="11" font-weight="700" fill="#1c1c1e">sloppy - FAIL - exit 1</text>
+<text x="436" y="262" font-size="9.5" fill="#555555">failing slices named in the log</text>
+<text x="340" y="300" text-anchor="middle" font-size="9.5" fill="#555555">swap the candidate - a model, a Day 62 prompt variant, a Day 59 RAG pipeline - the harness never changes</text>
+<text x="340" y="318" text-anchor="middle" font-size="9.5" fill="#555555">cases + baseline live in version control, next to the code they grade</text>
+<text x="340" y="336" text-anchor="middle" font-size="9.5" fill="#555555">an eval you can't run in CI is a vibe</text>
+</svg>
