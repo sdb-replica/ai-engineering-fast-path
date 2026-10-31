@@ -1,0 +1,64 @@
+<svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Data parallelism: copy the model, shard the data, gossip the gradients</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 74 - N replicas, one averaged gradient, one identical step</text>
+<rect x="12" y="56" width="656" height="148" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - FOUR WORKERS: FULL MODEL COPY + A DIFFERENT QUARTER OF THE DATA</text>
+<rect x="28" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="104" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 0</text>
+<text x="104" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="104" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 0.5, 2.5, 4.5, 6.5</text>
+<text x="104" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g0 = -13.0, -63.0, ...</text>
+<rect x="192" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 1</text>
+<text x="268" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="268" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.0, 3.0, 5.0, 7.0</text>
+<text x="268" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g1 = -15.1, -77.4, ...</text>
+<rect x="356" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="432" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 2</text>
+<text x="432" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="432" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.5, 3.5, 5.5, 7.5</text>
+<text x="432" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g2 = -16.6, -91.7, ...</text>
+<rect x="520" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="596" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 3</text>
+<text x="596" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="596" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 2.0, 4.0, 6.0, 8.0</text>
+<text x="596" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g3 = -18.8, -111.3, ...</text>
+<text x="340" y="178" text-anchor="middle" font-size="9.0" fill="#1c1c1e">local grads DIFFER - each worker saw different rows</text>
+<text x="340" y="194" text-anchor="middle" font-size="9.0" fill="#0a54c2">if everyone stepped alone, step 2 would already be 4 different models</text>
+<line x1="340" y1="206" x2="340" y2="218" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="340,218 344.0,211.0 336.0,211.0" fill="#7a5cff"/>
+<rect x="12" y="222" width="656" height="150" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="242" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - RING ALL-REDUCE: THE GOSSIP THAT MAKES ONE GRADIENT</text>
+<line x1="163.4350288425444" y1="273.4350288425444" x2="173.61522368914976" y2="283.6152236891498" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="173.61522368914976,283.6152236891498 171.5,275.8 165.8,281.5" fill="#7a5cff"/>
+<line x1="178.5649711574556" y1="315.4350288425444" x2="168.38477631085024" y2="325.6152236891498" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="168.38477631085024,325.6152236891498 176.2,323.5 170.5,317.8" fill="#7a5cff"/>
+<line x1="136.5649711574556" y1="330.5649711574556" x2="126.38477631085024" y2="320.3847763108502" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="126.38477631085024,320.3847763108502 128.5,328.2 134.2,322.5" fill="#7a5cff"/>
+<line x1="121.4350288425444" y1="288.5649711574556" x2="131.61522368914976" y2="278.3847763108502" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="131.61522368914976,278.3847763108502 123.8,280.5 129.5,286.2" fill="#7a5cff"/>
+<circle cx="150" cy="260" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="150" y="264" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W0</text>
+<circle cx="192" cy="302" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="192" y="306" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W1</text>
+<circle cx="150" cy="344" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="150" y="348" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W2</text>
+<circle cx="108" cy="302" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="108" y="306" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W3</text>
+<text x="150" y="306" text-anchor="middle" font-size="9" fill="#1c1c1e"></text>
+<text x="262" y="268" text-anchor="start" font-size="9.0" fill="#1c1c1e">scatter-reduce (N-1 steps): the gradient is cut into</text>
+<text x="262" y="283" text-anchor="start" font-size="9.0" fill="#1c1c1e">N chunks; chunks rotate one hop per step and the</text>
+<text x="262" y="298" text-anchor="start" font-size="9.0" fill="#1c1c1e">receiver ADDS what arrives into its own copy</text>
+<text x="262" y="313" text-anchor="start" font-size="9.0" fill="#1c1c1e">all-gather (N-1 steps): the finished chunks rotate</text>
+<text x="262" y="328" text-anchor="start" font-size="9.0" fill="#1c1c1e">again until every worker holds the full total</text>
+<text x="262" y="343" text-anchor="start" font-size="9.0" fill="#1c1c1e" font-weight="bold">traffic per worker: 2(N-1)/N x |grad| - 42.0 GB at N=4,</text>
+<text x="262" y="358" text-anchor="start" font-size="9.0" fill="#1c1c1e" font-weight="bold">55.1 GB at N=64 - no hub, no bottleneck node</text>
+<text x="340" y="362" text-anchor="middle" font-size="9.0" fill="#5a3fd4">divide the total by N: that average is the one gradient everyone trusts</text>
+<line x1="340" y1="374" x2="340" y2="386" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,386 344.0,379.0 336.0,379.0" fill="#22a355"/>
+<rect x="12" y="390" width="656" height="80" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - ONE IDENTICAL STEP ON EVERY REPLICA</text>
+<text x="340" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">theta &lt;- theta - lr x g_avg   |   g_avg == the single-machine full-batch grad (diff 0.000000)</text>
+<text x="340" y="454" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">same theta + same gradient = same next theta - the replicas NEVER diverge</text>
+</svg>

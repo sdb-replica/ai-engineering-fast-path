@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Parallelism: The Straightforward Scale-Out — Day 74 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 74 of 100</span>
+  <h1>Data Parallelism: The Straightforward Scale-Out</h1>
+  <p class="outcome">Tonight you'll be able to: explain how N identical copies of one model train on N different shards of data as if they were a single machine &mdash; replicate &theta;, shard the rows, all-reduce the gradients, step as one &mdash; and price the sync for any model size and any N.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday&rsquo;s wall was memory: a real training state doesn&rsquo;t fit on one GPU. Tonight&rsquo;s move is the simple one, and it comes first because it&rsquo;s the one you&rsquo;ll reach for most: <strong>don&rsquo;t split the model &mdash; copy it.</strong> Every worker (one GPU, one process &mdash; in framework-speak, one <em>rank</em>) holds the complete, identical &theta;. What gets divided is the <em>data</em>: the dataset is sharded into N disjoint pieces, one per worker &mdash; the same sharding instinct you&rsquo;d apply to any table that outgrows one node.</p>
+<p>Each worker then runs the ordinary Day 7 loop on its own shard: forward, loss, backward &mdash; producing a <strong>local gradient</strong>. Local gradients differ, because the shards differ. And here is the trap the whole design exists to avoid: if each worker stepped on its own gradient, the copies would drift apart immediately &mdash; by step 2 you no longer have one model training faster, you have N different models training separately. Replicas that diverge are worthless: which one do you ship?</p>
+<p>So nobody steps alone. Once per step, the workers run an <strong>all-reduce</strong>: a collective operation that sums a vector across all workers and hands the <em>total</em> back to <em>every</em> worker. Divide by N and every replica holds the same averaged gradient; apply it to the same &theta; and every replica lands on the same next &theta;. Same state + same input &rarr; same next state, forever. And it is not an approximation: when the shards are equal-sized, the average of the shard gradients is <em>exactly</em> the gradient one machine would compute on the whole batch &mdash; Part 3 proves it to 0.000000. Data parallelism is big-batch training; the distribution is an implementation detail.</p>
+<p>The sync is also the entire cost, so price it honestly. The naive design &mdash; everyone sends gradients to one hub, the hub averages and broadcasts back &mdash; funnels N gradient-sized messages through one node&rsquo;s link: for a 7B model in fp32 (one gradient = 28 GB), a hub at N=64 must receive and resend 3,584 GB per step. The <strong>ring all-reduce</strong> removes the hub: cut the gradient into N chunks, line the workers in a ring, and rotate. Phase 1, <em>scatter-reduce</em>: chunks hop neighbour to neighbour, each receiver adding what arrives into its own copy, until each worker holds one fully-summed chunk. Phase 2, <em>all-gather</em>: the finished chunks rotate again until everyone has all of them. Total traffic per worker: <strong>2(N&minus;1)/N &times; gradient size</strong> &mdash; one visual bite: 42.0 GB at N=4, 55.1 GB at N=64, 55.9 GB at N=1024. It asymptotes at two gradient sizes and never grows past it &mdash; and the dataset size appears nowhere in the formula: the bill is set by the model, so <em>larger shards make the sync relatively cheaper</em>, because each sync buys more compute.</p>
+<p>Two honest footnotes, one line each. The step is a <strong>barrier</strong>: the fastest worker waits for the slowest, so one straggler sets the step time and one dead worker stalls the whole run (surviving that is a later day&rsquo;s topic). And data parallelism has a hard precondition: the model, plus its Day 73 training state, must <em>fit</em> on one worker &mdash; when it doesn&rsquo;t, copying stops working, and that&rsquo;s tomorrow. In practice you rarely write the ring yourself: PyTorch&rsquo;s <code>DistributedDataParallel</code> and the NCCL library run exactly this protocol under the hood, overlapping the gossip with <code>backward()</code> so much of the sync hides behind compute.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already know this protocol &mdash; it&rsquo;s <strong>state-machine replication</strong> wearing a GPU costume. Raft replicas stay identical because they apply the same log entries in the same order; here the &ldquo;log entry&rdquo; is the averaged gradient, and instead of a leader broadcasting it, the replicas <em>gossip</em> it into existence with all-reduce: all-reduce = gossip that ends with everyone holding the same aggregate and applying the same state transition. The shard side is just as familiar: each worker&rsquo;s local gradient is a <em>partial aggregate</em> over its shard, like a distributed SUM with combiners pushed down to the leaves.</p><p>Trading version, one line: four analysts each mark a quarter of the book &mdash; the desk&rsquo;s risk number exists only after the partials are summed and handed back to everyone, and anyone trading on their own partial is trading on a fiction.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 486" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="486" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Data parallelism: copy the model, shard the data, gossip the gradients</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 74 - N replicas, one averaged gradient, one identical step</text>
+<rect x="12" y="56" width="656" height="148" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - FOUR WORKERS: FULL MODEL COPY + A DIFFERENT QUARTER OF THE DATA</text>
+<rect x="28" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="104" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 0</text>
+<text x="104" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="104" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 0.5, 2.5, 4.5, 6.5</text>
+<text x="104" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g0 = -13.0, -63.0, ...</text>
+<rect x="192" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="268" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 1</text>
+<text x="268" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="268" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.0, 3.0, 5.0, 7.0</text>
+<text x="268" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g1 = -15.1, -77.4, ...</text>
+<rect x="356" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="432" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 2</text>
+<text x="432" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="432" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 1.5, 3.5, 5.5, 7.5</text>
+<text x="432" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g2 = -16.6, -91.7, ...</text>
+<rect x="520" y="90" width="152" height="64" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="596" y="108" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Worker 3</text>
+<text x="596" y="124" text-anchor="middle" font-size="8.5" fill="#555555">theta: FULL copy, identical</text>
+<text x="596" y="138" text-anchor="middle" font-size="8.5" fill="#555555">shard x = 2.0, 4.0, 6.0, 8.0</text>
+<text x="596" y="152" text-anchor="middle" font-size="8.5" fill="#0a54c2">g3 = -18.8, -111.3, ...</text>
+<text x="340" y="178" text-anchor="middle" font-size="9.0" fill="#1c1c1e">local grads DIFFER - each worker saw different rows</text>
+<text x="340" y="194" text-anchor="middle" font-size="9.0" fill="#0a54c2">if everyone stepped alone, step 2 would already be 4 different models</text>
+<line x1="340" y1="206" x2="340" y2="218" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="340,218 344.0,211.0 336.0,211.0" fill="#7a5cff"/>
+<rect x="12" y="222" width="656" height="150" rx="10" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="340" y="242" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - RING ALL-REDUCE: THE GOSSIP THAT MAKES ONE GRADIENT</text>
+<line x1="163.4350288425444" y1="273.4350288425444" x2="173.61522368914976" y2="283.6152236891498" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="173.61522368914976,283.6152236891498 171.5,275.8 165.8,281.5" fill="#7a5cff"/>
+<line x1="178.5649711574556" y1="315.4350288425444" x2="168.38477631085024" y2="325.6152236891498" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="168.38477631085024,325.6152236891498 176.2,323.5 170.5,317.8" fill="#7a5cff"/>
+<line x1="136.5649711574556" y1="330.5649711574556" x2="126.38477631085024" y2="320.3847763108502" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="126.38477631085024,320.3847763108502 128.5,328.2 134.2,322.5" fill="#7a5cff"/>
+<line x1="121.4350288425444" y1="288.5649711574556" x2="131.61522368914976" y2="278.3847763108502" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="131.61522368914976,278.3847763108502 123.8,280.5 129.5,286.2" fill="#7a5cff"/>
+<circle cx="150" cy="260" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="150" y="264" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W0</text>
+<circle cx="192" cy="302" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="192" y="306" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W1</text>
+<circle cx="150" cy="344" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="150" y="348" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W2</text>
+<circle cx="108" cy="302" r="17" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="108" y="306" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W3</text>
+<text x="150" y="306" text-anchor="middle" font-size="9" fill="#1c1c1e"></text>
+<text x="262" y="268" text-anchor="start" font-size="9.0" fill="#1c1c1e">scatter-reduce (N-1 steps): the gradient is cut into</text>
+<text x="262" y="283" text-anchor="start" font-size="9.0" fill="#1c1c1e">N chunks; chunks rotate one hop per step and the</text>
+<text x="262" y="298" text-anchor="start" font-size="9.0" fill="#1c1c1e">receiver ADDS what arrives into its own copy</text>
+<text x="262" y="313" text-anchor="start" font-size="9.0" fill="#1c1c1e">all-gather (N-1 steps): the finished chunks rotate</text>
+<text x="262" y="328" text-anchor="start" font-size="9.0" fill="#1c1c1e">again until every worker holds the full total</text>
+<text x="262" y="343" text-anchor="start" font-size="9.0" fill="#1c1c1e" font-weight="bold">traffic per worker: 2(N-1)/N x |grad| - 42.0 GB at N=4,</text>
+<text x="262" y="358" text-anchor="start" font-size="9.0" fill="#1c1c1e" font-weight="bold">55.1 GB at N=64 - no hub, no bottleneck node</text>
+<text x="340" y="362" text-anchor="middle" font-size="9.0" fill="#5a3fd4">divide the total by N: that average is the one gradient everyone trusts</text>
+<line x1="340" y1="374" x2="340" y2="386" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="340,386 344.0,379.0 336.0,379.0" fill="#22a355"/>
+<rect x="12" y="390" width="656" height="80" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="410" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - ONE IDENTICAL STEP ON EVERY REPLICA</text>
+<text x="340" y="434" text-anchor="middle" font-size="9.5" fill="#1c1c1e">theta &lt;- theta - lr x g_avg   |   g_avg == the single-machine full-batch grad (diff 0.000000)</text>
+<text x="340" y="454" text-anchor="middle" font-size="9.5" fill="#177245" font-weight="bold">same theta + same gradient = same next theta - the replicas NEVER diverge</text>
+</svg>
+    <div class="caption">Top: four identical &theta; copies, four different data shards, four different local gradients &mdash; divergence waiting to happen. Middle: the ring all-reduce &mdash; chunks rotate twice (scatter-reduce, then all-gather) and every worker ends holding the same summed gradient, at a per-worker cost capped near two gradient sizes at any N. Bottom: one averaged gradient and one identical step, so the replicas can never diverge.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One process plays all four workers &mdash; no torch, no cluster, pure Python stdlib &mdash; so the ring is code you read, not a library call you trust. The model is Day 7&rsquo;s regression with a 4-wide feature vector (&phi; = [1, x, x&sup2;/8, x&sup3;/64]), making the gradient a 4-vector: one chunk per worker. <strong>Part 1</strong> is the single-machine reference step. <strong>Part 2</strong> shards the 16 points four ways and computes four different local gradients from the same &theta;<sub>0</sub>. <strong>Part 3</strong> runs the ring on those gradients &mdash; every send printed &mdash; then averages, steps, and diffs against Part 1. <strong>Part 4</strong> prices the sync at 7B parameters. The data is built by a formula in dyadic fractions, so the equality proofs are exact: watch for <code>0.000000</code>, not &asymp;0.</p>
+  <pre><code>&quot;&quot;&quot;Day 74 - Data Parallelism: The Straightforward Scale-Out.
+
+Day 73&#x27;s problem was one GPU that cannot hold training. Tonight&#x27;s
+first scale-out move: do NOT split the model. Copy the whole
+model onto N workers and split the DATA instead.
+
+  Part 1  The reference: Day 7&#x27;s linear-regression gradient on
+          the full dataset, one machine, one step.
+  Part 2  Four simulated workers in one process. Each gets a
+          quarter of the data (equal shards) and computes its
+          own local gradient from the SAME starting theta.
+          No worker steps yet - stepping alone would give
+          four different models.
+  Part 3  The ring all-reduce, watched step by step: the
+          gradient is a 4-vector, so each worker owns one
+          chunk. Scatter-reduce rotates chunks and adds
+          partial sums; all-gather rotates the finished
+          chunks until every worker holds the total. Average
+          it, step with it, and prove the result is EXACTLY
+          the single-machine step from Part 1.
+  Part 4  The comm math for a 7B-parameter model in fp32:
+          ring traffic per worker, and why it barely grows
+          from N=4 to N=1024 - while the hub design blows up.
+
+Pure Python stdlib, deterministic data built by a formula, no
+RNG, no downloads, no paid APIs. Runs anywhere, including
+the ~/ai-lab venv on a MacBook. One process plays all four
+workers so you can watch the algorithm instead of a library
+call hiding it.
+
+Expected output:
+
+  Part 1 - one machine, full batch (Day 7&#x27;s gradient)
+    theta0 = 0.500000, 0.250000, 0.000000, 0.000000
+    full-batch grad = -15.875000, -85.828125, -65.891602, -54.102722
+    after one step (lr 0.05) = 1.293750, 4.541406, 3.294580, 2.705136
+  Part 2 - four workers, one data shard each, same theta0
+    worker 0: shard x = 0.5, 2.5, 4.5, 6.5  local grad = -13.000000, -63.000000, -43.343750, -31.617188
+    worker 1: shard x = 1.0, 3.0, 5.0, 7.0  local grad = -15.125000, -77.375000, -56.890625, -44.615234
+    worker 2: shard x = 1.5, 3.5, 5.5, 7.5  local grad = -16.625000, -91.687500, -71.144531, -58.881592
+    worker 3: shard x = 2.0, 4.0, 6.0, 8.0  local grad = -18.750000, -111.250000, -92.187500, -81.296875
+    average of local grads = -15.875000, -85.828125, -65.891602, -54.102722
+    diff vs full-batch grad = 0.000000
+  Part 3 - ring all-reduce on the local gradients
+    scatter-reduce 1/3: sends W0:c0  W1:c1  W2:c2  W3:c3 (receiver adds)
+    scatter-reduce 2/3: sends W0:c3  W1:c0  W2:c1  W3:c2 (receiver adds)
+    scatter-reduce 3/3: sends W0:c2  W1:c3  W2:c0  W3:c1 (receiver adds)
+    after scatter-reduce, finished chunks live at: chunk 0 on W3, chunk 1 on W0, chunk 2 on W1, chunk 3 on W2
+    all-gather 1/3: sends W0:c1  W1:c2  W2:c3  W3:c0 (receiver overwrites)
+    all-gather 2/3: sends W0:c0  W1:c1  W2:c2  W3:c3 (receiver overwrites)
+    all-gather 3/3: sends W0:c3  W1:c0  W2:c1  W3:c2 (receiver overwrites)
+    every worker now holds the total sum:
+      W0 = -63.500000, -343.312500, -263.566406, -216.410889
+    all four workers identical: True
+    averaged grad (sum / 4) = -15.875000, -85.828125, -65.891602, -54.102722
+    diff vs full-batch grad = 0.000000
+    after one step = 1.293750, 4.541406, 3.294580, 2.705136
+    diff vs single-machine step = 0.000000
+    verdict: same theta0 + same averaged grad = same step, on every replica - the replicas never diverge
+  Part 4 - what the sync costs at 7B parameters (fp32)
+    one gradient = 7,000,000,000 params x 4 bytes = 28.0 GB
+    ring traffic per worker = 2(N-1)/N x grad size, 2(N-1) steps:
+      N=4     ring: 42.0 GB/worker/step, 6 steps
+      N=64    ring: 55.1 GB/worker/step, 126 steps
+      N=1024  ring: 55.9 GB/worker/step, 2046 steps
+    hub (parameter server) at N=64: one node must receive and resend 3,584 GB/step through a single link
+    at 50 GB/s effective, the N=64 ring sync takes 1.10 s per step - and note
+    the shard size never appears: sync cost depends on the
+    MODEL size only, so bigger shards (more compute per
+    step) make the sync relatively cheaper, not dearer
+    one-line failure note: the step is a barrier - the
+    slowest worker sets the step time, and one dead
+    worker stalls the whole run (Day 78: checkpointing)
+&quot;&quot;&quot;
+
+
+def features(x):
+    &quot;&quot;&quot;A 4-wide feature vector so the gradient is a 4-vector.
+
+    phi = [1, x, x^2/8, x^3/64]. Day 7&#x27;s gradient formula is
+    unchanged: dL/dtheta_j = mean(2 * err * phi_j). One feature
+    would give a 1-vector and the ring would have nothing to
+    chunk; four features give one chunk per worker.
+    &quot;&quot;&quot;
+    return [1.0, x, x * x / 8.0, x * x * x / 64.0]
+
+
+def predict(theta, phi):
+    return sum(t * p for t, p in zip(theta, phi))
+
+
+def gradient(theta, points):
+    &quot;&quot;&quot;Full-batch MSE gradient over a list of (x, y) points.&quot;&quot;&quot;
+    n = len(points)
+    sums = [0.0, 0.0, 0.0, 0.0]
+    for x, y in points:
+        err = predict(theta, features(x)) - y
+        for j, p in enumerate(features(x)):
+            sums[j] += 2.0 * err * p
+    return [s / n for s in sums]
+
+
+def fmt(vec):
+    return &quot;, &quot;.join(f&quot;{v:.6f}&quot; for v in vec)
+
+
+# Deterministic data, built by a formula. x runs 0.5..8.0, the
+# true line is y = 1 + 2x, and the noise is a small sawtooth.
+# Every number is a dyadic fraction, so the arithmetic below
+# is exact - the equality proofs in Part 3 print 0.0, not ~0.
+POINTS = []
+for i in range(1, 17):
+    x = 0.5 * i
+    noise = ((i * 7) % 5 - 2) * 0.25
+    POINTS.append((x, 1.0 + 2.0 * x + noise))
+
+THETA0 = [0.5, 0.25, 0.0, 0.0]
+LR = 0.05
+N_WORKERS = 4
+
+# ---------- Part 1: the single-machine reference ----------
+print(&quot;Part 1 - one machine, full batch (Day 7&#x27;s gradient)&quot;)
+full_grad = gradient(THETA0, POINTS)
+theta_ref = [t - LR * g for t, g in zip(THETA0, full_grad)]
+print(f&quot;  theta0 = {fmt(THETA0)}&quot;)
+print(f&quot;  full-batch grad = {fmt(full_grad)}&quot;)
+print(f&quot;  after one step (lr 0.05) = {fmt(theta_ref)}&quot;)
+
+# ---------- Part 2: four workers, four equal data shards ----------
+print(&quot;Part 2 - four workers, one data shard each, same theta0&quot;)
+shards = [POINTS[i::N_WORKERS] for i in range(N_WORKERS)]
+# NB: POINTS[i::4] gives 4-point shards; equal sizes are what
+# make &quot;average of shard gradients&quot; equal &quot;gradient of all data&quot;.
+local_grads = []
+for r, shard in enumerate(shards):
+    g = gradient(THETA0, shard)
+    local_grads.append(g)
+    print(f&quot;  worker {r}: shard x = &quot;
+          f&quot;{&#x27;, &#x27;.join(f&#x27;{x:.1f}&#x27; for x, _ in shard)}  &quot;
+          f&quot;local grad = {fmt(g)}&quot;)
+naive_avg = [sum(g[j] for g in local_grads) / N_WORKERS
+             for j in range(4)]
+print(f&quot;  average of local grads = {fmt(naive_avg)}&quot;)
+print(f&quot;  diff vs full-batch grad = &quot;
+      f&quot;{max(abs(a - b) for a, b in zip(naive_avg, full_grad)):.6f}&quot;)
+
+# ---------- Part 3: the ring all-reduce, step by step ----------
+print(&quot;Part 3 - ring all-reduce on the local gradients&quot;)
+
+
+def ring_allreduce(vectors):
+    &quot;&quot;&quot;Sum N vectors with the ring algorithm. Each vector has
+    N elements, so worker r owns chunk r (one element here).
+    Scatter-reduce: chunks rotate one hop per step and the
+    receiver adds the incoming chunk into its copy. After
+    N-1 steps each worker holds exactly one finished chunk.
+    All-gather: finished chunks rotate until every worker
+    holds all of them. Returns the summed vectors plus a
+    human-readable trace of every step.&quot;&quot;&quot;
+    n = len(vectors)
+    work = [list(v) for v in vectors]
+    trace = []
+    # Scatter-reduce.
+    for step in range(n - 1):
+        sends = []
+        for r in range(n):
+            send_chunk = (r - step) % n
+            recv_chunk = (r - step - 1) % n
+            sends.append((r, send_chunk, recv_chunk))
+        # Apply the step: worker r receives chunk recv_chunk
+        # from worker (r-1) and adds it into its own copy.
+        new = [list(v) for v in work]
+        for r, send_chunk, recv_chunk in sends:
+            src = (r - 1) % n
+            new[r][recv_chunk] += work[src][recv_chunk]
+        work = new
+        desc = &quot;  &quot;.join(f&quot;W{r}:c{c}&quot; for r, c, _ in sends)
+        trace.append(f&quot;  scatter-reduce {step + 1}/{n - 1}: &quot;
+                     f&quot;sends {desc} (receiver adds)&quot;)
+    # Who owns which finished chunk now? Check against the
+    # naive total instead of trusting the textbook diagram.
+    total = [sum(v[j] for v in vectors) for j in range(n)]
+    owners = []
+    for j in range(n):
+        owner = next(r for r in range(n) if work[r][j] == total[j]
+                     and all(work[r][k] != total[k] or k == j
+                             for k in range(n)))
+        owners.append(owner)
+    trace.append(&quot;  after scatter-reduce, finished chunks live at: &quot;
+                 + &quot;, &quot;.join(f&quot;chunk {j} on W{owners[j]}&quot;
+                             for j in range(n)))
+    # All-gather.
+    for step in range(n - 1):
+        sends = []
+        for r in range(n):
+            send_chunk = (r - step + 1) % n
+            recv_chunk = (r - step) % n
+            sends.append((r, send_chunk, recv_chunk))
+        new = [list(v) for v in work]
+        for r, send_chunk, recv_chunk in sends:
+            src = (r - 1) % n
+            new[r][recv_chunk] = work[src][recv_chunk]
+        work = new
+        desc = &quot;  &quot;.join(f&quot;W{r}:c{c}&quot; for r, c, _ in sends)
+        trace.append(f&quot;  all-gather {step + 1}/{n - 1}: &quot;
+                     f&quot;sends {desc} (receiver overwrites)&quot;)
+    return work, trace, total
+
+
+summed, trace, naive_total = ring_allreduce(local_grads)
+for line in trace:
+    print(line)
+print(f&quot;  every worker now holds the total sum:&quot;)
+print(f&quot;    W0 = {fmt(summed[0])}&quot;)
+identical = all(v == summed[0] for v in summed)
+print(f&quot;  all four workers identical: {identical}&quot;)
+ring_avg = [v / N_WORKERS for v in summed[0]]
+theta_ring = [t - LR * g for t, g in zip(THETA0, ring_avg)]
+print(f&quot;  averaged grad (sum / 4) = {fmt(ring_avg)}&quot;)
+print(f&quot;  diff vs full-batch grad = &quot;
+      f&quot;{max(abs(a - b) for a, b in zip(ring_avg, full_grad)):.6f}&quot;)
+print(f&quot;  after one step = {fmt(theta_ring)}&quot;)
+print(f&quot;  diff vs single-machine step = &quot;
+      f&quot;{max(abs(a - b) for a, b in zip(theta_ring, theta_ref)):.6f}&quot;)
+print(&quot;  verdict: same theta0 + same averaged grad = same step, &quot;
+      &quot;on every replica - the replicas never diverge&quot;)
+
+# ---------- Part 4: comm math for a 7B model, fp32 ----------
+print(&quot;Part 4 - what the sync costs at 7B parameters (fp32)&quot;)
+params = 7_000_000_000
+grad_gb = params * 4 / 1e9
+print(f&quot;  one gradient = {params:,} params x 4 bytes = {grad_gb:.1f} GB&quot;)
+print(&quot;  ring traffic per worker = 2(N-1)/N x grad size, &quot;
+      &quot;2(N-1) steps:&quot;)
+for n in (4, 64, 1024):
+    traffic = 2 * (n - 1) / n * grad_gb
+    print(f&quot;    N={n:&lt;5} ring: {traffic:.1f} GB/worker/step, &quot;
+          f&quot;{2 * (n - 1)} steps&quot;)
+hub_gb = 64 * grad_gb * 2
+print(f&quot;  hub (parameter server) at N=64: one node must receive &quot;
+      f&quot;and resend {hub_gb:,.0f} GB/step through a single link&quot;)
+print(f&quot;  at 50 GB/s effective, the N=64 ring sync takes &quot;
+      f&quot;{2 * 63 / 64 * grad_gb / 50:.2f} s per step - and note&quot;)
+print(&quot;  the shard size never appears: sync cost depends on the&quot;)
+print(&quot;  MODEL size only, so bigger shards (more compute per&quot;)
+print(&quot;  step) make the sync relatively cheaper, not dearer&quot;)
+print(&quot;  one-line failure note: the step is a barrier - the&quot;)
+print(&quot;  slowest worker sets the step time, and one dead&quot;)
+print(&quot;  worker stalls the whole run (Day 78: checkpointing)&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one machine, full batch (Day 7&#x27;s gradient)
+  theta0 = 0.500000, 0.250000, 0.000000, 0.000000
+  full-batch grad = -15.875000, -85.828125, -65.891602, -54.102722
+  after one step (lr 0.05) = 1.293750, 4.541406, 3.294580, 2.705136
+Part 2 - four workers, one data shard each, same theta0
+  worker 0: shard x = 0.5, 2.5, 4.5, 6.5  local grad = -13.000000, -63.000000, -43.343750, -31.617188
+  worker 1: shard x = 1.0, 3.0, 5.0, 7.0  local grad = -15.125000, -77.375000, -56.890625, -44.615234
+  worker 2: shard x = 1.5, 3.5, 5.5, 7.5  local grad = -16.625000, -91.687500, -71.144531, -58.881592
+  worker 3: shard x = 2.0, 4.0, 6.0, 8.0  local grad = -18.750000, -111.250000, -92.187500, -81.296875
+  average of local grads = -15.875000, -85.828125, -65.891602, -54.102722
+  diff vs full-batch grad = 0.000000
+Part 3 - ring all-reduce on the local gradients
+  scatter-reduce 1/3: sends W0:c0  W1:c1  W2:c2  W3:c3 (receiver adds)
+  scatter-reduce 2/3: sends W0:c3  W1:c0  W2:c1  W3:c2 (receiver adds)
+  scatter-reduce 3/3: sends W0:c2  W1:c3  W2:c0  W3:c1 (receiver adds)
+  after scatter-reduce, finished chunks live at: chunk 0 on W3, chunk 1 on W0, chunk 2 on W1, chunk 3 on W2
+  all-gather 1/3: sends W0:c1  W1:c2  W2:c3  W3:c0 (receiver overwrites)
+  all-gather 2/3: sends W0:c0  W1:c1  W2:c2  W3:c3 (receiver overwrites)
+  all-gather 3/3: sends W0:c3  W1:c0  W2:c1  W3:c2 (receiver overwrites)
+  every worker now holds the total sum:
+    W0 = -63.500000, -343.312500, -263.566406, -216.410889
+  all four workers identical: True
+  averaged grad (sum / 4) = -15.875000, -85.828125, -65.891602, -54.102722
+  diff vs full-batch grad = 0.000000
+  after one step = 1.293750, 4.541406, 3.294580, 2.705136
+  diff vs single-machine step = 0.000000
+  verdict: same theta0 + same averaged grad = same step, on every replica - the replicas never diverge
+Part 4 - what the sync costs at 7B parameters (fp32)
+  one gradient = 7,000,000,000 params x 4 bytes = 28.0 GB
+  ring traffic per worker = 2(N-1)/N x grad size, 2(N-1) steps:
+    N=4     ring: 42.0 GB/worker/step, 6 steps
+    N=64    ring: 55.1 GB/worker/step, 126 steps
+    N=1024  ring: 55.9 GB/worker/step, 2046 steps
+  hub (parameter server) at N=64: one node must receive and resend 3,584 GB/step through a single link
+  at 50 GB/s effective, the N=64 ring sync takes 1.10 s per step - and note
+  the shard size never appears: sync cost depends on the
+  MODEL size only, so bigger shards (more compute per
+  step) make the sync relatively cheaper, not dearer
+  one-line failure note: the step is a barrier - the
+  slowest worker sets the step time, and one dead
+  worker stalls the whole run (Day 78: checkpointing)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your Part 3 prints <code>all four workers identical: True</code> and both diffs read <code>0.000000</code> &mdash; four simulated workers stepped to exactly the single-machine &theta;. The keeper test, no notes allowed: someone says &ldquo;7B model, fp32, 64 GPUs, data parallel&rdquo; and you answer &ldquo;each GPU moves about 55 GB per step in the sync, and doubling the dataset changes that number by zero.&rdquo; Name the precondition too &mdash; the model must fit on one worker &mdash; and you own the concept.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, then study the ring panel until you can sketch scatter-reduce vs all-gather from memory. Run the code and look only at Part 3&rsquo;s trace, its two <code>0.000000</code> lines, and Part 4&rsquo;s three-row table. The rest is confirmation.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: data parallelism dies the moment the model itself doesn&rsquo;t fit on one worker. So we split the model &mdash; and the moment you do, the workers stop being copies of each other and start being stages of one machine.</p>
+  </div>
+
+  <div class="footer">Streak: 74 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
