@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents 2: The Agentic Loop — Plan, Act, Observe — Day 61 of 100</title>
+
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 61 of 100</span>
+  <h1>Agents 2: The Agentic Loop — Plan, Act, Observe</h1>
+  <p class="outcome">Tonight you'll be able to: put Day 60's tool round-trip in a loop — a planner that picks a tool, reads the result, picks the next one — and name the three stop conditions that keep an agent from spinning forever.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 60 gave a model <em>hands</em>: a tool schema, one validated call, one observation coming back. An <strong>agent</strong> is what you get when you put that round-trip in a loop and let the model decide when it's done:</p>
+  <ul>
+    <li><strong>Plan</strong> — the model reads the <em>entire history</em> (task + everything so far) and emits either a tool call or a final answer.</li>
+    <li><strong>Act</strong> — your runtime executes the call for real. The model never touches anything directly.</li>
+    <li><strong>Observe</strong> — the result is appended to the history as a tool message, and you go around again.</li>
+  </ul>
+  <p>Two facts do all the work. First: <strong>the model is stateless between steps</strong> — the history <em>is</em> the state, re-sent in full every step, growing by 2 messages per tool call (the call + its result). That's why long agent runs get slow and expensive, and why the history is the thing you log when debugging one. Second: <strong>the planner decides, the runtime disposes.</strong> Your code owns execution, state, and stopping. Today's planner is a small rule-based stand-in for an LLM — named honestly: a real model returns exactly the same shape of decision (<code>{"tool": ..., "args": ...}</code> or a final answer), just less predictably. Swap the planner, keep the loop — that's the architecture of every agent framework you'll meet.</p>
+  <p>Because the planner can improvise, it can also spin. So the loop needs <strong>stop conditions</strong>, checked every step: (1) a <em>final answer</em> — the normal exit; (2) <em>max_steps</em> — a hard step budget, spent either way; (3) <em>repeated-call detection</em> — the same tool with the same args as an earlier step can only return the same answer, so the loop is stuck by definition and gets killed. Agents failing in loops isn't an edge case; it's the default failure mode these three exits exist for.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Day 7's training loop and Day 34's recap gave you the reconcile loop: observe state, diff against desired, act, repeat — a Kubernetes controller. An agent is that same loop with one twist: <strong>the controller can improvise its next action</strong> instead of following fixed code paths. Wonderful when the task is open-ended; terrifying for the same reason. So you give it what you'd give any controller you don't fully trust: an iteration budget, a repeat/idempotency guard, and a hard kill switch. Trading version: it's the difference between a rules-based execution algo and a discretionary trader with your API keys — you cap the discretionary one's attempts.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 400" width="680" height="400" role="img" aria-label="The agentic loop: plan, act, observe, with a growing message history and three stop conditions">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+    <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7a5cff"/>
+    </marker>
+  </defs>
+
+  <!-- the loop -->
+  <rect x="30" y="34" width="170" height="60" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+  <text x="115" y="58" text-anchor="middle" font-size="13" font-weight="700" fill="#0a54c2">PLAN</text>
+  <text x="115" y="74" text-anchor="middle" font-size="10.5" fill="#333">planner reads history,</text>
+  <text x="115" y="88" text-anchor="middle" font-size="10.5" fill="#333">picks ONE next move</text>
+
+  <rect x="255" y="34" width="170" height="60" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+  <text x="340" y="58" text-anchor="middle" font-size="13" font-weight="700" fill="#0a54c2">ACT</text>
+  <text x="340" y="74" text-anchor="middle" font-size="10.5" fill="#333">the tool runs for real</text>
+  <text x="340" y="88" text-anchor="middle" font-size="10.5" fill="#333">(Day 60's round-trip)</text>
+
+  <rect x="480" y="34" width="170" height="60" rx="10" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.5"/>
+  <text x="565" y="58" text-anchor="middle" font-size="13" font-weight="700" fill="#0a54c2">OBSERVE</text>
+  <text x="565" y="74" text-anchor="middle" font-size="10.5" fill="#333">the result comes back</text>
+  <text x="565" y="88" text-anchor="middle" font-size="10.5" fill="#333">as a tool message</text>
+
+  <line x1="202" y1="64" x2="251" y2="64" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="427" y1="64" x2="476" y2="64" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- observe -> history -->
+  <path d="M565,94 L565,182 L454,182" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="498" y="140" text-anchor="middle" font-size="10.5" fill="#555">append call + result</text>
+
+  <!-- history state -->
+  <rect x="230" y="150" width="220" height="64" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.5"/>
+  <text x="340" y="172" text-anchor="middle" font-size="12" font-weight="700" fill="#9a6b00">HISTORY — the loop's only state</text>
+  <text x="340" y="190" text-anchor="middle" font-size="10.5" fill="#333">task + every call + every result</text>
+  <text x="340" y="206" text-anchor="middle" font-size="10.5" fill="#333">+2 messages per step · never shrinks</text>
+
+  <!-- history -> plan (the loop-back) -->
+  <path d="M230,182 L115,182 L115,98" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="124" y="132" font-size="10.5" fill="#555">planner re-reads</text>
+  <text x="124" y="146" font-size="10.5" fill="#555">the whole history</text>
+
+  <!-- history growth strip -->
+  <text x="40" y="242" font-size="11" font-weight="700" fill="#333">The state grows every turn:</text>
+  <rect x="40" y="284" width="36" height="16" fill="#0a7aff"/>
+  <rect x="92" y="268" width="36" height="32" fill="#0a7aff"/>
+  <rect x="144" y="252" width="36" height="48" fill="#0a7aff"/>
+  <text x="58" y="278" text-anchor="middle" font-size="10.5" fill="#333">3</text>
+  <text x="110" y="262" text-anchor="middle" font-size="10.5" fill="#333">5</text>
+  <text x="162" y="246" text-anchor="middle" font-size="10.5" fill="#333">7</text>
+  <line x1="36" y1="300" x2="196" y2="300" stroke="#999" stroke-width="1"/>
+  <text x="116" y="316" text-anchor="middle" font-size="10.5" fill="#777">messages after steps 1 · 2 · 3</text>
+
+  <!-- stop-condition exits -->
+  <path d="M340,214 L340,332" fill="none" stroke="#7a5cff" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrd)"/>
+  <text x="350" y="266" font-size="10.5" fill="#5a3fd4">stop conditions</text>
+  <text x="350" y="280" font-size="10.5" fill="#5a3fd4">checked every step</text>
+
+  <rect x="30" y="336" width="200" height="50" rx="10" fill="#e9f9ee" stroke="#22a355" stroke-width="1.5"/>
+  <text x="130" y="356" text-anchor="middle" font-size="11.5" font-weight="700" fill="#177245">✓ FINAL ANSWER</text>
+  <text x="130" y="372" text-anchor="middle" font-size="10.5" fill="#333">planner answers, no call — done</text>
+
+  <rect x="240" y="336" width="200" height="50" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.5"/>
+  <text x="340" y="356" text-anchor="middle" font-size="11.5" font-weight="700" fill="#9a6b00">⏱ MAX STEPS</text>
+  <text x="340" y="372" text-anchor="middle" font-size="10.5" fill="#333">step budget spent — kill it</text>
+
+  <rect x="450" y="336" width="200" height="50" rx="10" fill="#fdecec" stroke="#d64545" stroke-width="1.5"/>
+  <text x="550" y="356" text-anchor="middle" font-size="11.5" font-weight="700" fill="#b03030">♻ REPEAT DETECTED</text>
+  <text x="550" y="372" text-anchor="middle" font-size="10.5" fill="#333">same call + args twice — kill it</text>
+</svg>
+    <div class="caption">One trip around the loop = one tool call. The history grows +2 messages per step and is re-read in full at every PLAN — and any step can exit through one of the three stop conditions.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>Stdlib only today — no torch, no APIs: plain <code>python3 code.py</code> in your <code>~/ai-lab</code> venv. The tools are Day 60's, over embedded closes. The task genuinely needs 5 calls across 3 tools: fetch both tickers' closes, compute both moves, then write the winner to the watchlist. Watch the <code>history</code> count in the trace — and stick around for Run 2, where the planner is sabotaged.</p>
+  <pre><code>&quot;&quot;&quot;Day 61 - Agents 2: The Agentic Loop (Plan -&gt; Act -&gt; Observe)
+
+Day 60 gave a model hands: tool schemas + one call/observation round-trip.
+Today we put that round-trip in a LOOP and it becomes an agent: the planner
+picks a tool, sees the result, picks the next one, until the task is done.
+
+The model is NOT the lesson - the control system around it is:
+  * state        = the message history, which grows by 2 entries per step
+  * stop rules   = final answer | max_steps budget | repeated-call detector
+
+The planner here is a small rule-based stand-in for an LLM (named honestly:
+a real model returns the same {&quot;tool&quot;: ..., &quot;args&quot;: ...} decisions, just
+less predictably). Stdlib only, embedded data, fully deterministic.
+Run in the ~/ai-lab venv:  python3 code.py
+&quot;&quot;&quot;
+
+import json
+
+# ---------------------------------------------------------------- the world
+CLOSES = {  # this week&#x27;s daily closes, Mon..Fri (embedded, no API)
+    &quot;NVDA&quot;: [200.00, 204.00, 202.00, 208.00, 212.40],
+    &quot;AMD&quot;: [160.00, 158.40, 161.00, 159.50, 156.80],
+}
+
+
+class World:
+    &quot;&quot;&quot;The tools from Day 60, same schemas, now called repeatedly.&quot;&quot;&quot;
+
+    def __init__(self):
+        self.watchlist = [&quot;META&quot;]
+
+    def get_closes(self, ticker):
+        return {&quot;ticker&quot;: ticker, &quot;closes&quot;: CLOSES[ticker]}
+
+    def pct_change(self, ticker, first, last):
+        return {&quot;ticker&quot;: ticker, &quot;pct&quot;: round((last - first) / first * 100, 2)}
+
+    def add_to_watchlist(self, ticker):
+        if ticker not in self.watchlist:
+            self.watchlist.append(ticker)
+        return {&quot;added&quot;: ticker, &quot;watchlist&quot;: list(self.watchlist)}
+
+
+# ------------------------------------------------------------- the planners
+def results_by(history, tool):
+    &quot;&quot;&quot;All observations so far for one tool, keyed by ticker.&quot;&quot;&quot;
+    out = {}
+    for msg in history:
+        if msg[&quot;role&quot;] == &quot;tool&quot; and msg[&quot;name&quot;] == tool:
+            out[msg[&quot;result&quot;][&quot;ticker&quot;]] = msg[&quot;result&quot;]
+    return out
+
+
+def planner(history):
+    &quot;&quot;&quot;Rule-based stand-in for the LLM. Reads ONLY the history - exactly
+    like a real model, which sees nothing but the conversation.&quot;&quot;&quot;
+    closes = results_by(history, &quot;get_closes&quot;)
+    for ticker in (&quot;NVDA&quot;, &quot;AMD&quot;):
+        if ticker not in closes:
+            return {&quot;thought&quot;: f&quot;Need {ticker}&#x27;s closes before I can compare.&quot;,
+                    &quot;tool&quot;: &quot;get_closes&quot;, &quot;args&quot;: {&quot;ticker&quot;: ticker}}
+    changes = results_by(history, &quot;pct_change&quot;)
+    for ticker in (&quot;NVDA&quot;, &quot;AMD&quot;):
+        if ticker not in changes:
+            c = closes[ticker][&quot;closes&quot;]
+            return {&quot;thought&quot;: f&quot;Have {ticker} closes; compute the week&#x27;s move.&quot;,
+                    &quot;tool&quot;: &quot;pct_change&quot;,
+                    &quot;args&quot;: {&quot;ticker&quot;: ticker, &quot;first&quot;: c[0], &quot;last&quot;: c[-1]}}
+    added = [m for m in history
+             if m[&quot;role&quot;] == &quot;tool&quot; and m[&quot;name&quot;] == &quot;add_to_watchlist&quot;]
+    if not added:
+        stronger = max(changes, key=lambda t: changes[t][&quot;pct&quot;])
+        return {&quot;thought&quot;: f&quot;{stronger} is stronger &quot;
+                           f&quot;({changes[stronger][&#x27;pct&#x27;]:+.2f}%). Add it.&quot;,
+                &quot;tool&quot;: &quot;add_to_watchlist&quot;, &quot;args&quot;: {&quot;ticker&quot;: stronger}}
+    nvda, amd = changes[&quot;NVDA&quot;][&quot;pct&quot;], changes[&quot;AMD&quot;][&quot;pct&quot;]
+    return {&quot;thought&quot;: &quot;Task complete - both compared, stronger one added.&quot;,
+            &quot;final&quot;: f&quot;NVDA {nvda:+.2f}% beat AMD {amd:+.2f}% this week; &quot;
+                     f&quot;NVDA added to the watchlist.&quot;}
+
+
+def stubborn_planner(history):
+    &quot;&quot;&quot;A broken planner: whatever it observes, it asks for NVDA closes.&quot;&quot;&quot;
+    return {&quot;thought&quot;: &quot;Get NVDA&#x27;s closes.&quot;,
+            &quot;tool&quot;: &quot;get_closes&quot;, &quot;args&quot;: {&quot;ticker&quot;: &quot;NVDA&quot;}}
+
+
+# ------------------------------------------------------------ the loop itself
+def run_agent(task, plan_fn, world, max_steps=8):
+    &quot;&quot;&quot;THE AGENTIC LOOP. ~25 lines - this is the whole runtime.&quot;&quot;&quot;
+    tools = {&quot;get_closes&quot;: world.get_closes,
+             &quot;pct_change&quot;: world.pct_change,
+             &quot;add_to_watchlist&quot;: world.add_to_watchlist}
+    history = [{&quot;role&quot;: &quot;user&quot;, &quot;text&quot;: task}]   # the state. It only grows.
+    seen_calls = set()
+    print(f&quot;TASK: {task}&quot;)
+    for step in range(1, max_steps + 1):
+        decision = plan_fn(history)                       # PLAN
+        print(f&quot; step {step}: thought : {decision[&#x27;thought&#x27;]}&quot;)
+        if &quot;final&quot; in decision:                           # stop rule 1
+            history.append({&quot;role&quot;: &quot;assistant&quot;, &quot;text&quot;: decision[&quot;final&quot;]})
+            print(f&quot;         FINAL   : {decision[&#x27;final&#x27;]}&quot;)
+            print(f&quot;         stopped : final answer at step {step} &quot;
+                  f&quot;| history = {len(history)} messages&quot;)
+            return history
+        call = (decision[&quot;tool&quot;],
+                json.dumps(decision[&quot;args&quot;], sort_keys=True))
+        if call in seen_calls:                            # stop rule 2
+            print(f&quot;         call    : {call[0]}({call[1]})&quot;)
+            print(f&quot;         STOPPED : repeated call detected - &quot;
+                  f&quot;loop killed at step {step}, task NOT completed&quot;)
+            return history
+        seen_calls.add(call)
+        result = tools[decision[&quot;tool&quot;]](**decision[&quot;args&quot;])   # ACT
+        history.append({&quot;role&quot;: &quot;assistant&quot;, &quot;call&quot;: call})    # record both
+        history.append({&quot;role&quot;: &quot;tool&quot;, &quot;name&quot;: decision[&quot;tool&quot;],
+                        &quot;result&quot;: result})                     # OBSERVE
+        print(f&quot;         call    : {call[0]}({call[1]})&quot;)
+        print(f&quot;         observe : {json.dumps(result, sort_keys=True)}&quot;)
+        print(f&quot;         history : {len(history)} messages&quot;)
+    print(f&quot; STOPPED : max_steps={max_steps} spent, no final answer&quot;)  # rule 3
+    return history
+
+
+# -------------------------------------------------------------------- runs
+TASK = &quot;Compare NVDA and AMD this week; add the stronger one to my watchlist.&quot;
+
+print(&quot;=== RUN 1: a working agent (planner + loop + tools) ===&quot;)
+w1 = World()
+run_agent(TASK, planner, w1)
+print(f&quot; watchlist after run 1: {w1.watchlist}&quot;)
+
+print()
+print(&quot;=== RUN 2: same loop, broken planner (repeats itself) ===&quot;)
+w2 = World()
+run_agent(TASK, stubborn_planner, w2)
+print(f&quot; watchlist after run 2: {w2.watchlist}  (unchanged - killed in time)&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>=== RUN 1: a working agent (planner + loop + tools) ===
+TASK: Compare NVDA and AMD this week; add the stronger one to my watchlist.
+ step 1: thought : Need NVDA&#x27;s closes before I can compare.
+         call    : get_closes({&quot;ticker&quot;: &quot;NVDA&quot;})
+         observe : {&quot;closes&quot;: [200.0, 204.0, 202.0, 208.0, 212.4], &quot;ticker&quot;: &quot;NVDA&quot;}
+         history : 3 messages
+ step 2: thought : Need AMD&#x27;s closes before I can compare.
+         call    : get_closes({&quot;ticker&quot;: &quot;AMD&quot;})
+         observe : {&quot;closes&quot;: [160.0, 158.4, 161.0, 159.5, 156.8], &quot;ticker&quot;: &quot;AMD&quot;}
+         history : 5 messages
+ step 3: thought : Have NVDA closes; compute the week&#x27;s move.
+         call    : pct_change({&quot;first&quot;: 200.0, &quot;last&quot;: 212.4, &quot;ticker&quot;: &quot;NVDA&quot;})
+         observe : {&quot;pct&quot;: 6.2, &quot;ticker&quot;: &quot;NVDA&quot;}
+         history : 7 messages
+ step 4: thought : Have AMD closes; compute the week&#x27;s move.
+         call    : pct_change({&quot;first&quot;: 160.0, &quot;last&quot;: 156.8, &quot;ticker&quot;: &quot;AMD&quot;})
+         observe : {&quot;pct&quot;: -2.0, &quot;ticker&quot;: &quot;AMD&quot;}
+         history : 9 messages
+ step 5: thought : NVDA is stronger (+6.20%). Add it.
+         call    : add_to_watchlist({&quot;ticker&quot;: &quot;NVDA&quot;})
+         observe : {&quot;added&quot;: &quot;NVDA&quot;, &quot;watchlist&quot;: [&quot;META&quot;, &quot;NVDA&quot;]}
+         history : 11 messages
+ step 6: thought : Task complete - both compared, stronger one added.
+         FINAL   : NVDA +6.20% beat AMD -2.00% this week; NVDA added to the watchlist.
+         stopped : final answer at step 6 | history = 12 messages
+ watchlist after run 1: [&#x27;META&#x27;, &#x27;NVDA&#x27;]
+
+=== RUN 2: same loop, broken planner (repeats itself) ===
+TASK: Compare NVDA and AMD this week; add the stronger one to my watchlist.
+ step 1: thought : Get NVDA&#x27;s closes.
+         call    : get_closes({&quot;ticker&quot;: &quot;NVDA&quot;})
+         observe : {&quot;closes&quot;: [200.0, 204.0, 202.0, 208.0, 212.4], &quot;ticker&quot;: &quot;NVDA&quot;}
+         history : 3 messages
+ step 2: thought : Get NVDA&#x27;s closes.
+         call    : get_closes({&quot;ticker&quot;: &quot;NVDA&quot;})
+         STOPPED : repeated call detected - loop killed at step 2, task NOT completed
+ watchlist after run 2: [&#x27;META&#x27;]  (unchanged - killed in time)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>You ran a complete agent end-to-end: 5 tool calls across 3 tools, a final answer at step 6, a 12-message history, and a watchlist that actually changed (NVDA in, on a +6.20% vs −2.00% week). Then the <em>same loop</em> strangled a broken planner at step 2 — repeat detected, watchlist untouched. You can now read any agent framework as: planner + this loop + these stop conditions.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read the diagram, run the code, then read only <code>run_agent()</code> — the whole runtime is ~25 lines. One tweak: pass <code>max_steps=3</code> to Run 1 and watch the budget exit kill a healthy agent mid-task. Three exits, all witnessed, 20 minutes.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: everything the planner knows arrives as text inside that history — including the instructions sitting at the very top of it. We learn to write those like engineers.</p>
+  </div>
+
+  <div class="footer">Streak: 61 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
