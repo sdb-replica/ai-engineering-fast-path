@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What a Neural Net Is: A Composed Function + an Optimizer — Day 34 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 34 of 100</span>
+  <h1>What a Neural Net Is: A Composed Function + an Optimizer</h1>
+  <p class="outcome">Tonight you'll be able to: compress all of Phase B (Days 21&ndash;33) into one reusable sentence &mdash; a neural net is one composed differentiable function <code>f<sub>&theta;</sub>(x)</code> plus an optimizer that edits &theta; &mdash; and prove each half by taking the other half away.</p>
+
+  <h2>The one idea</h2>
+  <p>Phase A ended with a sentence: learning = differentiable programming (Day 20). Phase B spent fourteen days building one object large enough to deserve its own version of that sentence:</p>
+<p style="text-align:center"><strong>A neural net is ONE composed differentiable function, <code>f<sub>&theta;</sub>(x)</code>, plus an optimizer that rewrites &theta; from the function&rsquo;s own gradients.</strong></p>
+<p><strong>Composed</strong> means nested, nothing more exotic: the output layer eats the hidden layer&rsquo;s output, which ate the input &mdash; <code>f(x) = L<sub>2</sub>(relu(L<sub>1</sub>(x)))</code> for Day 21&rsquo;s XOR net. Stacking only worked because a non-linearity bends between the linears (Day 21&rsquo;s collapse proof, Day 22&rsquo;s bends). Swap the pieces and the shape of the composition changes &mdash; a convolution slides one kernel everywhere (Day 26), a recurrent cell feeds its own output back in over time (Day 28), pooling and norms reshape or re-scale mid-chain (Days 27, 29) &mdash; but it is still one function, input in, prediction out. In code that function is one <code>nn.Module</code> with one <code>forward()</code> (Day 24), run in train or eval mode, on one device, under the Day 25 switches.</p>
+<p><strong>&theta; (theta) IS the function.</strong> The architecture is only the <em>shape</em> of the composition &mdash; which pieces, in which order, with which widths. The actual function you have is the numbers: Day 21&rsquo;s net is exactly 17 numbers (W<sub>1</sub> 8 + b<sub>1</sub> 4 + W<sub>2</sub> 4 + b<sub>2</sub> 1). Change a number, change the function. Save the numbers (<code>state_dict</code>, Day 24) and you have saved the function itself. That is why Day 33&rsquo;s init matters so much: init is choosing the <em>starting function</em> before the editor ever runs.</p>
+<p><strong>Differentiable</strong> is the contract from Day 20, now at network scale: every piece in the chain has a derivative, so one scalar loss can send blame backward through every layer to every number in &theta; (Day 23&rsquo;s three local rules, run by <code>backward()</code>). Break the chain &mdash; a dead ReLU column, a saturated tanh, a signal that vanished at init &mdash; and the blame arrives as zero for everything upstream, however good the architecture looks on paper.</p>
+<p><strong>Plus an optimizer</strong> &mdash; and the plus is load-bearing. The function alone is frozen: it maps inputs to predictions and never improves (Part 3 runs it 100 times and the loss does not move). The optimizer is a separate editor that knows nothing about your architecture: it receives &theta; and gradients, and applies one update rule (plain SGD, momentum, Adam &mdash; Day 18; stride and batch size are its dials, Day 30). Everything else in Phase B is support for these two halves: loaders feed the loop (Day 19, reused all phase), regularization edits the loss the editor answers to (Day 17), loss curves are the loop&rsquo;s telemetry (Day 31), and Day 32&rsquo;s tabular build was the two halves running untouched on a new dataset. Two halves, each useless alone, sufficient together &mdash; that is the whole Phase B mental model.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>A deployed service you already run in your head: <strong>binary + config + reconcile loop.</strong> The binary is the composition &mdash; functions calling functions in a fixed shape. &theta; is its config: the same binary with different config values <em>behaves as a different system</em>, and snapshotting the config snapshots the behavior. The optimizer is the reconcile loop (Day 7&rsquo;s analogy, now at full size): it reads desired state (the labels) vs actual state (the predictions), computes the diff (the loss), assigns blame per field (gradients), and nudges the config one safe step. Nobody confuses the binary with the loop &mdash; keep the same separation here and every framework API sorts itself: <code>forward()</code> is binary, <code>state_dict()</code> is config, <code>step()</code> is reconcile.</p><p>Trading version, one line: the architecture is your strategy&rsquo;s <em>form</em> (say, mean-reversion on a lookback), &theta; is the fitted lookback and thresholds, and the optimizer is the fitting process &mdash; a form with no fitted parameters is a blog post, and fitted parameters with no form are just numbers.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 472" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="472" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">What a neural net IS: one composed function + an optimizer</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Phase B (Days 21-33) on one page - architecture is the shape, theta is the function</text>
+<rect x="12" y="56" width="656" height="168" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE FUNCTION:  f(x) = L2 ( relu ( L1 ( x ) ) )      theta = 17 numbers</text>
+<rect x="28" y="96" width="72" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="64.0" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">x</text>
+<text x="64.0" y="136" text-anchor="middle" font-size="8.5" fill="#555555">input</text>
+<rect x="128" y="96" width="110" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="183.0" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Linear L1</text>
+<text x="183.0" y="136" text-anchor="middle" font-size="8.5" fill="#555555">W1,b1 - Day 21</text>
+<rect x="266" y="96" width="84" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="308.0" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">ReLU</text>
+<text x="308.0" y="136" text-anchor="middle" font-size="8.5" fill="#555555">bend - Day 22</text>
+<rect x="378" y="96" width="110" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="433.0" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Linear L2</text>
+<text x="433.0" y="136" text-anchor="middle" font-size="8.5" fill="#555555">W2,b2 - Day 21</text>
+<rect x="516" y="96" width="84" height="52" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="558.0" y="118" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">y-hat</text>
+<text x="558.0" y="136" text-anchor="middle" font-size="8.5" fill="#555555">prediction</text>
+<line x1="102" y1="122" x2="126" y2="122" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="126,122 119,118 119,126" fill="#0a7aff"/>
+<line x1="240" y1="122" x2="264" y2="122" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="264,122 257,118 257,126" fill="#0a7aff"/>
+<line x1="352" y1="122" x2="376" y2="122" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="376,122 369,118 369,126" fill="#0a7aff"/>
+<line x1="490" y1="122" x2="514" y2="122" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="514,122 507,118 507,126" fill="#0a7aff"/>
+<text x="340.0" y="176" text-anchor="middle" font-size="9.0" fill="#1c1c1e">input [0, 1]:  z1 [-1, 1, 0, 0.8]  -&gt;  h [0, 1, 0, 0.8]  -&gt;  pred 0.6000  (loss 0.070625)</text>
+<text x="340.0" y="196" text-anchor="middle" font-size="9.0" fill="#1c1c1e">swap any piece, same shape:  Linear &lt;-&gt; Conv (Day 26) &lt;-&gt; RNN cell (Day 28)   |   ReLU &lt;-&gt; tanh / norm (Days 22, 29)</text>
+<text x="340.0" y="214" text-anchor="middle" font-size="9.0" fill="#0a54c2">counts prove it:  MLP 17 params  -  one Conv2d 80  -  one RNN cell 10  -  TabMLP 113  -  all just f_theta</text>
+<rect x="12" y="238" width="656" height="150" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="258" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE EDITOR:  THE OPTIMIZER REWRITES THETA FROM THE FUNCTION&#x27;S OWN GRADIENTS</text>
+<rect x="28" y="278" width="110" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="83.0" y="300" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Loss</text>
+<text x="83.0" y="318" text-anchor="middle" font-size="8.5" fill="#555555">y-hat vs y - Day 5</text>
+<rect x="166" y="278" width="120" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="226.0" y="300" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">backward()</text>
+<text x="226.0" y="318" text-anchor="middle" font-size="8.5" fill="#555555">blame - Day 23</text>
+<rect x="314" y="278" width="130" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="379.0" y="300" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Optimizer</text>
+<text x="379.0" y="318" text-anchor="middle" font-size="8.5" fill="#555555">SGD / Adam - Day 18</text>
+<rect x="472" y="278" width="150" height="52" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="547.0" y="300" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">theta -= lr x grad</text>
+<text x="547.0" y="318" text-anchor="middle" font-size="8.5" fill="#555555">the edit - Day 7 loop</text>
+<line x1="140" y1="304" x2="164" y2="304" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="164,304 157,300 157,308" fill="#22a355"/>
+<line x1="288" y1="304" x2="312" y2="304" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="312,304 305,300 305,308" fill="#22a355"/>
+<line x1="446" y1="304" x2="470" y2="304" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="470,304 463,300 463,308" fill="#22a355"/>
+<text x="340.0" y="352" text-anchor="middle" font-size="9.0" fill="#1c1c1e">loop back: new theta = a NEW function  -  repeat until the loss curve says stop (Day 31)</text>
+<text x="340.0" y="372" text-anchor="middle" font-size="9.0" fill="#177245">no step: frozen at 0.070625  |  100 steps: 0.000005  |  restore theta: 0.070625 again</text>
+<rect x="12" y="402" width="656" height="54" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340.0" y="422" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">Init sets the starting theta (Day 33)  -  hyperparams tune the editor (Day 30)  -  debugging reads the loop (Day 31)</text>
+<text x="340.0" y="441" text-anchor="middle" font-size="9.5" fill="#1c1c1e">No differentiability, no blame. No optimizer, no learning. Both halves, or nothing moves.</text>
+</svg>
+    <div class="caption">Top: the function &mdash; pieces composed in a chain, &theta; = 17 numbers, with the swap rule that turns an MLP into a CNN or an RNN without changing what kind of object it is. Bottom: the editor &mdash; loss, blame, and one update rule, looping back into a new &theta; (a new function) each step. The footer names the supporting cast: init, hyperparams, and debugging all serve one of the two halves.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three proofs, every weight hand-set from Day 21 &mdash; no RNG, every digit exact. <strong>Part 1</strong> unrolls the composition by hand: for input <code>[0, 1]</code> you print each intermediate, then check the by-hand formula against the <code>nn.Module</code> on all four corners. <strong>Part 2</strong> defines one generic <code>train()</code> loop and runs it on two different functions &mdash; Day 22&rsquo;s ReLU vs tanh race &mdash; without changing a line of the loop. <strong>Part 3</strong> separates the halves: 100 forwards with no step (frozen), 100 steps (learned), then the saved &theta; snapshot restored (the original function, back exactly) &mdash; plus the parameter-count inventory across Phase B&rsquo;s architectures.</p>
+  <pre><code>&quot;&quot;&quot;Day 34 - What a Neural Net Is: A Composed Function + an Optimizer.
+
+Phase B recap. Fourteen days of new machinery - perceptrons,
+activations, backprop, Modules, CNNs, RNNs, norms, init - and
+tonight it all compresses into one sentence:
+
+    A neural net is ONE composed differentiable function
+    f_theta(x), plus an optimizer that rewrites theta from
+    the function&#x27;s own gradients.
+
+Composed: the output layer eats the hidden layer&#x27;s output,
+which ate the input - f(x) = L2(relu(L1(x))). Differentiable:
+every piece in the chain has a derivative, so Day 23&#x27;s blame
+signal can flow from the loss back to every number in theta.
+Theta IS the function: the architecture is the shape of the
+composition, the 17 numbers in theta are the function itself.
+
+  Part 1  Unroll the composition by hand on Day 21&#x27;s XOR net.
+          For input [0, 1]: z1, the ReLU gate, and the final
+          sum, digit by digit - then the same formula on all
+          four corners matches the nn.Module exactly. Theta
+          is 8 + 4 + 4 + 1 = 17 numbers, nothing else.
+  Part 2  One generic train() loop, two different functions.
+          Swap only the hidden activation - ReLU vs tanh,
+          Day 22&#x27;s race - and the loop does not change by one
+          character: it only ever calls model(X), reads a
+          scalar loss, calls backward(), and steps. The
+          optimizer serves the composition, any composition.
+  Part 3  The two halves, separated. Run the function 100
+          times with NO optimizer step and the loss is frozen
+          at 0.070625 - a function alone never learns. Train
+          it, then restore the saved theta snapshot and the
+          loss returns to exactly 0.070625: change theta,
+          change the function; restore theta, restore it.
+          The inventory underneath shows every Phase B
+          architecture - MLP, CNN, RNN, tabular MLP - is
+          the same object: an nn.Module with a theta you
+          can count.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data), no CUDA, no paid APIs, no downloads.
+Every weight is set by hand, so every number is exact -
+no RNG anywhere in this lesson.
+
+Expected output:
+
+  Part 1 - unroll f_theta: L2(relu(L1(x))), by hand
+    input [0.0, 1.0]: z1 = -1.0000, 1.0000, 0.0000, 0.8000
+      after ReLU: h = 0.0000, 1.0000, 0.0000, 0.8000  -&gt; pred 0.6000 (target 1)
+    all four preds, by hand: 0.0000, 0.6000, 1.0000, 0.3500  loss 0.070625
+    nn.Module vs by-hand formula: max diff 0.000000
+    theta = W1 8 + b1 4 + W2 4 + b2 1 = 17 numbers - they ARE the function
+  Part 2 - one generic loop, two different functions (SGD, lr=0.5, 100 epochs)
+    relu  loss 0.070625 -&gt; 0.000005  predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)
+    tanh  loss 0.669811 -&gt; 0.000020  predictions -0.0039, 0.9957, 0.9955, -0.0050  (correct: 4/4)
+    the loop changed by zero lines - only the piece inside f changed
+  Part 3 - no optimizer, no learning; theta restored, function restored
+    100 forwards, no step: loss 0.070625 -&gt; 0.070625  (changed: False)
+    after 100 optimizer steps: loss 0.000005
+    snapshot restored: loss 0.070625  preds vs original max diff 0.000000
+    every Phase B architecture is the same object - f_theta with a countable theta:
+      MLP 2-&gt;4-&gt;1 (Days 21-25):        17 params
+      Conv2d 1-&gt;8, k=3 (Days 26-27):   80 params
+      RNN cell 1-&gt;2 (Day 28):          10 params
+      TabMLP 5-&gt;16-&gt;1 (Day 32):        113 params
+    verdict: architecture = shape of the composition, theta = the function, optimizer = the editor
+&quot;&quot;&quot;
+import torch
+import torch.nn as nn
+
+# Day 21&#x27;s hand-set init - the same starting function all Phase B.
+W1_INIT = torch.tensor([[1.0, -1.0], [-1.0, 1.0],
+                        [0.5, 0.5], [-0.5, 0.8]])
+B1_INIT = torch.tensor([0.0, 0.0, -0.5, 0.0])
+W2_INIT = torch.tensor([[1.0, 1.0, 1.0, -0.5]])
+B2_INIT = torch.tensor([0.0])
+X = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+y = torch.tensor([[0.0], [1.0], [1.0], [0.0]])          # XOR (Day 21)
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+
+def build(act):
+    net = nn.Sequential(nn.Linear(2, 4), act, nn.Linear(4, 1))
+    with torch.no_grad():
+        net[0].weight.copy_(W1_INIT)
+        net[0].bias.copy_(B1_INIT)
+        net[2].weight.copy_(W2_INIT)
+        net[2].bias.copy_(B2_INIT)
+    return net
+
+
+# ---------- Part 1: unroll the composition by hand ----------
+print(&quot;Part 1 - unroll f_theta: L2(relu(L1(x))), by hand&quot;)
+x_one = torch.tensor([0.0, 1.0])
+with torch.no_grad():
+    z1 = x_one @ W1_INIT.T + B1_INIT                   # L1: linear piece
+    h = torch.relu(z1)                                 # the bend (Day 22)
+    pred_one = (h @ W2_INIT.T + B2_INIT).item()        # L2: linear piece
+print(f&quot;  input [0.0, 1.0]: z1 = {fmt(z1)}&quot;)
+print(f&quot;    after ReLU: h = {fmt(h)}  -&gt; pred {pred_one:.4f} (target 1)&quot;)
+with torch.no_grad():
+    manual = torch.relu(X @ W1_INIT.T + B1_INIT) @ W2_INIT.T + B2_INIT
+    loss0 = ((manual - y) ** 2).mean().item()
+    module_pred = build(nn.ReLU())(X)
+    diff = (manual - module_pred).abs().max().item()
+print(f&quot;  all four preds, by hand: {fmt(manual)}  loss {loss0:.6f}&quot;)
+print(f&quot;  nn.Module vs by-hand formula: max diff {diff:.6f}&quot;)
+n_theta = W1_INIT.numel() + B1_INIT.numel() + W2_INIT.numel() \
+    + B2_INIT.numel()
+print(f&quot;  theta = W1 {W1_INIT.numel()} + b1 {B1_INIT.numel()} + &quot;
+      f&quot;W2 {W2_INIT.numel()} + b2 {B2_INIT.numel()} = {n_theta} numbers&quot;
+      &quot; - they ARE the function&quot;)
+
+# ---------- Part 2: one generic loop, two different functions ----------
+print(&quot;Part 2 - one generic loop, two different functions &quot;
+      &quot;(SGD, lr=0.5, 100 epochs)&quot;)
+
+
+def train(model):
+    &quot;&quot;&quot;The Phase B loop (Days 7/25). It knows nothing about the
+    model except: model(X) is differentiable, loss is a scalar.&quot;&quot;&quot;
+    opt = torch.optim.SGD(model.parameters(), lr=0.5)
+    first = None
+    for _ in range(100):
+        opt.zero_grad()
+        loss = ((model(X) - y) ** 2).mean()
+        if first is None:
+            first = loss.item()
+        loss.backward()
+        opt.step()
+    with torch.no_grad():
+        pred = model(X)
+        final = ((pred - y) ** 2).mean().item()
+        correct = int(((pred &gt; 0.5) == (y &gt; 0.5)).sum().item())
+    return first, final, pred, correct
+
+
+for name, act in ((&quot;relu&quot;, nn.ReLU()), (&quot;tanh&quot;, nn.Tanh())):
+    first, final, pred, correct = train(build(act))
+    print(f&quot;  {name:&lt;5} loss {first:.6f} -&gt; {final:.6f}  &quot;
+          f&quot;predictions {fmt(pred)}  (correct: {correct}/4)&quot;)
+print(&quot;  the loop changed by zero lines - only the piece inside f changed&quot;)
+
+# ---------- Part 3: separate the two halves ----------
+print(&quot;Part 3 - no optimizer, no learning; theta restored, &quot;
+      &quot;function restored&quot;)
+net = build(nn.ReLU())
+snapshot = {k: v.clone() for k, v in net.state_dict().items()}
+with torch.no_grad():
+    before = ((net(X) - y) ** 2).mean().item()
+    for _ in range(100):                               # forwards only
+        _ = net(X)
+    frozen = ((net(X) - y) ** 2).mean().item()
+print(f&quot;  100 forwards, no step: loss {before:.6f} -&gt; {frozen:.6f}&quot;
+      f&quot;  (changed: {bool(before != frozen)})&quot;)
+_, trained_final, _, _ = train(net)
+print(f&quot;  after 100 optimizer steps: loss {trained_final:.6f}&quot;)
+net.load_state_dict(snapshot)
+with torch.no_grad():
+    restored = ((net(X) - y) ** 2).mean().item()
+    orig = torch.relu(X @ W1_INIT.T + B1_INIT) @ W2_INIT.T + B2_INIT
+    rdiff = (net(X) - orig).abs().max().item()
+print(f&quot;  snapshot restored: loss {restored:.6f}  &quot;
+      f&quot;preds vs original max diff {rdiff:.6f}&quot;)
+print(&quot;  every Phase B architecture is the same object - &quot;
+      &quot;f_theta with a countable theta:&quot;)
+inventory = (
+    (&quot;MLP 2-&gt;4-&gt;1 (Days 21-25):&quot;, build(nn.ReLU())),
+    (&quot;Conv2d 1-&gt;8, k=3 (Days 26-27):&quot;, nn.Conv2d(1, 8, 3, padding=1)),
+    (&quot;RNN cell 1-&gt;2 (Day 28):&quot;, nn.RNN(1, 2, batch_first=True)),
+    (&quot;TabMLP 5-&gt;16-&gt;1 (Day 32):&quot;,
+     nn.Sequential(nn.Linear(5, 16), nn.ReLU(), nn.Linear(16, 1))),
+)
+for label, module in inventory:
+    count = sum(p.numel() for p in module.parameters())
+    print(f&quot;    {label:&lt;32} {count} params&quot;)
+print(&quot;  verdict: architecture = shape of the composition, &quot;
+      &quot;theta = the function, optimizer = the editor&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - unroll f_theta: L2(relu(L1(x))), by hand
+  input [0.0, 1.0]: z1 = -1.0000, 1.0000, 0.0000, 0.8000
+    after ReLU: h = 0.0000, 1.0000, 0.0000, 0.8000  -&gt; pred 0.6000 (target 1)
+  all four preds, by hand: 0.0000, 0.6000, 1.0000, 0.3500  loss 0.070625
+  nn.Module vs by-hand formula: max diff 0.000000
+  theta = W1 8 + b1 4 + W2 4 + b2 1 = 17 numbers - they ARE the function
+Part 2 - one generic loop, two different functions (SGD, lr=0.5, 100 epochs)
+  relu  loss 0.070625 -&gt; 0.000005  predictions 0.0032, 1.0000, 0.9999, -0.0029  (correct: 4/4)
+  tanh  loss 0.669811 -&gt; 0.000020  predictions -0.0039, 0.9957, 0.9955, -0.0050  (correct: 4/4)
+  the loop changed by zero lines - only the piece inside f changed
+Part 3 - no optimizer, no learning; theta restored, function restored
+  100 forwards, no step: loss 0.070625 -&gt; 0.070625  (changed: False)
+  after 100 optimizer steps: loss 0.000005
+  snapshot restored: loss 0.070625  preds vs original max diff 0.000000
+  every Phase B architecture is the same object - f_theta with a countable theta:
+    MLP 2-&gt;4-&gt;1 (Days 21-25):        17 params
+    Conv2d 1-&gt;8, k=3 (Days 26-27):   80 params
+    RNN cell 1-&gt;2 (Day 28):          10 params
+    TabMLP 5-&gt;16-&gt;1 (Day 32):        113 params
+  verdict: architecture = shape of the composition, theta = the function, optimizer = the editor</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three proofs: Part 1&rsquo;s by-hand preds <code>0.0000, 0.6000, 1.0000, 0.3500</code> matching the Module with max diff <code>0.000000</code>; Part 2&rsquo;s two losses (<code>0.000005</code> ReLU, <code>0.000020</code> tanh) from one unchanged loop; and Part 3&rsquo;s frozen loss (<code>0.070625 &rarr; 0.070625</code> with no step) returning to exactly <code>0.070625</code> after the snapshot restore. The keeper test, no notes allowed: given any Phase B model &mdash; CNN, RNN, tabular MLP &mdash; you can point and say which part is the composed function, where its &theta; lives, what counts it, and which separate object edits it.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can redraw its two panels from memory, then run only Part 1 and the frozen half of Part 3. If you can say out loud why a function alone never learns and why restoring &theta; restores the function, you have the recap &mdash; Part 2 is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase B closes for real &mdash; one end-to-end mini-project on a dataset you pick, running the whole machine start to finish with no new pieces.</p>
+  </div>
+
+  <div class="footer">Streak: 34 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
