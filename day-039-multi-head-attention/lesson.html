@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Head Attention: Why Multiple Heads — Day 39 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 39 of 100</span>
+  <h1>Multi-Head Attention: Why Multiple Heads</h1>
+  <p class="outcome">Tonight you'll be able to: explain why one attention read is never enough, run several heads in parallel &mdash; each in its own learned subspace &mdash; prove two hand-built heads attend to different tokens, and show the split costs exactly as many parameters as one big head.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday you built one attention head: project the sequence into queries, keys, and values, and let every token take one weighted average of all the values, weighted by query&ndash;key match. It works &mdash; and it has a hard ceiling. One head has one set of projections, so each token gets exactly <strong>one</strong> weighted average, computed in <strong>one</strong> subspace. Whatever that one read misses is simply not in the output.</p>
+<p><strong>Multi-head attention</strong> runs several copies of that same mechanism <em>in parallel</em>, each with its own learned projections <code>W<sub>Q</sub></code>, <code>W<sub>K</sub></code>, <code>W<sub>V</sub></code> &mdash; its own subspace to read in. The split is exact: with model width <code>d_model = 4</code> and <code>h = 2</code> heads, each head works in <code>d<sub>k</sub> = d_model / h = 2</code> dimensions. The heads&rsquo; outputs (3&times;2 each) are <strong>concatenated</strong> back to the full width (3&times;4) and passed through one last learned projection, <code>W<sub>O</sub></code> &mdash; the <strong>output projection</strong>, the mixer that blends what the heads found before anything downstream sees it. Nothing else changes: inside each head it is Day 38&rsquo;s op, untouched.</p>
+<p>Why bother? Because different relations need different reads of the same sequence. In trained models, individual heads visibly specialize: one tracks the <em>previous token</em>, one tracks the <em>subject</em> of the sentence, one tracks <em>recency</em>. A single head must average all of those relations into one set of weights &mdash; one compromise read. Parallel heads keep the reads separate until <code>W<sub>O</sub></code> mixes them deliberately. Tonight&rsquo;s code makes two heads <em>provably</em> specialize: head 1&rsquo;s projections read only the position columns, and its score for token <code>i</code> attending to token <code>j</code> works out to <code>(i&minus;1)&sup2; &minus; (i&minus;1&minus;j)&sup2;</code> &mdash; maximized exactly at <code>j = i&minus;1</code>, the previous token. Head 2&rsquo;s query is a constant &ldquo;find the flag&rdquo; and its keys read only the flag column, so every row peaks at token 0, the subject. Same input, two different attention maps &mdash; measured, not asserted.</p>
+<p>And the split is <strong>free</strong>. The two small heads cost 30 parameters each; plus <code>W<sub>O</sub></code> the total is 80 &mdash; exactly the price of <em>one</em> big head with <code>d<sub>k</sub> = 4</code> (Part 3). In fact the per-head projections stack into single (4&times;4) matrices: one fused matmul, then slice the result into heads. That is how real implementations run it &mdash; the &ldquo;parallel heads&rdquo; are one projection, viewed in slices.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>One head is one indicator on a chart. A moving average gives every candle exactly one read &mdash; trend &mdash; and no matter how you tune it, it will never also tell you about volatility or volume. So you don&rsquo;t tune harder; you open more panes. RSI watches momentum, Bollinger bands watch volatility, VWAP watches where the volume-weighted action is. Each is a cheap, separate read of the <em>same</em> candles, and the decision comes from reading them together. Heads are the panes: same sequence in, a different projected view per head, findings combined at the end (that combining is <code>W<sub>O</sub></code>&rsquo;s job). Systems version, one line: it&rsquo;s a fan-out &mdash; the same request payload projected onto several independent workers, results joined before the response &mdash; except each worker&rsquo;s &ldquo;projection&rdquo; is learned, and the join is a learned matrix instead of a concat in a handler.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 512" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="512" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Multi-head attention: same sequence, two different reads</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">each head = Day 38's attention in its own projected subspace (d_model 4 = 2 heads x d_k 2)</text>
+<rect x="12" y="150" width="88" height="118" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="56" y="172" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">X</text>
+<text x="56" y="188" text-anchor="middle" font-size="8.5" fill="#555555">3 tokens x 4</text>
+<rect x="22" y="200" width="68" height="16" rx="4" fill="#ffffff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="56" y="212" text-anchor="middle" font-size="8.5" fill="#1c1c1e">t0 subject</text>
+<rect x="22" y="220" width="68" height="16" rx="4" fill="#ffffff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="56" y="232" text-anchor="middle" font-size="8.5" fill="#1c1c1e">t1</text>
+<rect x="22" y="240" width="68" height="16" rx="4" fill="#ffffff" stroke="#0a7aff" stroke-width="0.8"/>
+<text x="56" y="252" text-anchor="middle" font-size="8.5" fill="#1c1c1e">t2</text>
+<text x="56" y="284" text-anchor="middle" font-size="8.5" fill="#555555">features: content,</text>
+<text x="56" y="296" text-anchor="middle" font-size="8.5" fill="#555555">flag, pos, pos^2</text>
+<rect x="140" y="64" width="336" height="118" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="308" y="84" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">HEAD 1 - previous-token head</text>
+<text x="308" y="100" text-anchor="middle" font-size="8.5" fill="#555555">reads pos / pos^2 only - peaks at token i-1</text>
+<rect x="152" y="112" width="104" height="56" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="204" y="134" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">W_Q  W_K  W_V</text>
+<text x="204" y="152" text-anchor="middle" font-size="8.5" fill="#555555">own projections</text>
+<text x="204" y="164" text-anchor="middle" font-size="8.5" fill="#555555">4 x 2 each</text>
+<rect x="268" y="112" width="92" height="56" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="314" y="128" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">attention</text>
+<rect x="287" y="134" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.89" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="134" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.11" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="134" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.06" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="287" y="147" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.64" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="147" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.32" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="147" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.06" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="287" y="160" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.25" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="160" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.50" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="160" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.25" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="372" y="112" width="92" height="56" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="418" y="134" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">head out</text>
+<text x="418" y="152" text-anchor="middle" font-size="8.5" fill="#555555">3 x 2</text>
+<line x1="258" y1="140" x2="266" y2="140" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="266,140 259,136 259,144" fill="#0a7aff"/>
+<line x1="362" y1="140" x2="370" y2="140" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="370,140 363,136 363,144" fill="#0a7aff"/>
+<rect x="140" y="232" width="336" height="118" rx="8" fill="#ffffff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="308" y="252" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">HEAD 2 - subject head</text>
+<text x="308" y="268" text-anchor="middle" font-size="8.5" fill="#555555">constant query, keys read the flag - peaks at token 0</text>
+<rect x="152" y="280" width="104" height="56" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="204" y="302" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">W_Q  W_K  W_V</text>
+<text x="204" y="320" text-anchor="middle" font-size="8.5" fill="#555555">own projections</text>
+<text x="204" y="332" text-anchor="middle" font-size="8.5" fill="#555555">4 x 2 each</text>
+<rect x="268" y="280" width="92" height="56" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="314" y="296" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">attention</text>
+<rect x="287" y="302" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.81" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="302" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="302" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="287" y="315" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.81" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="315" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="315" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="287" y="328" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.81" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="300" y="328" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="313" y="328" width="11" height="11" rx="2" fill="#0a7aff" fill-opacity="0.10" stroke="#0a7aff" stroke-width="0.5"/>
+<rect x="372" y="280" width="92" height="56" rx="8" fill="#f1efff" stroke="#7a5cff" stroke-width="1.2"/>
+<text x="418" y="302" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">head out</text>
+<text x="418" y="320" text-anchor="middle" font-size="8.5" fill="#555555">3 x 2</text>
+<line x1="258" y1="308" x2="266" y2="308" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="266,308 259,304 259,312" fill="#7a5cff"/>
+<line x1="362" y1="308" x2="370" y2="308" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="370,308 363,304 363,312" fill="#7a5cff"/>
+<line x1="102" y1="180" x2="138" y2="140" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="138,140 131,136 131,144" fill="#0a7aff"/>
+<line x1="102" y1="240" x2="138" y2="308" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="138,308 131,304 131,312" fill="#7a5cff"/>
+<rect x="500" y="130" width="168" height="84" rx="8" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="584" y="152" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">concat</text>
+<text x="584" y="170" text-anchor="middle" font-size="8.5" fill="#555555">head outs side by side</text>
+<text x="584" y="186" text-anchor="middle" font-size="9" fill="#1c1c1e">3 x (2 + 2) = 3 x 4</text>
+<text x="584" y="202" text-anchor="middle" font-size="8.5" fill="#555555">back to full d_model</text>
+<line x1="478" y1="140" x2="498" y2="158" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="498,158 491,154 491,162" fill="#0a7aff"/>
+<line x1="478" y1="308" x2="498" y2="186" stroke="#7a5cff" stroke-width="1.6"/>
+<polygon points="498,186 491,182 491,190" fill="#7a5cff"/>
+<rect x="500" y="246" width="168" height="84" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="584" y="268" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">W_O - output projection</text>
+<text x="584" y="286" text-anchor="middle" font-size="8.5" fill="#555555">the mixer: blends the</text>
+<text x="584" y="300" text-anchor="middle" font-size="8.5" fill="#555555">heads' findings (4 x 4)</text>
+<line x1="584" y1="216" x2="584" y2="244" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="584,244 580,237 588,237" fill="#22a355"/>
+<rect x="500" y="362" width="168" height="62" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="584" y="384" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">output</text>
+<text x="584" y="402" text-anchor="middle" font-size="8.5" fill="#555555">3 x 4 - same shape as X</text>
+<text x="584" y="416" text-anchor="middle" font-size="8.5" fill="#555555">one row per token</text>
+<line x1="584" y1="332" x2="584" y2="360" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="584,360 580,353 588,353" fill="#22a355"/>
+<rect x="12" y="448" width="656" height="48" rx="10" fill="#ffffff" stroke="#888888" stroke-width="1.0"/>
+<text x="340" y="468" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">the split is free:  2 heads x 30 params + W_O 20  =  80  =  one big head (d_k = 4)</text>
+<text x="340" y="486" text-anchor="middle" font-size="9" fill="#555555">splitting d_model buys viewpoints, not parameters - h heads just slice one fused projection</text>
+</svg>
+    <div class="caption">Left: one sequence, three tokens of width 4. Middle: two heads, each running Day 38&rsquo;s attention in its own 2-wide projected subspace &mdash; the mini-grids are the real attention maps from the code below (head 1&rsquo;s mass sits on the previous token; head 2&rsquo;s sits on token 0 in every row). Right: the head outputs concatenate back to width 4 and pass through <code>W<sub>O</sub></code>, the mixer. Footer: the accounting &mdash; splitting costs nothing.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, four parts, every weight hand-set &mdash; no RNG, every digit exact. The three tokens carry four features each: <code>[content, flag, pos, pos&sup2;]</code> (token 0 is the flagged subject; the position columns are just input features today &mdash; where they come from in real models is Day 41&rsquo;s story). <strong>Part 1</strong> builds both heads from Day 38&rsquo;s op and prints their attention maps: head 1 peaks at the previous token, head 2 at the subject, and the disagreement is measured. <strong>Part 2</strong> concatenates and applies <code>W<sub>O</sub></code>. <strong>Part 3</strong> does the accounting: shapes at every step, the fused-projection check, and the 80 = 80 parameter tie. <strong>Part 4</strong> copies the same weights into <code>nn.MultiheadAttention</code> &mdash; possible deterministically because its fused in-projection is exactly our stacked <code>[W<sub>Q</sub>; W<sub>K</sub>; W<sub>V</sub>]</code> &mdash; and verifies the framework agrees.</p>
+  <pre><code>&quot;&quot;&quot;Day 39 - Multi-Head Attention: Why Multiple Heads.
+
+Day 38 built ONE attention head: project X into Q, K, V, take
+softmax(Q K^T / sqrt(d_k)) V. It works - but one head means one
+set of projections, which means every token gets exactly ONE
+weighted average of the sequence, computed in ONE subspace.
+One read of the chart.
+
+Multi-head attention runs h copies of that same mechanism in
+parallel, each with its OWN W_Q, W_K, W_V. Head i only sees a
+slice of the model dimension: with d_model = 4 and h = 2, each
+head works in d_k = 2. The heads&#x27; outputs are concatenated
+back to d_model and mixed by one final projection, W_O.
+
+  Part 1  Two hand-built heads on a 3-token sequence that
+          provably attend differently. Head 1&#x27;s projections
+          read only the position features, and its scores work
+          out to (i-1)^2 - (i-1-j)^2: maximized at j = i-1,
+          the PREVIOUS token. Head 2&#x27;s query is a constant
+          &quot;find the flagged token&quot; and its keys read only the
+          flag, so every row peaks at token 0, the subject.
+          Same input, two different reads - that is the point.
+  Part 2  Concatenate the head outputs and apply W_O, the
+          mixer that lets the heads&#x27; findings blend before
+          anything downstream sees them.
+  Part 3  The split is free. Shapes: d_model splits into
+          h x d_k and glues back exactly. Parameters: the two
+          small heads + W_O cost 80 - identical to ONE big
+          head with d_k = d_model. And the per-head Q
+          projections stack into a single (4, 4) W_Q whose
+          one matmul, split afterwards, reproduces both
+          heads&#x27; Qs exactly: in practice it is one fused
+          projection, sliced.
+  Part 4  Copy the same hand-set weights into
+          nn.MultiheadAttention (its in_proj_weight is exactly
+          [W_Q; W_K; W_V] stacked, so the copy is
+          deterministic) and check the outputs agree.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny data, exact digits), no CUDA, no paid APIs,
+no downloads. Every weight is set by hand - no RNG anywhere.
+
+Expected output:
+
+  Part 1 - one sequence, two heads, two attention patterns
+    head 1 (previous-token head) weights:
+      token 0 reads: 0.8902, 0.1067, 0.0031  -&gt; peak token 0
+      token 1 reads: 0.6443, 0.3177, 0.0381  -&gt; peak token 0
+      token 2 reads: 0.2483, 0.5035, 0.2483  -&gt; peak token 1
+    head 1 output rows: [1.8964, 0.8902] / [1.7204, 0.6443] / [1.7448, 0.2483]
+    hand softmax vs F.scaled_dot_product_attention (head 1): max diff 0.000000
+    head 2 (subject head) weights - every row identical:
+      token 0 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+      token 1 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+      token 2 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+    head 2 output rows: [0.8066, 2.0000] / [0.8066, 2.0000] / [0.8066, 2.0000]
+    heads disagree: mean |w1 - w2| = 0.1940 - same input, different reads
+  Part 2 - concat + W_O: the mixer
+    concat rows: [1.8964, 0.8902, 0.8066, 2.0000] / [1.7204, 0.6443, 0.8066, 2.0000] / [1.7448, 0.2483, 0.8066, 2.0000]
+    output rows: [2.2997, 1.8902, 1.7548, 2.4451] / [2.1237, 1.6443, 1.6668, 2.3221] / [2.1481, 1.2483, 1.6790, 2.1241]
+  Part 3 - the split is free: shapes and parameter accounting
+    shapes: X (3, 4) -&gt; Q/K/V per head (3, 2) -&gt; weights (3, 3) -&gt; head out (3, 2) -&gt; concat (3, 4) -&gt; output (3, 4)
+    fused W_Q (4, 4), one matmul, split afterwards: max diff vs per-head Q = 0.000000
+    params: 2 heads x 30 = 60, + W_O 20 = 80 total
+            one big head (d_k = 4): Q/K/V 60 + W_O 20 = 80 total
+    verdict: splitting d_model into h heads costs the same as one wide head - you buy viewpoints, not parameters
+  Part 4 - the same weights inside nn.MultiheadAttention
+    matches the hand-built output (atol 1e-05): True
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# 3 tokens, d_model = 4. Features per token: [content, flag, pos, pos^2].
+# Token 0 is the flagged &quot;subject&quot;; pos / pos^2 are position features
+# (real models inject richer ones - Day 41&#x27;s topic; today they are
+# just input columns the projections can read).
+X = torch.tensor([[2.0, 1.0, 0.0, 0.0],
+                  [1.0, 0.0, 1.0, 1.0],
+                  [3.0, 0.0, 2.0, 4.0]])
+D_MODEL, H = 4, 2
+D_K = D_MODEL // H                                   # 2 per head
+
+# Head 1 - the previous-token head. Its Q reads pos (plus bias),
+# its K reads pos and pos^2, so score(i, j) = (i-1)^2 - (i-1-j)^2
+# up to the constant (i-1)^2 softmax ignores: peak at j = i - 1.
+W_Q1 = torch.tensor([[0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]])
+B_Q1 = torch.tensor([-1.0, 1.0])
+W_K1 = torch.tensor([[0.0, 0.0, 2.0, 0.0], [0.0, 0.0, 0.0, -1.0]])
+B_K1 = torch.tensor([0.0, 0.0])
+W_V1 = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
+B_V1 = torch.tensor([0.0, 0.0])
+
+# Head 2 - the subject head. Its Q is a constant (bias only):
+# every token asks the same question, &quot;where is the flag?&quot; Its K
+# reads only the flag column, so every row peaks at token 0.
+W_Q2 = torch.zeros(2, 4)
+B_Q2 = torch.tensor([3.0, 0.0])
+W_K2 = torch.tensor([[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]])
+B_K2 = torch.tensor([0.0, 0.0])
+W_V2 = torch.tensor([[0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]])
+B_V2 = torch.tensor([0.0, 0.0])
+
+# W_O: the output projection (mixer) applied after concatenation.
+W_O = torch.tensor([[1.0, 0.0, 0.5, 0.0], [0.0, 1.0, 0.0, 0.5],
+                    [0.5, 0.0, 1.0, 0.0], [0.0, 0.5, 0.0, 1.0]])
+B_O = torch.zeros(4)
+
+fmt = lambda t: &quot;, &quot;.join(f&quot;{v:.4f}&quot; for v in t.flatten().tolist())
+
+
+def attention(X, W_Q, B_Q, W_K, B_K, W_V, B_V):
+    &quot;&quot;&quot;Day 38&#x27;s single head, unchanged: project, score, softmax, mix.&quot;&quot;&quot;
+    Q = X @ W_Q.T + B_Q
+    K = X @ W_K.T + B_K
+    V = X @ W_V.T + B_V
+    weights = torch.softmax(Q @ K.T / math.sqrt(D_K), dim=-1)
+    return Q, K, V, weights, weights @ V
+
+
+# ---------- Part 1: two heads, two attention patterns ----------
+print(&quot;Part 1 - one sequence, two heads, two attention patterns&quot;)
+Q1, K1, V1, w1, out1 = attention(X, W_Q1, B_Q1, W_K1, B_K1, W_V1, B_V1)
+Q2, K2, V2, w2, out2 = attention(X, W_Q2, B_Q2, W_K2, B_K2, W_V2, B_V2)
+print(&quot;  head 1 (previous-token head) weights:&quot;)
+for i, row in enumerate(w1):
+    print(f&quot;    token {i} reads: {fmt(row)}  -&gt; peak token &quot;
+          f&quot;{int(row.argmax())}&quot;)
+print(f&quot;  head 1 output rows: [{fmt(out1[0])}] / [{fmt(out1[1])}] / &quot;
+      f&quot;[{fmt(out1[2])}]&quot;)
+with torch.no_grad():
+    sdpa_out1 = F.scaled_dot_product_attention(Q1, K1, V1)
+print(&quot;  hand softmax vs F.scaled_dot_product_attention (head 1): &quot;
+      f&quot;max diff {(sdpa_out1 - out1).abs().max().item():.6f}&quot;)
+print(&quot;  head 2 (subject head) weights - every row identical:&quot;)
+for i, row in enumerate(w2):
+    print(f&quot;    token {i} reads: {fmt(row)}  -&gt; peak token &quot;
+          f&quot;{int(row.argmax())}&quot;)
+print(f&quot;  head 2 output rows: [{fmt(out2[0])}] / [{fmt(out2[1])}] / &quot;
+      f&quot;[{fmt(out2[2])}]&quot;)
+print(f&quot;  heads disagree: mean |w1 - w2| = &quot;
+      f&quot;{(w1 - w2).abs().mean().item():.4f} - same input, different reads&quot;)
+
+# ---------- Part 2: concat + W_O ----------
+print(&quot;Part 2 - concat + W_O: the mixer&quot;)
+concat = torch.cat([out1, out2], dim=-1)             # (3, 2 + 2) = (3, 4)
+output = concat @ W_O.T + B_O
+print(f&quot;  concat rows: [{fmt(concat[0])}] / [{fmt(concat[1])}] / &quot;
+      f&quot;[{fmt(concat[2])}]&quot;)
+print(f&quot;  output rows: [{fmt(output[0])}] / [{fmt(output[1])}] / &quot;
+      f&quot;[{fmt(output[2])}]&quot;)
+
+# ---------- Part 3: the split is free ----------
+print(&quot;Part 3 - the split is free: shapes and parameter accounting&quot;)
+print(f&quot;  shapes: X {tuple(X.shape)} -&gt; Q/K/V per head {tuple(Q1.shape)}&quot;
+      f&quot; -&gt; weights {tuple(w1.shape)} -&gt; head out {tuple(out1.shape)}&quot;
+      f&quot; -&gt; concat {tuple(concat.shape)} -&gt; output {tuple(output.shape)}&quot;)
+W_Q_FUSED = torch.cat([W_Q1, W_Q2], dim=0)           # one (4, 4) matrix
+B_Q_FUSED = torch.cat([B_Q1, B_Q2])
+Q_all = X @ W_Q_FUSED.T + B_Q_FUSED
+split_diff = max((Q_all[:, :D_K] - Q1).abs().max().item(),
+                 (Q_all[:, D_K:] - Q2).abs().max().item())
+print(f&quot;  fused W_Q (4, 4), one matmul, split afterwards: max diff vs &quot;
+      f&quot;per-head Q = {split_diff:.6f}&quot;)
+
+
+def n_params(*tensors):
+    return sum(t.numel() for t in tensors)
+
+
+per_head = n_params(W_Q1, B_Q1, W_K1, B_K1, W_V1, B_V1)
+wo = n_params(W_O, B_O)
+big_qkv = 3 * (D_MODEL * D_MODEL + D_MODEL)          # one head, d_k = 4
+print(f&quot;  params: {H} heads x {per_head} = {H * per_head}, + W_O {wo}&quot;
+      f&quot; = {H * per_head + wo} total&quot;)
+print(f&quot;          one big head (d_k = 4): Q/K/V {big_qkv} + W_O {wo}&quot;
+      f&quot; = {big_qkv + wo} total&quot;)
+print(&quot;  verdict: splitting d_model into h heads costs the same as one&quot;
+      &quot; wide head - you buy viewpoints, not parameters&quot;)
+
+# ---------- Part 4: nn.MultiheadAttention with the same weights ----------
+print(&quot;Part 4 - the same weights inside nn.MultiheadAttention&quot;)
+mha = nn.MultiheadAttention(embed_dim=D_MODEL, num_heads=H,
+                            bias=True, batch_first=True)
+with torch.no_grad():
+    mha.in_proj_weight.copy_(torch.cat([
+        W_Q_FUSED,
+        torch.cat([W_K1, W_K2], dim=0),
+        torch.cat([W_V1, W_V2], dim=0)]))
+    mha.in_proj_bias.copy_(torch.cat([
+        B_Q_FUSED,
+        torch.cat([B_K1, B_K2]),
+        torch.cat([B_V1, B_V2])]))
+    mha.out_proj.weight.copy_(W_O)
+    mha.out_proj.bias.copy_(B_O)
+mha.eval()
+with torch.no_grad():
+    mha_out, _ = mha(X.unsqueeze(0), X.unsqueeze(0), X.unsqueeze(0),
+                     need_weights=False)
+print(&quot;  matches the hand-built output (atol 1e-05): &quot;
+      f&quot;{bool(torch.allclose(mha_out.squeeze(0), output, atol=1e-5))}&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one sequence, two heads, two attention patterns
+  head 1 (previous-token head) weights:
+    token 0 reads: 0.8902, 0.1067, 0.0031  -&gt; peak token 0
+    token 1 reads: 0.6443, 0.3177, 0.0381  -&gt; peak token 0
+    token 2 reads: 0.2483, 0.5035, 0.2483  -&gt; peak token 1
+  head 1 output rows: [1.8964, 0.8902] / [1.7204, 0.6443] / [1.7448, 0.2483]
+  hand softmax vs F.scaled_dot_product_attention (head 1): max diff 0.000000
+  head 2 (subject head) weights - every row identical:
+    token 0 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+    token 1 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+    token 2 reads: 0.8066, 0.0967, 0.0967  -&gt; peak token 0
+  head 2 output rows: [0.8066, 2.0000] / [0.8066, 2.0000] / [0.8066, 2.0000]
+  heads disagree: mean |w1 - w2| = 0.1940 - same input, different reads
+Part 2 - concat + W_O: the mixer
+  concat rows: [1.8964, 0.8902, 0.8066, 2.0000] / [1.7204, 0.6443, 0.8066, 2.0000] / [1.7448, 0.2483, 0.8066, 2.0000]
+  output rows: [2.2997, 1.8902, 1.7548, 2.4451] / [2.1237, 1.6443, 1.6668, 2.3221] / [2.1481, 1.2483, 1.6790, 2.1241]
+Part 3 - the split is free: shapes and parameter accounting
+  shapes: X (3, 4) -&gt; Q/K/V per head (3, 2) -&gt; weights (3, 3) -&gt; head out (3, 2) -&gt; concat (3, 4) -&gt; output (3, 4)
+  fused W_Q (4, 4), one matmul, split afterwards: max diff vs per-head Q = 0.000000
+  params: 2 heads x 30 = 60, + W_O 20 = 80 total
+          one big head (d_k = 4): Q/K/V 60 + W_O 20 = 80 total
+  verdict: splitting d_model into h heads costs the same as one wide head - you buy viewpoints, not parameters
+Part 4 - the same weights inside nn.MultiheadAttention
+  matches the hand-built output (atol 1e-05): True</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows: head 1&rsquo;s peaks at tokens <code>0, 0, 1</code> (each token reading its predecessor, token 0 reading itself), head 2&rsquo;s rows all peaking at token <code>0</code> with weights <code>0.8066, 0.0967, 0.0967</code>, the fused-projection split diff <code>0.000000</code>, the parameter tie <code>80 = 80</code>, and Part 4&rsquo;s <code>True</code>. The keeper test, no notes allowed: given any <code>d_model</code> and <code>h</code>, you can say what each head&rsquo;s <code>d<sub>k</sub></code> is, why the concat lands back at exactly <code>d_model</code>, what <code>W<sub>O</sub></code> is for, and why going from 1 head to 8 costs (almost) no extra parameters.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can redraw the two lanes and the concat&rarr;<code>W<sub>O</sub></code> path, then run Parts 1 and 3 only. If you can explain why head 1 must peak at the previous token (the score identity) and why the split is free, you have the day &mdash; Parts 2 and 4 are the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: you&rsquo;ve met the two halves separately &mdash; attention today, the MLP from Phase B. Tomorrow they get wired into a single repeating unit, with two extra ingredients that keep deep stacks trainable.</p>
+  </div>
+
+  <div class="footer">Streak: 39 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
