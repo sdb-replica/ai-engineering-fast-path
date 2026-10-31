@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile a Training Step: Find the Bottleneck — Day 81 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 81 of 100</span>
+  <h1>Profile a Training Step: Find the Bottleneck</h1>
+  <p class="outcome">Tonight you'll be able to: split one training step into five timed segments, read the profile like a dashboard, and name the bottleneck &mdash; data-bound or compute-bound &mdash; before spending anything on a fix, because the two diseases have opposite cures.</p>
+
+  <h2>The one idea</h2>
+  <p>Every training step since Day 7 has been written as one line &mdash; forward &rarr; loss &rarr; backward &rarr; step &mdash; but on real hardware that line is a pipeline of <strong>five segments running on two different sides of the machine</strong>:</p>
+<ul>
+<li><strong>data</strong> &mdash; fetch and preprocess one batch: disk, decode, feature engineering. CPU-side.</li>
+<li><strong>copy</strong> &mdash; move the batch host &rarr; device. On your Mac this is a memory copy; on a GPU box it&rsquo;s a PCIe/NVLink transfer.</li>
+<li><strong>forward</strong> &mdash; predictions and the loss. Device.</li>
+<li><strong>backward</strong> &mdash; gradients. Usually the fattest compute segment (Day 23&rsquo;s blame, at scale).</li>
+<li><strong>step</strong> &mdash; the optimizer update (Day 18&rsquo;s editor, touching every parameter).</li>
+</ul>
+<p>Data and copy happen on the CPU side while forward/backward/step own the accelerator &mdash; which means one side can <em>starve</em> the other, and the loop&rsquo;s wall-clock only ever shows you the sum.</p>
+<p><strong>Profiling a step means timing the five segments and asking one question: what share of the step was the accelerator actually busy?</strong> Busy share = (forward + backward + step) &divide; step total. If it&rsquo;s low, the accelerator sat idle waiting for batches &mdash; the step is <strong>data-bound</strong>. If it&rsquo;s ~100%, the device never waited &mdash; the step is <strong>compute-bound</strong>. Everything else in a profiler report is detail underneath that one number.</p>
+<p>The diagnosis matters because <strong>the two diseases have opposite cures, and the wrong cure costs real money.</strong> Data-bound &rarr; fix the supply side: prefetch batches so they&rsquo;re ready before the step needs them, parallel loader workers, cheaper preprocessing, cache the prepared data. Compute-bound &rarr; fix the demand side: a bigger batch (Days 19/30 &mdash; more work per kernel launch), faster kernels, mixed precision (Day 77). Neither cure touches the other disease: more loader workers can&rsquo;t speed up a saturated GPU, and a faster GPU in a data-bound job buys literally nothing &mdash; it just waits more expensively. &ldquo;Training is slow, buy bigger GPUs,&rdquo; said without a profile, is how ML budgets die.</p>
+<p>In production the same split is measured by <code>torch.profiler</code> (or Nsight Systems on a cluster): you wrap a few steps and it records per-op CPU time and per-kernel device time &mdash; the five segments above, at finer grain. A labeled sketch for your first GPU box &mdash; it does not run tonight:</p>
+<pre><code>from torch.profiler import profile, ProfilerActivity
+with profile(activities=[ProfilerActivity.CPU,
+                         ProfilerActivity.CUDA]) as prof:
+    for step, batch in enumerate(loader):
+        train_step(batch)            # your usual Day 25 loop
+        if step &gt; 5: break           # skip warm-up steps
+print(prof.key_averages().table(sort_by=&quot;cuda_time_total&quot;))</code></pre>
+<p>Two honesty notes that separate a profile from a screenshotted lie: <strong>profilers perturb what they measure</strong>, so profile a handful of steady-state steps, never step 1 (allocator warm-up and kernel autotuning live there); and on GPU the launches are asynchronous &mdash; the CPU clock says &ldquo;launched,&rdquo; not &ldquo;finished,&rdquo; which is why the real tool records device-side timestamps instead of trusting <code>perf_counter()</code>. Tonight&rsquo;s CPU run is synchronous end to end, so the naive timers are honest here.</p>
+<p>Tonight&rsquo;s build is deliberately rigged, chaos-engineering style: a heavy feature pass is injected into the loader (its results are multiplied by 0.0, so the <em>numbers</em> never change &mdash; only the clock does), you profile it, then you fix it the production way &mdash; by <em>moving</em> the work out of the step, not deleting it. And the fix carries a proof: because nothing about the math changed, the step losses before and after must match digit for digit. <strong>A speedup that changes the losses isn&rsquo;t a speedup &mdash; it&rsquo;s a different model.</strong> That identity check is the unit test for every optimization you&rsquo;ll ever ship.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>You already own this skill &mdash; it&rsquo;s distributed tracing, one level down. Day 4&rsquo;s autograd graph was request tracing through a call graph; a step profile is the same trace with <em>durations</em> on the spans, and the segment table is the flame graph flattened into five rows. The starved accelerator is a familiar shape too: your fastest service idle behind its slowest dependency &mdash; Conveyor&rsquo;s hottest node waiting on a cold read. The fix is never &ldquo;make the fast part faster&rdquo;; it&rsquo;s find the span that&rsquo;s actually eating the wall clock.</p><p>Trading version, one line: profiling before optimizing is checking whether your slippage lives in the signal or in the execution &mdash; you don&rsquo;t rewrite the strategy when the fills are the problem.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 348" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<defs>
+<pattern id="idle" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+<rect width="7" height="7" fill="#fdecec"/>
+<line x1="0" y1="0" x2="0" y2="7" stroke="#e5484d" stroke-width="2.4"/>
+</pattern>
+</defs>
+<rect x="0" y="0" width="680" height="348" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">One training step, profiled: where the milliseconds actually go</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 81 - same step, same math, two loader designs (reference shares - your digits will differ, the shape won&#x27;t)</text>
+<text x="30" y="64" font-size="11" fill="#1c1c1e" font-weight="bold">RUN A - on-demand loader: the feature pass sits INSIDE the step</text>
+<line x1="397.6" y1="74" x2="652.2" y2="74" stroke="#177245" stroke-width="1.4"/>
+<line x1="397.6" y1="70" x2="397.6" y2="78" stroke="#177245" stroke-width="1.4"/>
+<line x1="652.2" y1="70" x2="652.2" y2="78" stroke="#177245" stroke-width="1.4"/>
+<text x="524.9" y="70" text-anchor="middle" font-size="9.5" fill="#177245">accelerator busy: 41%</text>
+<rect x="30.0" y="88" width="367.6" height="34" fill="url(#idle)" stroke="#e5484d" stroke-width="1.0"/>
+<rect x="397.6" y="88" width="1.5" height="34" fill="#9a9aa0" stroke="none"/>
+<rect x="399.1" y="88" width="102.2" height="34" fill="#0a7aff" stroke="none"/>
+<rect x="501.3" y="88" width="149.4" height="34" fill="#0a54c2" stroke="none"/>
+<rect x="650.7" y="88" width="1.5" height="34" fill="#22a355" stroke="none"/>
+<text x="213.8" y="109" text-anchor="middle" font-size="11.5" fill="#ffffff" font-weight="bold">data 59%</text>
+<text x="450.2" y="109" text-anchor="middle" font-size="11.5" fill="#ffffff" font-weight="bold">forward 16%</text>
+<text x="576.0" y="109" text-anchor="middle" font-size="11.5" fill="#ffffff" font-weight="bold">backward 24%</text>
+<text x="30" y="138" font-size="9.5" fill="#555555">copy ~0% and optimizer step ~0% are too thin to draw at this scale - on a GPU box, copy is the host-&gt;device transfer.</text>
+<text x="30" y="156" font-size="10.5" fill="#c62f36" font-weight="bold">During the hatched 59%, the accelerator does NOTHING but wait. Verdict: DATA-BOUND.</text>
+<text x="30" y="186" font-size="11" fill="#1c1c1e" font-weight="bold">RUN B - prefetched loader: the same pass, paid once up front - the bar keeps Run A&#x27;s scale</text>
+<rect x="30.0" y="204" width="1.5" height="34" fill="#e5484d" stroke="none"/>
+<rect x="31.5" y="204" width="1.5" height="34" fill="#9a9aa0" stroke="none"/>
+<rect x="33.0" y="204" width="101.2" height="34" fill="#0a7aff" stroke="none"/>
+<rect x="134.2" y="204" width="147.0" height="34" fill="#0a54c2" stroke="none"/>
+<rect x="281.3" y="204" width="1.5" height="34" fill="#22a355" stroke="none"/>
+<rect x="282.8" y="204" width="369.4" height="34" fill="none" stroke="#177245" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="83.6" y="225" text-anchor="middle" font-size="11.5" fill="#ffffff" font-weight="bold">forward</text>
+<text x="207.8" y="225" text-anchor="middle" font-size="11.5" fill="#ffffff" font-weight="bold">backward</text>
+<text x="292.8" y="225" font-size="10" fill="#177245" font-weight="bold">handed back</text>
+<text x="30" y="254" font-size="9.5" fill="#555555">data ~0% now - the fetch is a dict lookup. Step total: 40% of Run A, so 2.5x more steps/s - and Part 2 proves the losses are unchanged, digit for digit.</text>
+<text x="30" y="272" font-size="10.5" fill="#177245" font-weight="bold">What remains is forward + backward: the step is COMPUTE-BOUND - a different disease, a different cure.</text>
+<rect x="12" y="288" width="656" height="48" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="308" text-anchor="middle" font-size="10" fill="#1c1c1e" font-weight="bold">Diagnose first: busy share low -&gt; fix the LOADER (prefetch, more workers, cheaper prep).</text>
+<text x="340" y="326" text-anchor="middle" font-size="10" fill="#1c1c1e">Busy share ~100% -&gt; fix the COMPUTE (bigger batch, faster kernels). The cures never cross - a faster GPU buys nothing in Run A.</text>
+</svg>
+    <div class="caption">One step, two loader designs, bars drawn to the same millisecond scale from the reference run. Top: with preprocessing inside the step, the hatched data segment eats 59% of the step while the accelerator idles &mdash; busy only 41% of the time. Bottom: the identical pass hoisted into a one-time prep shrinks the whole step to 40% of its former length, and what remains is pure compute. Same losses either way &mdash; only the clock changed.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, pure NumPy &mdash; no CUDA profiler exists on this Mac, so the CPU plays both roles (loader <em>and</em> accelerator) and <code>time.perf_counter()</code> does the timing; the production <code>torch.profiler</code> sketch is in &ldquo;The one idea&rdquo; above. The model is a Day 32/35-style tabular MLP (64 features &rarr; 512 &rarr; 1) over formula-built rows with a linear teacher &mdash; the hand-rolled forward/backward of Days 21&ndash;25, now with a stopwatch on each segment. <strong>Part 1</strong> profiles the beginner default: the loader runs its heavy feature pass inside every step. <strong>Part 2</strong> hoists the identical pass out of the loop &mdash; all 16 batches pre-built once, which is exactly what prefetching loader workers do while the accelerator trains &mdash; and checks the step losses match Part 1 digit for digit <em>before</em> trusting any timing. <strong>Part 3</strong> prints the ten-second verdict template you&rsquo;ll reuse on every profile from now on. Your millisecond digits will differ from the reference below &mdash; match the <em>shape</em>: which segment dominates, the busy share, the speedup.</p>
+  <pre><code>&quot;&quot;&quot;Day 81 - Build: Profile a Training Step, Find the Bottleneck.
+
+Phase F build. Everything before tonight treated the training
+loop as one black box: forward, loss, backward, step (Day 7).
+Production training is too expensive for black boxes - a GPU
+hour burned at 30% utilization is money set on fire - so
+tonight you cut ONE step open into timed segments and let the
+numbers answer the only question that matters:
+
+    Is the accelerator WAITING (data-bound) or WORKING
+    (compute-bound)?  The fixes are opposites - prefetch and
+    loader workers vs bigger batches and better kernels - so
+    you diagnose first and spend second. Guessing is how teams
+    buy GPUs to fix a data loader.
+
+The five segments of every step (PyTorch does the same split;
+on a GPU box the stages map 1:1):
+    data     load + preprocess one batch (CPU/disk side)
+    copy     host -&gt; device transfer (tiny here, real on GPU)
+    forward  predictions + loss
+    backward gradients (usually the fattest compute segment)
+    step     the optimizer update (Day 18)
+
+Honest machine note: there is no CUDA profiler on this Mac,
+so the step runs in NumPy on CPU and the CPU plays both roles -
+&quot;accelerator busy&quot; below means the forward+backward+step
+segments, the part a GPU would be doing. The instrument is
+time.perf_counter() around each stage. In production the same
+job is done by torch.profiler - the labeled sketch after
+Part 3 shows its shape; the discipline is identical.
+
+  Part 1  Run A: the loader preprocesses INSIDE the step
+          (decode/augment on demand - the beginner default).
+          A heavy feature pass is injected on purpose:
+          hundreds of transcendental passes per batch whose
+          results are multiplied by 0.0, so the NUMBERS are
+          untouched and
+          only the clock changes. Chaos engineering for a
+          data pipeline: break it on purpose, watch the
+          profile name the culprit.
+  Part 2  Run B: the same feature pass, hoisted OUT of the
+          loop - all batches pre-built once (what prefetching
+          loader workers do while the accelerator trains).
+          Same seed, same data, same init: the step losses
+          must match Run A digit for digit, or the &quot;fix&quot;
+          changed the math and proved nothing.
+  Part 3  The verdict template: read the busy share, name
+          the bound, pick the fix from the right column.
+
+Runs on the ~/ai-lab venv: numpy only (free), CPU on
+purpose, no CUDA, no paid APIs, no downloads. Data, teacher
+weights, batch order and init all come from seeded
+generators, so the LOSSES are deterministic - the same
+digits on any machine. The millisecond shares are NOT:
+timers measure YOUR hardware, so shares are printed rounded
+and the expected output below is labeled REFERENCE - match
+the shape (which segment dominates, the busy share, the
+speedup), not the digits.
+
+Expected output (losses exact; timings/speedup REFERENCE -
+author&#x27;s machine, yours will differ in the digits only):
+
+  Day 81 - profile a training step: segment first, guess never
+  model: MLP 64 -&gt; 512 -&gt; 1, numpy float32 | data: 4,096 formula rows, batch 256, 24 steps, seed 81
+  losses are deterministic; segment shares are rounded and machine-dependent
+  Part 1 - Run A: on-demand loader (feature pass inside the step)
+    step  1  loss 2.630888
+    step  6  loss 1.781060
+    step 12  loss 0.899651
+    step 18  loss 0.771269
+    step 24  loss 0.529924
+    segment        ms/step   share
+      data          18.70    59%  &lt;- accelerator idle
+      copy           0.01     0%
+      forward        5.20    16%
+      backward       7.60    24%
+      step           0.03     0%
+      step total    31.55    100%  -&gt; 32 steps/s
+    accelerator busy: 41%  -&gt; DATA-BOUND: the accelerator waits on the loader
+  Part 2 - Run B: prefetched loader (same pass, done once up front)
+    one-time prep: 299.3 ms for 16 batches - paid once, reused every epoch
+    step losses identical to Run A: True
+    segment        ms/step   share
+      data           0.01     0%
+      copy           0.01     0%
+      forward        5.15    41%
+      backward       7.48    59%
+      step           0.03     0%
+      step total    12.68 (40% of Run A)  -&gt; 79 steps/s
+    accelerator busy: 100%  -&gt; the idle segment is gone; what remains is compute (Part 3)
+    speedup from moving work, not hardware: 2.5x
+  Part 3 - read any profile in ten seconds
+    busy share &gt;= ~90%: COMPUTE-BOUND -&gt; bigger batch / faster kernels;
+      the loader is innocent, more loader workers buy nothing.
+    busy share low: DATA-BOUND -&gt; prefetch, more loader workers,
+      cheaper preprocessing; a faster GPU buys nothing.
+    verdict: same step, same math - the profile, not the price tag,
+      told you which fix to buy.
+&quot;&quot;&quot;
+import time
+
+import numpy as np
+
+SEED = 81
+N_ROWS, N_FEAT, HIDDEN = 4096, 64, 512
+BATCH, STEPS, LR = 256, 24, 0.005
+PRINT_STEPS = (1, 6, 12, 18, 24)
+PREP_PASSES = 420           # injected loader cost (Part 1 notes)
+
+# ---------- data: formula rows + a linear teacher ----------
+rng = np.random.default_rng(SEED)
+W_TRUE = (rng.normal(0.0, 1.0, size=(N_FEAT, 1)) / 8.0).astype(np.float32)
+RAW = rng.normal(0.0, 1.0, size=(N_ROWS, N_FEAT)).astype(np.float32)
+Y = (RAW @ W_TRUE
+     + 0.05 * rng.normal(size=(N_ROWS, 1))).astype(np.float32)
+SCALE = np.linspace(0.8, 1.2, N_FEAT).astype(np.float32)
+ORDER = rng.permutation(N_ROWS)
+BATCHES = [ORDER[i * BATCH:(i + 1) * BATCH]
+           for i in range(N_ROWS // BATCH)]
+
+
+def preprocess(idx, slow):
+    &quot;&quot;&quot;One batch, features scaled - the loader&#x27;s real job. With
+    slow=True the SAME result is computed the expensive way:
+    PREP_PASSES transcendental passes whose results are
+    multiplied by 0.0. Values identical, clock very different
+    - a stand-in for decode/augment work done per batch.&quot;&quot;&quot;
+    Xb = RAW[idx] * SCALE
+    if slow:
+        for _ in range(PREP_PASSES):
+            Xb = Xb + 0.0 * (np.sin(Xb) + np.cos(Xb)
+                             + np.tanh(Xb))
+    return Xb
+
+
+# ---------- the model: a small MLP, by hand (Days 21-25) ----------
+def fresh_params():
+    r = np.random.default_rng(SEED + 1)
+    return {
+        &quot;W1&quot;: (r.normal(0.0, 1.0, size=(N_FEAT, HIDDEN))
+               * np.sqrt(2.0 / N_FEAT)).astype(np.float32),
+        &quot;b1&quot;: np.zeros(HIDDEN, dtype=np.float32),
+        &quot;W2&quot;: (r.normal(0.0, 1.0, size=(HIDDEN, 1))
+               * np.sqrt(2.0 / HIDDEN)).astype(np.float32),
+        &quot;b2&quot;: np.zeros(1, dtype=np.float32),
+    }
+
+
+def train_run(get_batch):
+    &quot;&quot;&quot;The Day 7 loop, instrumented: one perf_counter per
+    segment. get_batch(bno, idx) supplies Xb so the two runs
+    differ ONLY in when the loader&#x27;s work happens.&quot;&quot;&quot;
+    p = fresh_params()
+    seg = {&quot;data&quot;: 0.0, &quot;copy&quot;: 0.0, &quot;forward&quot;: 0.0,
+           &quot;backward&quot;: 0.0, &quot;step&quot;: 0.0}
+    losses = {}
+    for i in range(STEPS):
+        bno = i % len(BATCHES)
+        idx = BATCHES[bno]
+        t = time.perf_counter()
+        Xb = get_batch(bno, idx)                  # data segment
+        yb = Y[idx]
+        t_data = time.perf_counter()
+        Xb = Xb.astype(np.float32, copy=True)     # &quot;host -&gt; device&quot;
+        yb = yb.astype(np.float32, copy=True)
+        t_copy = time.perf_counter()
+        z1 = Xb @ p[&quot;W1&quot;] + p[&quot;b1&quot;]               # forward
+        h = np.maximum(z1, 0.0)
+        pred = h @ p[&quot;W2&quot;] + p[&quot;b2&quot;]
+        err = pred - yb
+        loss = float(np.mean(err * err))
+        t_fwd = time.perf_counter()
+        d_pred = (2.0 / err.size) * err           # backward
+        gW2 = h.T @ d_pred
+        gb2 = d_pred.sum(axis=0)
+        dz1 = (d_pred @ p[&quot;W2&quot;].T) * (z1 &gt; 0)
+        gW1 = Xb.T @ dz1
+        gb1 = dz1.sum(axis=0)
+        t_bwd = time.perf_counter()
+        for k, g in ((&quot;W1&quot;, gW1), (&quot;b1&quot;, gb1),      # optimizer step
+                     (&quot;W2&quot;, gW2), (&quot;b2&quot;, gb2)):
+            p[k] -= LR * g
+        t_step = time.perf_counter()
+        seg[&quot;data&quot;] += t_data - t
+        seg[&quot;copy&quot;] += t_copy - t_data
+        seg[&quot;forward&quot;] += t_fwd - t_copy
+        seg[&quot;backward&quot;] += t_bwd - t_fwd
+        seg[&quot;step&quot;] += t_step - t_bwd
+        if i + 1 in PRINT_STEPS:
+            losses[i + 1] = loss
+    return seg, losses
+
+
+def report(seg, total_ref=None):
+    &quot;&quot;&quot;Segment table + the one diagnostic number: busy share.&quot;&quot;&quot;
+    total = sum(seg.values())
+    print(&quot;    segment        ms/step   share&quot;)
+    for name in (&quot;data&quot;, &quot;copy&quot;, &quot;forward&quot;, &quot;backward&quot;, &quot;step&quot;):
+        ms = seg[name] / STEPS * 1000.0
+        share = 100.0 * seg[name] / total
+        note = (&quot;  &lt;- accelerator idle&quot;
+                if name == &quot;data&quot; and share &gt;= 5.0 else &quot;&quot;)
+        print(f&quot;      {name:&lt;10} {ms:8.2f} {share:5.0f}%{note}&quot;)
+    ms_total = total / STEPS * 1000.0
+    busy = 100.0 * (seg[&quot;forward&quot;] + seg[&quot;backward&quot;]
+                    + seg[&quot;step&quot;]) / total
+    if total_ref:
+        share_txt = f&quot;({100.0 * total / total_ref:.0f}% of Run A)&quot;
+    else:
+        share_txt = &quot;100%&quot;
+    print(f&quot;      step total {ms_total:8.2f} {share_txt:&gt;7}&quot;
+          f&quot;  -&gt; {1000.0 / ms_total:.0f} steps/s&quot;)
+    return busy, total
+
+
+print(&quot;Day 81 - profile a training step: segment first, guess never&quot;)
+print(f&quot;  model: MLP {N_FEAT} -&gt; {HIDDEN} -&gt; 1, numpy float32 | &quot;
+      f&quot;data: {N_ROWS:,} formula rows, batch {BATCH}, &quot;
+      f&quot;{STEPS} steps, seed {SEED}&quot;)
+print(&quot;  losses are deterministic; segment shares are rounded &quot;
+      &quot;and machine-dependent&quot;)
+
+# ---------- Part 1: on-demand loader ----------
+print(&quot;Part 1 - Run A: on-demand loader (feature pass inside &quot;
+      &quot;the step)&quot;)
+seg_a, losses_a = train_run(
+    lambda bno, idx: preprocess(idx, slow=True))
+for s in PRINT_STEPS:
+    print(f&quot;    step {s:&gt;2}  loss {losses_a[s]:.6f}&quot;)
+busy_a, total_a = report(seg_a)
+print(f&quot;    accelerator busy: {busy_a:.0f}%  -&gt; DATA-BOUND: &quot;
+      &quot;the accelerator waits on the loader&quot;)
+
+# ---------- Part 2: prefetched loader ----------
+print(&quot;Part 2 - Run B: prefetched loader (same pass, done once &quot;
+      &quot;up front)&quot;)
+t = time.perf_counter()
+READY = {i: preprocess(idx, slow=True)
+         for i, idx in enumerate(BATCHES)}
+prep_ms = (time.perf_counter() - t) * 1000.0
+print(f&quot;    one-time prep: {prep_ms:.1f} ms for {len(BATCHES)} &quot;
+      &quot;batches - paid once, reused every epoch&quot;)
+seg_b, losses_b = train_run(lambda bno, idx: READY[bno])
+same = all(abs(losses_a[s] - losses_b[s]) &lt; 1e-9
+           for s in PRINT_STEPS)
+print(f&quot;    step losses identical to Run A: {same}&quot;)
+busy_b, total_b = report(seg_b, total_ref=total_a)
+print(f&quot;    accelerator busy: {busy_b:.0f}%  -&gt; the idle segment &quot;
+      &quot;is gone; what remains is compute (Part 3)&quot;)
+print(f&quot;    speedup from moving work, not hardware: &quot;
+      f&quot;{total_a / total_b:.1f}x&quot;)
+
+# ---------- Part 3: the verdict template ----------
+print(&quot;Part 3 - read any profile in ten seconds&quot;)
+print(&quot;    busy share &gt;= ~90%: COMPUTE-BOUND -&gt; bigger batch / &quot;
+      &quot;faster kernels;&quot;)
+print(&quot;      the loader is innocent, more loader workers buy &quot;
+      &quot;nothing.&quot;)
+print(&quot;    busy share low: DATA-BOUND -&gt; prefetch, more loader &quot;
+      &quot;workers,&quot;)
+print(&quot;      cheaper preprocessing; a faster GPU buys nothing.&quot;)
+print(&quot;    verdict: same step, same math - the profile, not the &quot;
+      &quot;price tag,&quot;)
+print(&quot;      told you which fix to buy.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Day 81 - profile a training step: segment first, guess never
+  model: MLP 64 -&gt; 512 -&gt; 1, numpy float32 | data: 4,096 formula rows, batch 256, 24 steps, seed 81
+  losses are deterministic; segment shares are rounded and machine-dependent
+Part 1 - Run A: on-demand loader (feature pass inside the step)
+    step  1  loss 2.630888
+    step  6  loss 1.781060
+    step 12  loss 0.899651
+    step 18  loss 0.771269
+    step 24  loss 0.529924
+    segment        ms/step   share
+      data          18.70    59%  &lt;- accelerator idle
+      copy           0.01     0%
+      forward        5.20    16%
+      backward       7.60    24%
+      step           0.03     0%
+      step total    31.55    100%  -&gt; 32 steps/s
+    accelerator busy: 41%  -&gt; DATA-BOUND: the accelerator waits on the loader
+Part 2 - Run B: prefetched loader (same pass, done once up front)
+    one-time prep: 299.3 ms for 16 batches - paid once, reused every epoch
+    step losses identical to Run A: True
+    segment        ms/step   share
+      data           0.01     0%
+      copy           0.01     0%
+      forward        5.15    41%
+      backward       7.48    59%
+      step           0.03     0%
+      step total    12.68 (40% of Run A)  -&gt; 79 steps/s
+    accelerator busy: 100%  -&gt; the idle segment is gone; what remains is compute (Part 3)
+    speedup from moving work, not hardware: 2.5x
+Part 3 - read any profile in ten seconds
+    busy share &gt;= ~90%: COMPUTE-BOUND -&gt; bigger batch / faster kernels;
+      the loader is innocent, more loader workers buy nothing.
+    busy share low: DATA-BOUND -&gt; prefetch, more loader workers,
+      cheaper preprocessing; a faster GPU buys nothing.
+    verdict: same step, same math - the profile, not the price tag,
+      told you which fix to buy.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows the diagnosis flip: Run A&rsquo;s data segment holding the majority of the step with a busy share well under 90%, then Run B printing <code>step losses identical to Run A: True</code> with the step total collapsed to roughly a third-to-half of Run A&rsquo;s and busy &asymp; 100%. The keeper test, no notes allowed: someone hands you any five-segment profile and you answer three things without hesitating &mdash; which bound it is, which fix you buy, and which popular fix would burn money for zero gain.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study the diagram until you can sketch both bars from memory, then run the code and look only at the two segment tables and the <code>identical: True</code> line. If you can say out loud why a faster GPU buys nothing in Run A, you have the lesson &mdash; the <code>torch.profiler</code> sketch is for your first GPU box.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: Phase F closes. Every system from the last nine days &mdash; the memory wall, parallelism in its three flavors, mixed precision, checkpointing, the GPU itself, and tonight&rsquo;s stopwatch &mdash; lands on one map, side by side with the infra career you already have. Bring a finger to point with.</p>
+  </div>
+
+  <div class="footer">Streak: 81 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
