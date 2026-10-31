@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Registries &amp; Versioning: The Model Is a Build Artifact — Day 68 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 68 of 100</span>
+  <h1>Model Registries &amp; Versioning: The Model Is a Build Artifact</h1>
+  <p class="outcome">Tonight you'll be able to: explain why a trained model deserves the same treatment as a shipped binary — immutable versions, content hashes, lineage, and stage tags that move without renaming anything — and prove the one rule that makes it work: never mutate a version.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 67 left you with experiment runs: a pile of trained models and the
+metrics each one scored. Tonight the pile gets a system. A <strong>model
+registry</strong> is a catalog where each trained model is stored as a
+<strong>versioned artifact</strong> — the same treatment you give a build
+artifact in a container registry, with four properties attached to every entry:</p>
+<ul>
+<li><strong>Immutable versions.</strong> Registering a model mints <code>v1</code>,
+<code>v2</code>, <code>v3</code> — one file per training run. A version, once
+written, is never edited. A better model is a <em>new</em> version, never an
+overwrite. That is what makes "which model is in production?" an answerable
+question instead of a forensic one.</li>
+<li><strong>Content hash.</strong> Each version carries a sha256 digest of its
+exact bytes (Day 24's <code>state_dict</code>, saved to disk). The digest is the
+version's identity: two models with the same digest <em>are</em> the same model,
+and a load that recomputes a different digest has caught a corrupted or tampered
+artifact before it serves a single prediction.</li>
+<li><strong>Lineage.</strong> Each version records where it came from: the run
+that produced it (Day 67), the data snapshot it trained on, and its metrics.
+When production misbehaves, lineage is how you answer "what changed?" — the same
+question a deploy diff answers for a service.</li>
+<li><strong>Stage tags.</strong> <code>staging</code> and <code>production</code>
+are not versions; they are <em>pointers to</em> versions, kept in one small file.
+Promotion moves the pointer from <code>v1</code> to <code>v2</code>. It rewrites
+no model bytes, retrains nothing, and takes one line. Rollback is the same move,
+backwards — which is only possible because the old version was never deleted or
+edited.</li>
+</ul>
+<p>The one rule, said as a deploy rule you already live by: <strong>never mutate
+a version; promotion is a pointer move, exactly like a container tag moving over
+immutable image digests.</strong> Every production incident story in ML that
+starts "we can't reproduce what was serving" traces back to breaking this rule —
+someone overwrote <code>model.pkl</code>, or served "the latest file," and the
+bytes that made the bad predictions are gone. A registry makes that story
+structurally impossible: the file you served is still there, under its digest,
+and the tag that pointed at it is a one-line change you can read in the
+log.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>Your home turf, one-to-one. A container registry stores <strong>immutable
+images addressed by digest</strong>, and a tag like <code>prod</code> is a
+mutable pointer that moves across digests. You would never <code>docker push
+prod</code> over an existing digest and call it a deploy — you push a new digest
+and move the tag, because the old image must stay runnable for rollback. A model
+registry is the same machine with weights in place of layers: version = digest,
+stage tag = image tag, <code>resolve("name@production")</code> = pulling
+<code>name:prod</code> and verifying the digest on arrival. If you have ever
+rolled a service back by moving a tag, you already know how to roll a model
+back — the code tonight is that move, with the hash check your registry would do
+for you.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 472" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="472" fill="#ffffff"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Model registries: versions are files, stages are pointers</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">direction-clf, three training runs - nothing below ever edits a version</text>
+<rect x="12" y="56" width="656" height="172" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - VERSIONS: one immutable file per training run</text>
+<line x1="40" y1="132" x2="640" y2="132" stroke="#0a7aff" stroke-width="1.6"/>
+<rect x="40" y="96" width="170" height="72" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="125" y="120" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v1</text>
+<text x="125" y="138" text-anchor="middle" font-size="8.5" fill="#555555">sha256 a40a6bc15452...</text>
+<text x="125" y="156" text-anchor="middle" font-size="8.5" fill="#555555">run-101 - val_acc 0.912</text>
+<rect x="255" y="96" width="170" height="72" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="120" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v2</text>
+<text x="340" y="138" text-anchor="middle" font-size="8.5" fill="#555555">sha256 bbf3581b655d...</text>
+<text x="340" y="156" text-anchor="middle" font-size="8.5" fill="#555555">run-117 - val_acc 0.934</text>
+<rect x="470" y="96" width="170" height="72" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="555" y="120" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v3</text>
+<text x="555" y="138" text-anchor="middle" font-size="8.5" fill="#555555">sha256 f9c8d608cc17...</text>
+<text x="555" y="156" text-anchor="middle" font-size="8.5" fill="#555555">run-121 - val_acc 0.929</text>
+<line x1="212" y1="132" x2="253" y2="132" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="253,132 246,128 246,136" fill="#0a7aff"/>
+<line x1="427" y1="132" x2="468" y2="132" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="468,132 461,128 461,136" fill="#0a7aff"/>
+<text x="340" y="192" text-anchor="middle" font-size="9" fill="#1c1c1e">A new version is a NEW file. Old versions are never edited, overwritten, or deleted.</text>
+<text x="340" y="210" text-anchor="middle" font-size="9" fill="#1c1c1e">Re-registering identical bytes is refused as a duplicate - content, not the caller, decides identity.</text>
+<rect x="12" y="232" width="656" height="170" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="252" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - STAGE TAGS: pointers that move over the versions</text>
+<path d="M 335 300 C 335 268, 140 268, 140 300" fill="none" stroke="#d99a00" stroke-width="1.6" stroke-dasharray="6,4"/>
+<polygon points="140,300 136,292 144,292" fill="#d99a00"/>
+<text x="237" y="278" text-anchor="middle" font-size="9" fill="#9a6b00" font-weight="bold">rollback: move production back to v1</text>
+<rect x="80" y="300" width="120" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="140" y="325" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v1</text>
+<rect x="275" y="300" width="120" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="335" y="325" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v2</text>
+<rect x="470" y="300" width="120" height="40" rx="8" fill="#e9f9ee" stroke="#22a355" stroke-width="1.2"/>
+<text x="530" y="325" text-anchor="middle" font-size="11" fill="#1c1c1e" font-weight="bold">v3</text>
+<rect x="60" y="356" width="160" height="30" rx="15" fill="#22a355"/>
+<text x="140" y="375" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">production -&gt; v1</text>
+<line x1="140" y1="356" x2="140" y2="342" stroke="#22a355" stroke-width="1.6"/>
+<polygon points="140,342 136,349 144,349" fill="#22a355"/>
+<rect x="450" y="356" width="160" height="30" rx="15" fill="#0a7aff"/>
+<text x="530" y="375" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="bold">staging -&gt; v3</text>
+<line x1="530" y1="356" x2="530" y2="342" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="530,342 526,349 534,349" fill="#0a7aff"/>
+<rect x="12" y="414" width="656" height="48" rx="10" fill="#fff8e6" stroke="#d99a00" stroke-width="1.2"/>
+<text x="340" y="433" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">The rule: never mutate a version - promotion and rollback are pointer moves.</text>
+<text x="340" y="451" text-anchor="middle" font-size="9.5" fill="#1c1c1e">Every load verifies sha256, so a flipped byte is a failed load, never a silent one.</text>
+</svg>
+    <div class="caption">Top: versions are immutable files — one per training run, each with its sha256 digest and lineage. Bottom: stage tags are pointers over those versions; production moves v1 → v2 and rolls back to v1 without touching any model bytes. The footer is the rule the whole lesson hangs on, plus the hash check on every load.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, stdlib only, no installs — the registry is ~120 lines on a
+plain directory. <strong>Part 1</strong> registers three versions of
+<code>direction-clf</code> (Day 32's model, all grown up) and refuses a
+duplicate. <strong>Part 2</strong> moves the stage pointers and resolves
+<code>direction-clf@production</code> with a hash check on every load.
+<strong>Part 3</strong> rolls production back to v1, prints the registry
+table, and flips one byte in v3's stored file to prove a tampered artifact
+fails loudly. The fake weights are deterministic formula bytes standing in for a
+real <code>state_dict</code>. The whole registry lives in a self-cleaning temp
+dir — <strong>your run leaves nothing behind</strong> (the final line proves
+it).</p>
+  <pre><code>&quot;&quot;&quot;Day 68 - Model Registries &amp; Versioning: The Model Is a Build Artifact.
+
+Day 67 left you with experiment runs - a pile of trained models
+and the metrics each one scored. Tonight, the one idea that
+turns that pile into something you can ship:
+
+    A trained model is a BUILD ARTIFACT. Give it what every
+    artifact you already ship has: immutable versions, a
+    content hash, lineage, and stage tags that move.
+
+The registry built here (stdlib only, ~120 lines) enforces
+the one rule that makes the rest work:
+
+    NEVER MUTATE A VERSION. Promotion is a pointer move -
+    exactly like a container tag moving over immutable image
+    digests. Rollback is the same move, backwards.
+
+  Part 1  Register three versions of one model. Each gets the
+          next version number, a sha256 digest of its exact
+          bytes, and a lineage record (which run, which data
+          snapshot, which metrics). Re-registering identical
+          bytes is refused as a duplicate - content decides
+          identity, not the caller.
+  Part 2  Stage tags: staging and production are pointers in
+          one small JSON file. Moving production v1 -&gt; v2
+          rewrites no model bytes. resolve(&quot;name@production&quot;)
+          follows the pointer, loads the exact bytes, and
+          VERIFIES the sha256 on every load.
+  Part 3  Rollback = move the production pointer back to v1,
+          one line, because v1 was never deleted or edited.
+          Then the tamper demo: flip one byte in v3&#x27;s stored
+          file and the load raises - a registry that cannot
+          detect a changed artifact is just a folder.
+
+The fake &quot;weights&quot; are deterministic bytes from a formula
+(stand-ins for a Day 24 state_dict saved to disk). The whole
+registry lives in a self-cleaning temp dir: your run leaves
+nothing behind on the MacBook.
+
+Runs anywhere Python 3.11+ runs: standard library ONLY -
+no torch, no installs, no APIs, no downloads.
+
+Expected output:
+
+  Part 1 - register: every version immutable, hashed, traced
+    registered direction-clf v1  sha256 a40a6bc15452...  48 bytes  run-101  val_acc 0.912
+    registered direction-clf v2  sha256 bbf3581b655d...  48 bytes  run-117  val_acc 0.934
+    registered direction-clf v3  sha256 f9c8d608cc17...  48 bytes  run-121  val_acc 0.929
+    dedup: those exact bytes are already v2 - no new version created
+  Part 2 - stage tags are pointers; promotion moves the pointer
+    staging -&gt; v1, production -&gt; v1   (first deploy)
+    resolve direction-clf@production -&gt; v1  (48 bytes, sha256 verified on load)
+    staging -&gt; v3   (newest candidate, still being evaluated)
+    promote: production -&gt; v2   (pointer move only - v1&#x27;s bytes untouched)
+    resolve direction-clf@production -&gt; v2  (48 bytes, sha256 verified on load)
+  Part 3 - rollback is a pointer move; tampering is caught
+    rollback: production -&gt; v1   (one pointer move, no rebuild, no retrain)
+    resolve direction-clf@production -&gt; v1  (48 bytes, sha256 verified on load)
+    registry table - direction-clf
+      version  digest          run      val_acc  stage
+      v1       a40a6bc15452    run-101  0.912    production
+      v2       bbf3581b655d    run-117  0.934    -
+      v3       f9c8d608cc17    run-121  0.929    staging
+    tamper: flipped one byte in v3&#x27;s stored file
+    load v3 RAISED: integrity check failed for direction-clf v3 (sha256 mismatch)
+  cleanup: temp registry deleted - nothing left behind (exists: False)
+&quot;&quot;&quot;
+import hashlib
+import json
+import shutil
+import tempfile
+from pathlib import Path
+
+
+def make_weights(k, n=48):
+    &quot;&quot;&quot;Deterministic fake weights: byte i is a formula of k and i.
+    Same k -&gt; same bytes -&gt; same digest, every run, every machine.&quot;&quot;&quot;
+    return bytes((k * 31 + 7 * i + i * i) % 256 for i in range(n))
+
+
+class Registry:
+    &quot;&quot;&quot;A mini model registry on a plain directory.
+
+    Layout:  &lt;root&gt;/&lt;name&gt;/blobs/&lt;digest&gt;.bin    (the artifacts)
+             &lt;root&gt;/&lt;name&gt;/versions/v&lt;N&gt;.json    (lineage records)
+             &lt;root&gt;/&lt;name&gt;/stages.json           (tag -&gt; version)
+    &quot;&quot;&quot;
+
+    def __init__(self, root):
+        self.root = Path(root)
+
+    def _dir(self, name):
+        d = self.root / name
+        (d / &quot;blobs&quot;).mkdir(parents=True, exist_ok=True)
+        (d / &quot;versions&quot;).mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _versions(self, name):
+        d = self._dir(name)
+        return sorted(int(p.stem[1:]) for p in d.glob(&quot;versions/v*.json&quot;))
+
+    def register_model(self, name, weights, metrics, run_id, data_ref):
+        &quot;&quot;&quot;Store weights as the next immutable version - or refuse,
+        if these exact bytes are already registered (dedup).&quot;&quot;&quot;
+        digest = hashlib.sha256(weights).hexdigest()
+        d = self._dir(name)
+        for v in self._versions(name):
+            meta = json.loads((d / &quot;versions&quot; / f&quot;v{v}.json&quot;).read_text())
+            if meta[&quot;digest&quot;] == digest:
+                print(f&quot;  dedup: those exact bytes are already v{v}&quot;
+                      &quot; - no new version created&quot;)
+                return v
+        version = (self._versions(name) or [0])[-1] + 1
+        (d / &quot;blobs&quot; / f&quot;{digest}.bin&quot;).write_bytes(weights)
+        meta = {&quot;name&quot;: name, &quot;version&quot;: version, &quot;digest&quot;: digest,
+                &quot;size&quot;: len(weights), &quot;metrics&quot;: metrics,
+                &quot;run_id&quot;: run_id, &quot;data&quot;: data_ref}
+        (d / &quot;versions&quot; / f&quot;v{version}.json&quot;).write_text(
+            json.dumps(meta, indent=2))
+        print(f&quot;  registered {name} v{version}  sha256 {digest[:12]}...&quot;
+              f&quot;  {len(weights)} bytes  {run_id}&quot;
+              f&quot;  val_acc {metrics[&#x27;val_acc&#x27;]:.3f}&quot;)
+        return version
+
+    def set_stage(self, name, stage, version):
+        &quot;&quot;&quot;Move a stage tag. This is the ONLY thing promotion and
+        rollback ever do - one pointer in one JSON file.&quot;&quot;&quot;
+        d = self._dir(name)
+        f = d / &quot;stages.json&quot;
+        stages = json.loads(f.read_text()) if f.exists() else {}
+        stages[stage] = version
+        f.write_text(json.dumps(stages, indent=2))
+
+    def stages(self, name):
+        f = self._dir(name) / &quot;stages.json&quot;
+        return json.loads(f.read_text()) if f.exists() else {}
+
+    def load_version(self, name, version):
+        &quot;&quot;&quot;Load one version&#x27;s exact bytes - and verify the hash.
+        A changed artifact is a failed load, never a silent one.&quot;&quot;&quot;
+        d = self._dir(name)
+        meta = json.loads((d / &quot;versions&quot; / f&quot;v{version}.json&quot;).read_text())
+        blob = (d / &quot;blobs&quot; / f&quot;{meta[&#x27;digest&#x27;]}.bin&quot;).read_bytes()
+        if hashlib.sha256(blob).hexdigest() != meta[&quot;digest&quot;]:
+            raise ValueError(f&quot;integrity check failed for {name} v{version}&quot;
+                             &quot; (sha256 mismatch)&quot;)
+        return blob, meta
+
+    def resolve(self, ref):
+        &quot;&quot;&quot;&#x27;name@stage&#x27; -&gt; follow the tag, load, verify, print.&quot;&quot;&quot;
+        name, stage = ref.split(&quot;@&quot;)
+        version = self.stages(name)[stage]
+        blob, meta = self.load_version(name, version)
+        print(f&quot;  resolve {ref} -&gt; v{version}  ({len(blob)} bytes,&quot;
+              &quot; sha256 verified on load)&quot;)
+        return blob, meta
+
+    def table(self, name):
+        stages = self.stages(name)
+        by_version = {v: s for s, v in stages.items()}
+        print(f&quot;  registry table - {name}&quot;)
+        print(&quot;    version  digest          run      val_acc  stage&quot;)
+        for v in self._versions(name):
+            meta = json.loads((self._dir(name) / &quot;versions&quot;
+                               / f&quot;v{v}.json&quot;).read_text())
+            print(f&quot;    v{v:&lt;7} {meta[&#x27;digest&#x27;][:12]}    {meta[&#x27;run_id&#x27;]}&quot;
+                  f&quot;  {meta[&#x27;metrics&#x27;][&#x27;val_acc&#x27;]:.3f}    &quot;
+                  f&quot;{by_version.get(v, &#x27;-&#x27;)}&quot;)
+
+
+root = Path(tempfile.mkdtemp(prefix=&quot;day68-registry-&quot;))
+try:
+    reg = Registry(root)
+    NAME = &quot;direction-clf&quot;          # Day 32&#x27;s model, all grown up
+
+    print(&quot;Part 1 - register: every version immutable, hashed, traced&quot;)
+    w1 = make_weights(1)
+    w2 = make_weights(2)
+    w3 = make_weights(3)
+    reg.register_model(NAME, w1, {&quot;val_acc&quot;: 0.912}, &quot;run-101&quot;,
+                       &quot;features@2026-10-15&quot;)
+    reg.register_model(NAME, w2, {&quot;val_acc&quot;: 0.934}, &quot;run-117&quot;,
+                       &quot;features@2026-10-22&quot;)
+    reg.register_model(NAME, w3, {&quot;val_acc&quot;: 0.929}, &quot;run-121&quot;,
+                       &quot;features@2026-10-22&quot;)
+    reg.register_model(NAME, w2, {&quot;val_acc&quot;: 0.934}, &quot;run-117&quot;,
+                       &quot;features@2026-10-22&quot;)   # identical bytes again
+
+    print(&quot;Part 2 - stage tags are pointers; promotion moves the pointer&quot;)
+    reg.set_stage(NAME, &quot;staging&quot;, 1)
+    reg.set_stage(NAME, &quot;production&quot;, 1)
+    print(&quot;  staging -&gt; v1, production -&gt; v1   (first deploy)&quot;)
+    reg.resolve(f&quot;{NAME}@production&quot;)
+    reg.set_stage(NAME, &quot;staging&quot;, 3)
+    print(&quot;  staging -&gt; v3   (newest candidate, still being evaluated)&quot;)
+    reg.set_stage(NAME, &quot;production&quot;, 2)
+    print(&quot;  promote: production -&gt; v2   (pointer move only&quot;
+          &quot; - v1&#x27;s bytes untouched)&quot;)
+    reg.resolve(f&quot;{NAME}@production&quot;)
+
+    print(&quot;Part 3 - rollback is a pointer move; tampering is caught&quot;)
+    reg.set_stage(NAME, &quot;production&quot;, 1)
+    print(&quot;  rollback: production -&gt; v1   (one pointer move,&quot;
+          &quot; no rebuild, no retrain)&quot;)
+    reg.resolve(f&quot;{NAME}@production&quot;)
+    reg.table(NAME)
+    blob_path = root / NAME / &quot;blobs&quot; / \
+        f&quot;{hashlib.sha256(w3).hexdigest()}.bin&quot;
+    data = bytearray(blob_path.read_bytes())
+    data[0] ^= 0xFF                              # flip every bit of byte 0
+    blob_path.write_bytes(bytes(data))
+    print(&quot;  tamper: flipped one byte in v3&#x27;s stored file&quot;)
+    try:
+        reg.load_version(NAME, 3)
+        print(&quot;  load v3: NO ERROR - the registry failed you&quot;)
+    except ValueError as e:
+        print(f&quot;  load v3 RAISED: {e}&quot;)
+finally:
+    shutil.rmtree(root, ignore_errors=True)
+print(f&quot;cleanup: temp registry deleted - nothing left behind&quot;
+      f&quot; (exists: {root.exists()})&quot;)
+</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - register: every version immutable, hashed, traced
+  registered direction-clf v1  sha256 a40a6bc15452...  48 bytes  run-101  val_acc 0.912
+  registered direction-clf v2  sha256 bbf3581b655d...  48 bytes  run-117  val_acc 0.934
+  registered direction-clf v3  sha256 f9c8d608cc17...  48 bytes  run-121  val_acc 0.929
+  dedup: those exact bytes are already v2 - no new version created
+Part 2 - stage tags are pointers; promotion moves the pointer
+  staging -&gt; v1, production -&gt; v1   (first deploy)
+  resolve direction-clf@production -&gt; v1  (48 bytes, sha256 verified on load)
+  staging -&gt; v3   (newest candidate, still being evaluated)
+  promote: production -&gt; v2   (pointer move only - v1&#x27;s bytes untouched)
+  resolve direction-clf@production -&gt; v2  (48 bytes, sha256 verified on load)
+Part 3 - rollback is a pointer move; tampering is caught
+  rollback: production -&gt; v1   (one pointer move, no rebuild, no retrain)
+  resolve direction-clf@production -&gt; v1  (48 bytes, sha256 verified on load)
+  registry table - direction-clf
+    version  digest          run      val_acc  stage
+    v1       a40a6bc15452    run-101  0.912    production
+    v2       bbf3581b655d    run-117  0.934    -
+    v3       f9c8d608cc17    run-121  0.929    staging
+  tamper: flipped one byte in v3&#x27;s stored file
+  load v3 RAISED: integrity check failed for direction-clf v3 (sha256 mismatch)
+cleanup: temp registry deleted - nothing left behind (exists: False)</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three proofs: Part 1's three digests with
+the dedup refusal ("those exact bytes are already v2"); Part 2's
+<code>production → v2</code> pointer move followed by a resolve that still
+verifies sha256 on load; and Part 3's one-line rollback to v1 plus the tamper
+demo ending in <code>integrity check failed</code> — not a silent load. The
+keeper test, no notes allowed: given a production incident, you can say which
+version served, which run and data made it, and how you roll back in one
+pointer move.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read "The one idea", study the diagram until you can redraw its two
+panels from memory, then run only Parts 2 and 3. If you can say out loud why
+promotion and rollback are pointer moves and why a version must never be
+mutated, you have the lesson — Part 1 is the setup.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: what keeps a registry fed — the day-to-day work behind the
+models that land in it, and where their data comes from.</p>
+  </div>
+
+  <div class="footer">Streak: 68 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
