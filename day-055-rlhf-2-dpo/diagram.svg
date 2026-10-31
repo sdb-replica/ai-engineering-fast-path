@@ -1,0 +1,60 @@
+<svg viewBox="0 0 680 520" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="520" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">DPO: the reward was inside the policy all along</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 54's three-stage pipeline vs today's one loss - and the gap that loss widens</text>
+<rect x="12" y="56" width="656" height="118" rx="10" fill="#ffffff" stroke="#c77400" stroke-width="1.2"/>
+<text x="340.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - RLHF (DAY 54): THREE STAGES, TWO EXTRA MODELS</text>
+<rect x="24" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="114.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SFT model</text>
+<text x="114.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">pi_ref, from Day 52</text>
+<line x1="206" y1="115" x2="248" y2="115" stroke="#c77400" stroke-width="1.6"/>
+<polygon points="250,115 243,111 243,119" fill="#c77400"/>
+<rect x="250" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="340.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Reward model</text>
+<text x="340.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">trained on preference pairs</text>
+<line x1="432" y1="115" x2="474" y2="115" stroke="#c77400" stroke-width="1.6"/>
+<polygon points="476,115 469,111 469,119" fill="#c77400"/>
+<rect x="476" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="566.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PPO loop</text>
+<text x="566.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">sample, score, RL update</text>
+<text x="340.0" y="162" text-anchor="middle" font-size="9.0" fill="#1c1c1e">heavy machinery: an RM to train + a sampler + an RL loop, all leashed to pi_ref by a KL penalty</text>
+<rect x="12" y="188" width="656" height="118" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="208" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - DPO (TODAY): SAME PAIRS, NO MIDDLE STAGES</text>
+<rect x="24" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="114.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SFT model</text>
+<text x="114.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">pi_ref - frozen, read-only</text>
+<line x1="206" y1="247" x2="248" y2="247" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="250,247 243,243 243,251" fill="#0a7aff"/>
+<rect x="250" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Preference pairs</text>
+<text x="340.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">the same pairs as Day 54</text>
+<line x1="432" y1="247" x2="474" y2="247" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="476,247 469,243 469,251" fill="#0a7aff"/>
+<rect x="476" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="566.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Policy</text>
+<text x="566.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">trained directly on the pairs</text>
+<text x="340.0" y="294" text-anchor="middle" font-size="9.0" fill="#0a54c2">one loss: -log sigmoid( beta * [ gap(chosen) - gap(rejected) ] ),  gap(y) = log pi(y) - log pi_ref(y)</text>
+<rect x="12" y="320" width="656" height="184" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="340" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE GAP WIDENS: IMPLICIT-REWARD MARGIN r(chosen) - r(rejected)</text>
+<text x="340.0" y="358" text-anchor="middle" font-size="9.0" fill="#1c1c1e">10 SGD steps on one pair, beta = 1:  loss 0.6931 -&gt; 0.0474  |  r(chosen) 0.0000 -&gt; +0.8400  |  r(rejected) 0.0000 -&gt; -2.1850</text>
+<line x1="60" y1="452" x2="640" y2="452" stroke="#999999" stroke-width="1.0"/>
+<rect x="90" y="450.0" width="56" height="2" fill="#999999" stroke="none"/>
+<text x="118.0" y="446.0" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.0000</text>
+<text x="118.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 0</text>
+<rect x="182" y="405.9" width="56" height="46.1" fill="#22a355" stroke="none"/>
+<text x="210.0" y="399.9" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.5379</text>
+<text x="210.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 2</text>
+<rect x="274" y="387.4" width="56" height="64.6" fill="#22a355" stroke="none"/>
+<text x="302.0" y="381.4" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.1537</text>
+<text x="302.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 4</text>
+<rect x="366" y="376.0" width="56" height="76.0" fill="#22a355" stroke="none"/>
+<text x="394.0" y="370.0" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.5340</text>
+<text x="394.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 6</text>
+<rect x="458" y="367.7" width="56" height="84.3" fill="#22a355" stroke="none"/>
+<text x="486.0" y="361.7" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.8092</text>
+<text x="486.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 8</text>
+<rect x="550" y="361.3" width="56" height="90.7" fill="#22a355" stroke="none"/>
+<text x="578.0" y="355.3" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">3.0249</text>
+<text x="578.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 10</text>
+<text x="340.0" y="492" text-anchor="middle" font-size="9.0" fill="#177245">the margin is measured against the frozen reference - DPO never trains a scorer and never samples</text>
+</svg>

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPO: Skip the Reward Model, Train on the Pairs — Day 55 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 55 of 100</span>
+  <h1>DPO: Skip the Reward Model, Train on the Pairs</h1>
+  <p class="outcome">Tonight you'll be able to: state the one identity that deletes Day 54's middle stages &mdash; <code>r(x, y) = &beta; &middot; log( &pi;(y|x) / &pi;<sub>ref</sub>(y|x) )</code> &mdash; and train a toy policy directly on a preference pair with a classification-style loss, watching the chosen/rejected gap widen against the frozen reference.</p>
+
+  <h2>The one idea</h2>
+  <p>Yesterday's RLHF pipeline (Day 54) was honest but heavy: SFT, then collect preference pairs, then train a <strong>separate reward model</strong> (RM) on those pairs, then run an <strong>RL loop (PPO)</strong> &mdash; sample from the policy, score the samples with the RM, update, repeat &mdash; with a KL penalty leashing the policy to the frozen reference model &pi;<sub>ref</sub> so it can't drift into gibberish that games the scorer. Three stages, two extra models to babysit, and a sampling infrastructure. Today's question: how much of that machinery is actually necessary?</p>
+<p><strong>The insight is one line of algebra.</strong> Solve Day 54's leashed objective exactly and the optimal policy has a closed form: &pi;*(y|x) &prop; &pi;<sub>ref</sub>(y|x) &middot; e<sup>r(x,y)/&beta;</sup> &mdash; the best policy is the reference, re-weighted by the reward. Flip that equation around and the reward falls out of the policy:</p>
+<p style="text-align:center"><strong>r(x, y) = &beta; &middot; log( &pi;(y|x) / &pi;<sub>ref</sub>(y|x) )</strong></p>
+<p>Read it plainly: <strong>a completion's reward IS how much more likely the policy makes it than the reference did</strong>, scaled by &beta;. (A per-prompt constant also appears in the algebra; it is the same for both completions in a pair, so it cancels &mdash; pairs are all we ever score.) Which means every policy already carries an <em>implicit</em> reward inside it. The RM was approximating a quantity the policy can compute about itself, exactly, for free.</p>
+<p><strong>DPO (Direct Preference Optimization) just plugs the identity in.</strong> Day 54's preference model said P(chosen beats rejected) = &sigma;(r<sub>w</sub> &minus; r<sub>l</sub>). Substitute the implicit rewards and train the policy to make the observed winner win:</p>
+<p style="text-align:center"><code>L = &minus;log &sigma;( &beta; &middot; [ (log &pi;(y<sub>w</sub>) &minus; log &pi;<sub>ref</sub>(y<sub>w</sub>)) &minus; (log &pi;(y<sub>l</sub>) &minus; log &pi;<sub>ref</sub>(y<sub>l</sub>)) ] )</code></p>
+<p>That is a <strong>classification loss</strong> &mdash; the same sigmoid + cross-entropy shape as Day 14 &mdash; whose one "feature" is the gap difference: how much the policy has widened chosen-over-rejected <em>relative to where the reference started</em>. Its gradient does exactly what you'd write by hand: push log &pi;(chosen) up, log &pi;(rejected) down, with a push that fades as the margin grows (the sigmoid saturates). No RM is trained, nothing is sampled, no RL loop runs &mdash; the preference pairs become an ordinary offline training set, and yesterday's three stages collapse to one loss on the policy's logits.</p>
+<p><strong>&beta; is the leash.</strong> It is the same &beta; as Day 54's KL penalty, now sitting inside the loss, and it sets the exchange rate between <em>drift</em> and <em>reward</em>. Large &beta;: a small log-prob shift already counts as a big reward, the sigmoid saturates early, the loss is satisfied after modest drift &mdash; a short leash, policy stays near &pi;<sub>ref</sub>. Small &beta;: the loss stays hungry until the gap is enormous, so training drags the policy far from the reference before it is satisfied &mdash; a long leash. Part 3 puts numbers on it: reaching loss 0.10 takes a reward margin of 2.2522 at &beta; = 1.0, but 22.5217 at &beta; = 0.1.</p>
+<p><strong>Honest limits.</strong> DPO still eats preference data &mdash; the expensive human pairs from Day 54 are unchanged; only the modeling machinery shrank. And it can overfit the pairs: the loss is happiest when the gap explodes, not when the chosen answer is genuinely better. Watch today's Part 2 closely &mdash; the final margin of 3.0249 is mostly <em>crushing the rejected completion</em> (r falls to &minus;2.1850) rather than lifting the chosen one (r rises only to +0.8400). That asymmetry is DPO's known failure flavor, visible in a 4-word toy.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p>RLHF is a <strong>separate scoring service plus a control loop</strong>: deploy the reward model as its own service, then run PPO as a reconciler that generates live traffic (samples), calls the scorer, and nudges the policy &mdash; two systems, a network hop, and a loop to babysit. DPO is what happens when you discover the scorer's output is a <strong>pure function of state you already hold</strong> &mdash; the log-prob ratio against a frozen snapshot. You inline it as a materialized expression, the service and the control loop both disappear, and the whole thing collapses into one batch training job over a static dataset.</p><p>Trading version, one line: RM + PPO is hiring an analyst to score your trades and then optimizing your fills against his scores; DPO is noticing his score was only ever your drift versus the benchmark portfolio, scaled &mdash; so you optimize drift-vs-benchmark directly on the ranked trades you already have.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 520" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="520" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340.0" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">DPO: the reward was inside the policy all along</text>
+<text x="340.0" y="41" text-anchor="middle" font-size="9.5" fill="#666666">Day 54's three-stage pipeline vs today's one loss - and the gap that loss widens</text>
+<rect x="12" y="56" width="656" height="118" rx="10" fill="#ffffff" stroke="#c77400" stroke-width="1.2"/>
+<text x="340.0" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - RLHF (DAY 54): THREE STAGES, TWO EXTRA MODELS</text>
+<rect x="24" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="114.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SFT model</text>
+<text x="114.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">pi_ref, from Day 52</text>
+<line x1="206" y1="115" x2="248" y2="115" stroke="#c77400" stroke-width="1.6"/>
+<polygon points="250,115 243,111 243,119" fill="#c77400"/>
+<rect x="250" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="340.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Reward model</text>
+<text x="340.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">trained on preference pairs</text>
+<line x1="432" y1="115" x2="474" y2="115" stroke="#c77400" stroke-width="1.6"/>
+<polygon points="476,115 469,111 469,119" fill="#c77400"/>
+<rect x="476" y="90" width="180" height="50" rx="8" fill="#fff8e6" stroke="#c77400" stroke-width="1.2"/>
+<text x="566.0" y="112" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">PPO loop</text>
+<text x="566.0" y="130" text-anchor="middle" font-size="8.5" fill="#555555">sample, score, RL update</text>
+<text x="340.0" y="162" text-anchor="middle" font-size="9.0" fill="#1c1c1e">heavy machinery: an RM to train + a sampler + an RL loop, all leashed to pi_ref by a KL penalty</text>
+<rect x="12" y="188" width="656" height="118" rx="10" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="208" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - DPO (TODAY): SAME PAIRS, NO MIDDLE STAGES</text>
+<rect x="24" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="114.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">SFT model</text>
+<text x="114.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">pi_ref - frozen, read-only</text>
+<line x1="206" y1="247" x2="248" y2="247" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="250,247 243,243 243,251" fill="#0a7aff"/>
+<rect x="250" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Preference pairs</text>
+<text x="340.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">the same pairs as Day 54</text>
+<line x1="432" y1="247" x2="474" y2="247" stroke="#0a7aff" stroke-width="1.6"/>
+<polygon points="476,247 469,243 469,251" fill="#0a7aff"/>
+<rect x="476" y="222" width="180" height="50" rx="8" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="566.0" y="244" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">Policy</text>
+<text x="566.0" y="262" text-anchor="middle" font-size="8.5" fill="#555555">trained directly on the pairs</text>
+<text x="340.0" y="294" text-anchor="middle" font-size="9.0" fill="#0a54c2">one loss: -log sigmoid( beta * [ gap(chosen) - gap(rejected) ] ),  gap(y) = log pi(y) - log pi_ref(y)</text>
+<rect x="12" y="320" width="656" height="184" rx="10" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340.0" y="340" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">C - THE GAP WIDENS: IMPLICIT-REWARD MARGIN r(chosen) - r(rejected)</text>
+<text x="340.0" y="358" text-anchor="middle" font-size="9.0" fill="#1c1c1e">10 SGD steps on one pair, beta = 1:  loss 0.6931 -&gt; 0.0474  |  r(chosen) 0.0000 -&gt; +0.8400  |  r(rejected) 0.0000 -&gt; -2.1850</text>
+<line x1="60" y1="452" x2="640" y2="452" stroke="#999999" stroke-width="1.0"/>
+<rect x="90" y="450.0" width="56" height="2" fill="#999999" stroke="none"/>
+<text x="118.0" y="446.0" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">0.0000</text>
+<text x="118.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 0</text>
+<rect x="182" y="405.9" width="56" height="46.1" fill="#22a355" stroke="none"/>
+<text x="210.0" y="399.9" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">1.5379</text>
+<text x="210.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 2</text>
+<rect x="274" y="387.4" width="56" height="64.6" fill="#22a355" stroke="none"/>
+<text x="302.0" y="381.4" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.1537</text>
+<text x="302.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 4</text>
+<rect x="366" y="376.0" width="56" height="76.0" fill="#22a355" stroke="none"/>
+<text x="394.0" y="370.0" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.5340</text>
+<text x="394.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 6</text>
+<rect x="458" y="367.7" width="56" height="84.3" fill="#22a355" stroke="none"/>
+<text x="486.0" y="361.7" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">2.8092</text>
+<text x="486.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 8</text>
+<rect x="550" y="361.3" width="56" height="90.7" fill="#22a355" stroke="none"/>
+<text x="578.0" y="355.3" text-anchor="middle" font-size="9.5" fill="#1c1c1e" font-weight="bold">3.0249</text>
+<text x="578.0" y="468.0" text-anchor="middle" font-size="9.0" fill="#555555">step 10</text>
+<text x="340.0" y="492" text-anchor="middle" font-size="9.0" fill="#177245">the margin is measured against the frozen reference - DPO never trains a scorer and never samples</text>
+</svg>
+    <div class="caption">Top: Day 54's RLHF &mdash; SFT, then a reward model trained on the pairs, then a PPO loop sampling and scoring against it. Middle: DPO keeps the SFT model (frozen, as the reference) and the same pairs, and trains the policy directly &mdash; the loss compares each completion's log-prob against the reference's, so the scorer is never a separate object. Bottom: what the one loss does to a single pair over 10 steps &mdash; the implicit-reward margin starts at exactly 0 (policy = reference) and widens to 3.0249 as the loss falls 0.6931 &rarr; 0.0474.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, one prompt, eight numbers to train. The vocab is four words (&ldquo;warm, fresh, cold, stale&rdquo;), the prompt is &ldquo;The soup was&rdquo;, and both the policy and the frozen reference are explicit per-position probability tables &mdash; small enough that every score is computed by hand before any gradient flows. <strong>Part 1</strong> scores the pair by hand: sequence log-probs (Day 47's chain rule on a table), implicit rewards at the start (both exactly 0, because the policy starts <em>at</em> the reference), and the starting loss, log 2. <strong>Part 2</strong> runs 10 real SGD steps on the policy's logits with autograd &mdash; print the table each step and watch the gap widen and the rewards split. <strong>Part 3</strong> reruns with &beta; = 0.1 to feel the leash change. No RNG: every probability is hand-set, so every digit is exact.</p>
+  <pre><code>&quot;&quot;&quot;Day 55 - RLHF 2: DPO, the Simpler Modern Alternative.
+
+Day 54&#x27;s RLHF pipeline had three stages after SFT: collect
+preference pairs, train a separate reward model (RM) on them,
+then run an RL loop (PPO) that samples from the policy, scores
+the samples with the RM, and updates - with a KL penalty
+leashing the policy to the frozen reference model pi_ref.
+
+DPO (Direct Preference Optimization) deletes two of the three.
+The key identity: in that KL-leashed objective, the OPTIMAL
+policy already contains the reward -
+
+    r(x, y) = beta * log( pi(y|x) / pi_ref(y|x) )
+
+(read: a completion&#x27;s reward IS how much more likely the
+policy makes it than the reference did, scaled by beta; a
+per-prompt constant cancels inside every pair). So instead of
+training an RM to approximate r and then RL-ing against it,
+plug the implicit reward straight into the preference model
+from Day 54 - P(chosen beats rejected) = sigmoid(r_w - r_l) -
+and train the POLICY on the pairs with a classification loss:
+
+    L = -log sigmoid( beta * [ (log pi(y_w) - log pi_ref(y_w))
+                             - (log pi(y_l) - log pi_ref(y_l)) ] )
+
+No reward model. No sampling. No RL loop. One loss, whose
+gradient widens the chosen-vs-rejected log-prob gap, measured
+relative to the frozen reference.
+
+  Part 1  Score one pair by hand. A 4-word vocab, one prompt,
+          2-token completions, policy and reference as explicit
+          probability tables. The policy starts AT the reference,
+          so both implicit rewards are exactly 0 and the loss is
+          log 2 - a coin flip - even though the raw log-prob gap
+          already favors the chosen completion.
+  Part 2  Real gradient steps on the policy&#x27;s 8 logits (SGD,
+          lr=0.5, 10 steps, beta=1.0): the loss falls, the gap
+          widens, the implicit rewards split + / -, and the
+          chosen tokens&#x27; probabilities climb while the rejected
+          tokens&#x27; sink. Autograd computes the gradient; note it
+          never touches the frozen reference&#x27;s numbers.
+  Part 3  Beta is the leash. Same pair, same 10 steps, only
+          beta changes: beta=1.0 nearly satisfies the loss,
+          beta=0.1 barely dents it - because beta is the
+          exchange rate between drift and reward. Reaching
+          loss 0.10 takes a reward margin of 2.2522 at beta=1.0
+          but 22.5217 at beta=0.1: small beta leaves the loss
+          hungry, so training would drag the policy far from
+          the reference before it is satisfied.
+
+Honest limits: DPO still eats preference pairs (the data cost
+is unchanged) and it can overfit them - the loss is happiest
+when the gap explodes, not when the chosen answer is good.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on purpose
+(8 parameters), no CUDA, no paid APIs, no downloads. Every
+probability is set by hand - no RNG anywhere in this lesson.
+
+Expected output:
+
+  Part 1 - one preference pair, scored by hand (beta = 1.0)
+    prompt: &quot;The soup was&quot; - completions are 2 tokens from a 4-word vocab
+    ref probs, position 1: warm 0.4000, fresh 0.3000, cold 0.2000, stale 0.1000
+    ref probs, position 2: warm 0.2500, fresh 0.4500, cold 0.2000, stale 0.1000
+    chosen   &quot;warm fresh&quot;:  log p_ref = log(0.40) + log(0.45) = -1.7148
+    rejected &quot;cold stale&quot;:  log p_ref = log(0.20) + log(0.10) = -3.9120
+    policy starts AT the reference (same table), so both implicit rewards are 0:
+      r = beta * (log p_policy - log p_ref):  chosen 0.0000, rejected 0.0000
+      DPO margin = r_chosen - r_rejected = 0.0000
+      DPO loss = -log sigmoid(0) = 0.6931  (= log 2 - a coin flip)
+  Part 2 - train the policy on the pair (SGD lr=0.5, 10 steps, beta=1.0)
+    step  0: loss 0.6931  logp chosen -1.7148  logp rejected -3.9120  gap 2.1972  r_chosen 0.0000  r_rejected 0.0000
+    step  1: loss 0.3133  logp chosen -1.3823  logp rejected -4.5796  gap 3.1972  r_chosen 0.3325  r_rejected -0.6675
+    step  2: loss 0.1946  logp chosen -1.2272  logp rejected -4.9623  gap 3.7351  r_chosen 0.4876  r_rejected -1.0503
+    step  3: loss 0.1405  logp chosen -1.1336  logp rejected -5.2224  gap 4.0888  r_chosen 0.5812  r_rejected -1.3104
+    step  4: loss 0.1098  logp chosen -1.0683  logp rejected -5.4193  gap 4.3509  r_chosen 0.6465  r_rejected -1.5072
+    step  5: loss 0.0901  logp chosen -1.0190  logp rejected -5.5778  gap 4.5589  r_chosen 0.6958  r_rejected -1.6658
+    step  6: loss 0.0764  logp chosen -0.9796  logp rejected -5.7108  gap 4.7312  r_chosen 0.7352  r_rejected -1.7988
+    step  7: loss 0.0663  logp chosen -0.9471  logp rejected -5.8253  gap 4.8782  r_chosen 0.7677  r_rejected -1.9133
+    step  8: loss 0.0585  logp chosen -0.9196  logp rejected -5.9260  gap 5.0064  r_chosen 0.7952  r_rejected -2.0139
+    step  9: loss 0.0524  logp chosen -0.8957  logp rejected -6.0158  gap 5.1201  r_chosen 0.8191  r_rejected -2.1038
+    step 10: loss 0.0474  logp chosen -0.8748  logp rejected -6.0970  gap 5.2221  r_chosen 0.8400  r_rejected -2.1850
+    token probs after training (before -&gt; after):
+      P(warm | pos 1)   0.4000 -&gt; 0.6331   (chosen token, pushed up)
+      P(fresh | pos 2)  0.4500 -&gt; 0.6586   (chosen token, pushed up)
+      P(cold | pos 1)   0.2000 -&gt; 0.0698   (rejected token, pushed down)
+      P(stale | pos 2)  0.1000 -&gt; 0.0323   (rejected token, pushed down)
+    no reward model was trained, nothing was sampled - one loss on one pair
+  Part 3 - beta is the leash (same pair, same 10 steps, only beta changes)
+    beta = 1.0:  final loss 0.0474, reward margin 3.0249, P(warm | pos 1) 0.6331
+    beta = 0.1:  final loss 0.6455, reward margin 0.0978, P(warm | pos 1) 0.4785
+    margin needed to reach loss 0.10: beta=1.0 needs 2.2522, beta=0.1 needs 22.5217
+    verdict: beta is the exchange rate between drift and reward - small beta
+    leaves the loss hungry, so training would drag the policy far from ref
+&quot;&quot;&quot;
+import math
+
+import torch
+import torch.nn.functional as F
+
+VOCAB = [&quot;warm&quot;, &quot;fresh&quot;, &quot;cold&quot;, &quot;stale&quot;]
+# The reference model pi_ref (the frozen SFT model): an explicit
+# probability table, one row per completion position, for the
+# prompt &quot;The soup was&quot;. Rows sum to 1.
+REF_PROBS = torch.tensor([[0.40, 0.30, 0.20, 0.10],     # position 1
+                          [0.25, 0.45, 0.20, 0.10]])    # position 2
+CHOSEN = torch.tensor([0, 1])      # &quot;warm fresh&quot;  (the human pick)
+REJECTED = torch.tensor([2, 3])    # &quot;cold stale&quot;  (the human pass)
+POS = torch.arange(2)
+BETA = 1.0
+LR = 0.5
+STEPS = 10
+
+
+def f4(v):
+    &quot;&quot;&quot;Format to 4 decimals, normalizing a signed zero.&quot;&quot;&quot;
+    s = f&quot;{v:.4f}&quot;
+    return &quot;0.0000&quot; if s == &quot;-0.0000&quot; else s
+
+
+def seq_logp_from_probs(probs, tokens):
+    &quot;&quot;&quot;Sequence log-prob = sum of per-token log probs (Day 47&#x27;s
+    chain rule, on a table instead of a model).&quot;&quot;&quot;
+    return torch.log(probs[POS, tokens]).sum()
+
+
+def seq_logp_from_logits(logits, tokens):
+    return F.log_softmax(logits, dim=-1)[POS, tokens].sum()
+
+
+LP_REF_W = seq_logp_from_probs(REF_PROBS, CHOSEN)
+LP_REF_L = seq_logp_from_probs(REF_PROBS, REJECTED)
+
+
+def dpo_stats(logits, beta):
+    &quot;&quot;&quot;Implicit rewards, margin and the DPO loss for the pair.&quot;&quot;&quot;
+    lp_w = seq_logp_from_logits(logits, CHOSEN)
+    lp_l = seq_logp_from_logits(logits, REJECTED)
+    r_w = beta * (lp_w - LP_REF_W)          # the identity, applied
+    r_l = beta * (lp_l - LP_REF_L)
+    margin = r_w - r_l
+    loss = -F.logsigmoid(margin)            # classification loss
+    return lp_w, lp_l, r_w, r_l, margin, loss
+
+
+def run_dpo(beta, verbose=False):
+    &quot;&quot;&quot;Train ONLY the policy logits on the pair. The reference
+    table is a constant - it is read, never updated.&quot;&quot;&quot;
+    logits = torch.log(REF_PROBS).clone().requires_grad_(True)
+    opt = torch.optim.SGD([logits], lr=LR)
+    last = None
+    for step in range(STEPS + 1):
+        lp_w, lp_l, r_w, r_l, margin, loss = dpo_stats(logits, beta)
+        last = (loss.item(), margin.item())
+        if verbose:
+            print(f&quot;  step {step:&gt;2}: loss {f4(loss.item())}  &quot;
+                  f&quot;logp chosen {f4(lp_w.item())}  &quot;
+                  f&quot;logp rejected {f4(lp_l.item())}  &quot;
+                  f&quot;gap {f4((lp_w - lp_l).item())}  &quot;
+                  f&quot;r_chosen {f4(r_w.item())}  &quot;
+                  f&quot;r_rejected {f4(r_l.item())}&quot;)
+        if step == STEPS:
+            break
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    with torch.no_grad():
+        probs = F.softmax(logits, dim=-1)
+    return last, probs
+
+
+# ---------- Part 1: score one pair by hand ----------
+print(&quot;Part 1 - one preference pair, scored by hand (beta = 1.0)&quot;)
+print(&#x27;  prompt: &quot;The soup was&quot; - completions are 2 tokens from &#x27;
+      &quot;a 4-word vocab&quot;)
+for t in range(2):
+    table = &quot;, &quot;.join(f&quot;{w} {f4(p)}&quot;
+                      for w, p in zip(VOCAB, REF_PROBS[t].tolist()))
+    print(f&quot;  ref probs, position {t + 1}: {table}&quot;)
+print(f&quot;  chosen   \&quot;warm fresh\&quot;:  log p_ref = log(0.40) + &quot;
+      f&quot;log(0.45) = {f4(LP_REF_W.item())}&quot;)
+print(f&quot;  rejected \&quot;cold stale\&quot;:  log p_ref = log(0.20) + &quot;
+      f&quot;log(0.10) = {f4(LP_REF_L.item())}&quot;)
+# Policy starts AT the reference: same table, so log p_policy
+# equals log p_ref for both completions and the rewards are 0.
+r_w0 = BETA * (LP_REF_W - LP_REF_W)
+r_l0 = BETA * (LP_REF_L - LP_REF_L)
+margin0 = r_w0 - r_l0
+loss0 = -F.logsigmoid(margin0)
+print(&quot;  policy starts AT the reference (same table), so both &quot;
+      &quot;implicit rewards are 0:&quot;)
+print(f&quot;    r = beta * (log p_policy - log p_ref):  &quot;
+      f&quot;chosen {f4(r_w0.item())}, rejected {f4(r_l0.item())}&quot;)
+print(f&quot;    DPO margin = r_chosen - r_rejected = {f4(margin0.item())}&quot;)
+print(f&quot;    DPO loss = -log sigmoid(0) = {f4(loss0.item())}  &quot;
+      &quot;(= log 2 - a coin flip)&quot;)
+
+# ---------- Part 2: train the policy directly on the pair ----------
+print(&quot;Part 2 - train the policy on the pair &quot;
+      &quot;(SGD lr=0.5, 10 steps, beta=1.0)&quot;)
+(_, _), probs = run_dpo(BETA, verbose=True)
+print(&quot;  token probs after training (before -&gt; after):&quot;)
+for pos, tok, tag in ((0, 0, &quot;chosen token, pushed up&quot;),
+                      (1, 1, &quot;chosen token, pushed up&quot;),
+                      (0, 2, &quot;rejected token, pushed down&quot;),
+                      (1, 3, &quot;rejected token, pushed down&quot;)):
+    print(f&quot;    P({VOCAB[tok]} | pos {pos + 1})   &quot;
+          f&quot;{f4(REF_PROBS[pos, tok].item())} -&gt; &quot;
+          f&quot;{f4(probs[pos, tok].item())}   ({tag})&quot;)
+print(&quot;  no reward model was trained, nothing was sampled - &quot;
+      &quot;one loss on one pair&quot;)
+
+# ---------- Part 3: beta is the leash ----------
+print(&quot;Part 3 - beta is the leash (same pair, same 10 steps, &quot;
+      &quot;only beta changes)&quot;)
+(loss_b1, margin_b1), probs_b1 = run_dpo(1.0)
+(loss_b01, margin_b01), probs_b01 = run_dpo(0.1)
+print(f&quot;  beta = 1.0:  final loss {f4(loss_b1)}, &quot;
+      f&quot;reward margin {f4(margin_b1)}, &quot;
+      f&quot;P(warm | pos 1) {f4(probs_b1[0, 0].item())}&quot;)
+print(f&quot;  beta = 0.1:  final loss {f4(loss_b01)}, &quot;
+      f&quot;reward margin {f4(margin_b01)}, &quot;
+      f&quot;P(warm | pos 1) {f4(probs_b01[0, 0].item())}&quot;)
+# Solve -log sigmoid(u) = 0.10 for u, then margin = u / beta.
+u_need = math.log(math.exp(-0.1) / (1 - math.exp(-0.1)))
+print(f&quot;  margin needed to reach loss 0.10: beta=1.0 needs &quot;
+      f&quot;{f4(u_need / 1.0)}, beta=0.1 needs {f4(u_need / 0.1)}&quot;)
+print(&quot;  verdict: beta is the exchange rate between drift and &quot;
+      &quot;reward - small beta&quot;)
+print(&quot;  leaves the loss hungry, so training would drag the &quot;
+      &quot;policy far from ref&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one preference pair, scored by hand (beta = 1.0)
+  prompt: &quot;The soup was&quot; - completions are 2 tokens from a 4-word vocab
+  ref probs, position 1: warm 0.4000, fresh 0.3000, cold 0.2000, stale 0.1000
+  ref probs, position 2: warm 0.2500, fresh 0.4500, cold 0.2000, stale 0.1000
+  chosen   &quot;warm fresh&quot;:  log p_ref = log(0.40) + log(0.45) = -1.7148
+  rejected &quot;cold stale&quot;:  log p_ref = log(0.20) + log(0.10) = -3.9120
+  policy starts AT the reference (same table), so both implicit rewards are 0:
+    r = beta * (log p_policy - log p_ref):  chosen 0.0000, rejected 0.0000
+    DPO margin = r_chosen - r_rejected = 0.0000
+    DPO loss = -log sigmoid(0) = 0.6931  (= log 2 - a coin flip)
+Part 2 - train the policy on the pair (SGD lr=0.5, 10 steps, beta=1.0)
+  step  0: loss 0.6931  logp chosen -1.7148  logp rejected -3.9120  gap 2.1972  r_chosen 0.0000  r_rejected 0.0000
+  step  1: loss 0.3133  logp chosen -1.3823  logp rejected -4.5796  gap 3.1972  r_chosen 0.3325  r_rejected -0.6675
+  step  2: loss 0.1946  logp chosen -1.2272  logp rejected -4.9623  gap 3.7351  r_chosen 0.4876  r_rejected -1.0503
+  step  3: loss 0.1405  logp chosen -1.1336  logp rejected -5.2224  gap 4.0888  r_chosen 0.5812  r_rejected -1.3104
+  step  4: loss 0.1098  logp chosen -1.0683  logp rejected -5.4193  gap 4.3509  r_chosen 0.6465  r_rejected -1.5072
+  step  5: loss 0.0901  logp chosen -1.0190  logp rejected -5.5778  gap 4.5589  r_chosen 0.6958  r_rejected -1.6658
+  step  6: loss 0.0764  logp chosen -0.9796  logp rejected -5.7108  gap 4.7312  r_chosen 0.7352  r_rejected -1.7988
+  step  7: loss 0.0663  logp chosen -0.9471  logp rejected -5.8253  gap 4.8782  r_chosen 0.7677  r_rejected -1.9133
+  step  8: loss 0.0585  logp chosen -0.9196  logp rejected -5.9260  gap 5.0064  r_chosen 0.7952  r_rejected -2.0139
+  step  9: loss 0.0524  logp chosen -0.8957  logp rejected -6.0158  gap 5.1201  r_chosen 0.8191  r_rejected -2.1038
+  step 10: loss 0.0474  logp chosen -0.8748  logp rejected -6.0970  gap 5.2221  r_chosen 0.8400  r_rejected -2.1850
+  token probs after training (before -&gt; after):
+    P(warm | pos 1)   0.4000 -&gt; 0.6331   (chosen token, pushed up)
+    P(fresh | pos 2)  0.4500 -&gt; 0.6586   (chosen token, pushed up)
+    P(cold | pos 1)   0.2000 -&gt; 0.0698   (rejected token, pushed down)
+    P(stale | pos 2)  0.1000 -&gt; 0.0323   (rejected token, pushed down)
+  no reward model was trained, nothing was sampled - one loss on one pair
+Part 3 - beta is the leash (same pair, same 10 steps, only beta changes)
+  beta = 1.0:  final loss 0.0474, reward margin 3.0249, P(warm | pos 1) 0.6331
+  beta = 0.1:  final loss 0.6455, reward margin 0.0978, P(warm | pos 1) 0.4785
+  margin needed to reach loss 0.10: beta=1.0 needs 2.2522, beta=0.1 needs 22.5217
+  verdict: beta is the exchange rate between drift and reward - small beta
+  leaves the loss hungry, so training would drag the policy far from ref</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run shows all three proofs: Part 1's loss is exactly <code>0.6931</code> at margin <code>0.0000</code> &mdash; the coin flip you get when policy = reference, even though the raw gap already favors the chosen completion by <code>2.1972</code>; Part 2's final row reads loss <code>0.0474</code>, gap <code>5.2221</code>, r<sub>chosen</sub> <code>+0.8400</code>, r<sub>rejected</sub> <code>&minus;2.1850</code>, with P(warm) climbed <code>0.4000 &rarr; 0.6331</code> and P(stale) sunk <code>0.1000 &rarr; 0.0323</code>; and Part 3's &beta; contrast: final loss <code>0.0474</code> vs <code>0.6455</code>, margin-for-loss-0.10 <code>2.2522</code> vs <code>22.5217</code>. The keeper test, no notes allowed: write the implicit-reward identity from memory and explain, in one sentence each, why the RM is redundant and what &beta; leashes.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo;, study panels B and C of the diagram until you can redraw them, then run Parts 1 and 2 only. If you can say out loud why the loss starts at log 2 when the policy equals the reference &mdash; and why most of the margin came from crushing the rejected completion &mdash; you have DPO. Part 3 is the victory lap.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: preference pairs are human &mdash; slow, expensive, and noisy. But some answers don't need an opinion at all: they're simply right or wrong, and a program can check. What changes when the judge is a checker instead of a person?</p>
+  </div>
+
+  <div class="footer">Day 55 of 100 &middot; Streak: 55 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>
