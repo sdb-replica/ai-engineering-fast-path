@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inference Serving 2: Quantization, INT8/INT4 Intuition — Day 65 of 100</title>
+<!--
+  LESSON TEMPLATE — copy this file for each new lesson and replace {{PLACEHOLDERS}}.
+  Rules: single self-contained file. Inline <style> and inline SVG only.
+  NO external resources (no CDNs, fonts, or scripts) — saved files must work offline.
+  Diagrams: hand-authored inline SVG. Charts: simple inline SVG bars/lines.
+  Keep sections short; this is read on a phone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 20px 16px 64px; line-height: 1.6;
+         background: #fafafa; color: #1c1c1e; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .day-badge { display: inline-block; font-size: 0.75rem; font-weight: 700;
+               letter-spacing: 0.08em; text-transform: uppercase;
+               background: #0a7aff; color: #fff; border-radius: 999px;
+               padding: 4px 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; line-height: 1.3; }
+  .outcome { font-size: 1.02rem; color: #555; margin: 0 0 20px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; padding-top: 14px;
+       border-top: 1px solid #e5e5e5; }
+  p, li { font-size: 0.95rem; }
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .analogy { background: #eef4ff; border-left: 4px solid #0a7aff; }
+  .win { background: #e9f9ee; border-left: 4px solid #22a355; }
+  .mvw { background: #fff8e6; border-left: 4px solid #d99a00; }
+  .teaser { background: #f1efff; border-left: 4px solid #7a5cff; }
+  .callout .label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+                    text-transform: uppercase; margin-bottom: 4px; }
+  .analogy .label { color: #0a54c2; } .win .label { color: #177245; }
+  .mvw .label { color: #9a6b00; } .teaser .label { color: #5a3fd4; }
+  pre { background: #1e1e1e; color: #e8e8e8; border-radius: 10px;
+        padding: 14px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+  pre.output { background: #242424; border: 1px dashed #555; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code { background: #eee; padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+  .diagram { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
+             padding: 12px; margin: 14px 0; text-align: center; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .diagram .caption { font-size: 0.8rem; color: #777; margin-top: 6px; }
+  .footer { margin-top: 30px; font-size: 0.85rem; color: #888; text-align: center; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #141416; color: #e8e8e8; }
+    h2 { border-top-color: #333; }
+    .outcome { color: #a8a8a8; }
+    .analogy { background: #16263f; } .win { background: #14291c; }
+    .mvw { background: #2e260f; } .teaser { background: #221d3d; }
+    p code, li code { background: #2a2a2e; }
+    .diagram { background: #1c1c1f; border-color: #333; }
+    .diagram .caption { color: #999; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="day-badge">Day 65 of 100</span>
+  <h1>Inference Serving 2: Quantization, INT8/INT4 Intuition</h1>
+  <p class="outcome">Tonight you'll be able to: explain how one scale and a pocketful of integer codes can stand in for a float weight, compute the ~4&times; memory-and-bandwidth win of fp16&rarr;int4 for a 7B model, and say exactly what the rounding error costs &mdash; and what keeps it inside budget.</p>
+
+  <h2>The one idea</h2>
+  <p>Day 64 made each step cheaper by filling it with more requests. Today makes the <em>model itself</em> cheaper to move. The whole trick is one line:</p>
+<p style="text-align:center"><strong>Store an integer code plus one shared scale: <code>w &asymp; scale &times; q</code>. Rebuilding the float is a single multiply, done on the fly as the weight is used.</strong></p>
+<p>Concretely: take a row of weights, find its largest magnitude, and divide the range into a small ladder of landing spots. <strong>int8</strong> gives you 255 spots (codes &minus;127&hellip;127), <strong>int4</strong> gives you 15 (codes &minus;7&hellip;7). The <strong>scale</strong> is the distance between spots: <code>scale = max|w| / qmax</code>. Each weight is stored as just its spot number &mdash; 8 bits or 4 bits instead of fp16&rsquo;s 16 &mdash; plus the one scale per row, which is rounding error&rsquo;s entire price list: a weight can be off by at most half a step, so a <em>smaller step is a smaller error budget</em>. A variant called <strong>asymmetric</strong> quantization adds one more shared number, a <strong>zero-point</strong>, so the ladder can start somewhere other than zero when a row&rsquo;s range is skewed; the symmetric version in today&rsquo;s code is the same idea with the zero-point pinned at 0.</p>
+<p><strong>Why it pays twice.</strong> First, capacity: a 7B model is 14 GB in fp16 and 3.5 GB in int4 &mdash; it fits on a smaller GPU and leaves room for the KV cache (Days 48&ndash;49) to grow. Second, and bigger: Day 48 showed batch-1 decode is <em>bandwidth-bound</em> &mdash; the arithmetic is trivial, the wait is dragging every weight out of memory once per token. Bytes are the wait. Quarter the bytes and the speed ceiling rises ~4&times;, with the <em>same</em> math happening upstairs. This is also why quantization matters far less for training: training is compute-bound and re-reads weights in big batches, so the bandwidth discount buys little there.</p>
+<p><strong>The cost, honestly.</strong> Rounding error is real and it is not uniform. An int8 step on a typical row is ~0.0055 wide, so errors stay in the third decimal &mdash; in practice int8 weight quantization is usually near-free. An int4 step is ~0.1 wide, and individual weights can come back badly wrong (+0.3500 returns as +0.3003 in Part 1). Two things save the model: a neuron&rsquo;s output is a sum of hundreds of products (Day 12), and independent rounding errors partly cancel in the sum; and the fixes in the next paragraph keep the worst errors from happening in the first place. Whether the <em>model&rsquo;s answers</em> stay inside budget is an eval question (Day 57&rsquo;s discipline) &mdash; you measure it, you don&rsquo;t assume it.</p>
+<p><strong>The outlier problem, and its standard answers (names to recognize).</strong> Real weight rows contain a few values many times larger than the bulk. One outlier stretches its whole row&rsquo;s scale &mdash; Part 2 plants a single +3.25 and watches its row&rsquo;s int4 step blow up to 0.4643, crushing every small weight in that row, while per-row scales at least quarantine the damage to that row. Production schemes go further: <strong>per-group scales</strong> (a fresh scale every 64&ndash;128 weights, so an outlier only poisons its own small group &mdash; this is what GPTQ and AWQ ship, and what QLoRA&rsquo;s 4-bit base used on Day 53), and <strong>mixed precision</strong>, where the few outlier channels are simply kept in fp16 while everything else goes int8 (the LLM.int8() approach). Today&rsquo;s code quantizes <em>weights</em>; <em>activations</em> and the <em>KV cache</em> can be quantized too, but they are touchier &mdash; activation outliers move from token to token &mdash; so names like SmoothQuant exist mostly to tame those. Same grid idea, harder neighborhoods.</p>
+
+  <div class="callout analogy">
+    <div class="label">Analogy</div>
+    <p><strong>Lossy compression with an SLO &mdash; a trade you already run.</strong> Nobody stores raw WAV when MP3&rsquo;s error sits below what the listener can detect, and nobody ships uncompressed logs when a codec keeps every dashboard readable. Quantization is that decision for weights: you set an error budget (the SLO), pick the cheapest format whose measured error stays inside it, and you <em>measure before you ship</em> &mdash; Part 2 is the error report, Part 3 is the savings report, and the order matters. Your storage brain already knows the shape of the trick, too: codes + one scale per group is dictionary encoding with the dictionary reduced to a ruler. The failure mode is also familiar: lossy is a contract, not a vibe &mdash; exceed the budget on the one row with the outlier and the pager goes off.</p>
+  </div>
+
+  <h2>See it</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 680 462" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="462" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Quantization: snap every float to a small integer grid</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">one scale per row sets the step size - fewer bits, fewer bytes, a little rounding error</text>
+<rect x="12" y="56" width="656" height="216" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE GRID: a float weight distribution, snapped to 8 bins</text>
+<text x="70" y="92" text-anchor="start" font-size="9.0" fill="#555555">the float weights (bulk within +/-1.14)</text>
+<path d="M 82.9,157.6 89.3,157.5 L 95.7,157.2 L 102.1,156.9 L 108.6,156.5 L 115.0,155.9 L 121.4,155.1 L 127.9,154.2 L 134.3,153.0 L 140.7,151.5 L 147.1,149.6 L 153.6,147.5 L 160.0,145.0 L 166.4,142.1 L 172.9,138.8 L 179.3,135.2 L 185.7,131.4 L 192.1,127.3 L 198.6,123.2 L 205.0,119.1 L 211.4,115.1 L 217.9,111.5 L 224.3,108.3 L 230.7,105.6 L 237.1,103.6 L 243.6,102.4 L 250.0,102.0 L 256.4,102.4 L 262.9,103.6 L 269.3,105.6 L 275.7,108.3 L 282.1,111.5 L 288.6,115.1 L 295.0,119.1 L 301.4,123.2 L 307.9,127.3 L 314.3,131.4 L 320.7,135.2 L 327.1,138.8 L 333.6,142.1 L 340.0,145.0 L 346.4,147.5 L 352.9,149.6 L 359.3,151.5 L 365.7,153.0 L 372.1,154.2 L 378.6,155.1 L 385.0,155.9 L 391.4,156.5 L 397.9,156.9 L 404.3,157.2 L 410.7,157.5 L 417.1,157.6 L 417.1,158 L 82.9,158 Z" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.4"/>
+<line x1="60" y1="158" x2="445" y2="158" stroke="#888888" stroke-width="1.2"/>
+<line x1="121.43" y1="158" x2="121.43" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="121.43" y="175" text-anchor="middle" font-size="8.5" fill="#666666">-1</text>
+<line x1="250.0" y1="158" x2="250.0" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="250.0" y="175" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<line x1="378.57" y1="158" x2="378.57" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="378.57" y="175" text-anchor="middle" font-size="8.5" fill="#666666">+1</text>
+<circle cx="294.9995" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="327.142" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="339.999" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="336.1419" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="319.4278" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="298.8566" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="194.7149" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="175.42940000000002" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="161.2867" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="233.2859" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="262.85699999999997" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<text x="468" y="152" text-anchor="middle" font-size="11" fill="#999999">//</text>
+<circle cx="585" cy="158" r="4.5" fill="#d43a2f" stroke="none"/>
+<text x="585" y="144" text-anchor="middle" font-size="9.0" fill="#d43a2f" font-weight="bold">+3.25 outlier</text>
+<text x="585" y="175" text-anchor="middle" font-size="8.5" fill="#666666">1 weight in 128</text>
+<text x="70" y="192" text-anchor="start" font-size="9.0" fill="#555555">the grid: 8 bins - every weight snaps to the nearest line (code = line number)</text>
+<line x1="121.43" y1="204" x2="121.43" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="153.5725" y1="204" x2="153.5725" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="185.715" y1="204" x2="185.715" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="217.85750000000002" y1="204" x2="217.85750000000002" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="250.0" y1="204" x2="250.0" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="282.1425" y1="204" x2="282.1425" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="314.28499999999997" y1="204" x2="314.28499999999997" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="346.4275" y1="204" x2="346.4275" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="378.57" y1="204" x2="378.57" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="121.43" y1="218" x2="378.57" y2="218" stroke="#22a355" stroke-width="1.2"/>
+<circle cx="282.1425" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="314.28499999999997" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="346.4275" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="185.715" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="153.5725" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<line x1="314.28499999999997" y1="244" x2="346.4275" y2="244" stroke="#177245" stroke-width="1.6"/>
+<polygon points="346.4275,244 339.4275,240 339.4275,248" fill="#177245"/>
+<polygon points="314.28499999999997,244 321.28499999999997,240 321.28499999999997,248" fill="#177245"/>
+<text x="392.35625" y="248" text-anchor="middle" font-size="9.0" fill="#177245">one step = the scale</text>
+<text x="340" y="262" text-anchor="middle" font-size="9.0" fill="#1c1c1e">scale = max|w| / qmax:  int8 divides by 127 (fine steps, tiny error)  -  int4 divides by 7 (coarse steps, 4x fewer bits than fp16)</text>
+<rect x="12" y="286" width="656" height="162" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="306" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE PAYOFF: one 7B model, weights only - and the batch-1 decode floor at 2000 GB/s</text>
+<text x="30" y="336" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">fp32</text>
+<rect x="84" y="322" width="294.0" height="19" rx="3" fill="#999999" stroke="none" stroke-width="0"/>
+<text x="388.0" y="336" text-anchor="start" font-size="9.5" fill="#1c1c1e">28.00 GB  -  14.00 ms/token  -  at most 71 tok/s</text>
+<text x="30" y="363" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">fp16</text>
+<rect x="84" y="349" width="147.0" height="19" rx="3" fill="#0a7aff" stroke="none" stroke-width="0"/>
+<text x="241.0" y="363" text-anchor="start" font-size="9.5" fill="#1c1c1e">14.00 GB  -  7.00 ms/token  -  at most 143 tok/s</text>
+<text x="30" y="390" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">int8</text>
+<rect x="84" y="376" width="73.5" height="19" rx="3" fill="#22a355" stroke="none" stroke-width="0"/>
+<text x="167.5" y="390" text-anchor="start" font-size="9.5" fill="#1c1c1e">7.00 GB  -  3.50 ms/token  -  at most 286 tok/s</text>
+<text x="30" y="417" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">int4</text>
+<rect x="84" y="403" width="36.75" height="19" rx="3" fill="#d99a00" stroke="none" stroke-width="0"/>
+<text x="130.75" y="417" text-anchor="start" font-size="9.5" fill="#1c1c1e">3.50 GB  -  1.75 ms/token  -  at most 571 tok/s</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.0" fill="#177245">decode reads every weight once per token (Day 48): half the bytes is half the wait - fp16 to int4 is a ~4x faster ceiling</text>
+</svg>
+    <div class="caption">Top: real weights bunch near zero with one far outlier; a quantizer keeps only the grid lines and snaps every weight to the nearest one &mdash; the distance between lines is the scale, and half that distance is the worst-case rounding error. Bottom: the same 7B model at four precisions &mdash; int4 is a quarter of fp16&rsquo;s bytes, and because batch-1 decode must read every byte once per token, the speed ceiling rises with the shrink.</div>
+  </div>
+
+  <h2>Code it (~30 min)</h2>
+  <p>One file, three parts, no RNG &mdash; the &ldquo;weight matrix&rdquo; is built from a sine/cosine formula so every digit is exact, and one outlier is planted at <code>[2, 7]</code> so you can watch it do damage. <strong>Part 1</strong> snaps row 0 to the int8 and int4 grids and brings the values back. <strong>Part 2</strong> prints the full error bill &mdash; fp16 cast vs int8 vs int4 &mdash; and isolates the outlier row. <strong>Part 3</strong> counts bytes for the toy matrix and a 7B model, then converts bytes into the decode speed ceiling at 2000 GB/s. Runs in your <code>~/ai-lab</code> venv on CPU; torch only, nothing to download.</p>
+  <pre><code>&quot;&quot;&quot;Day 65 - Inference Serving 2: Quantization, INT8/INT4 Intuition.
+
+Yesterday (Day 64) was about feeding the GPU more requests per
+step. Today is about making each step cheaper to feed: shrink
+the weights themselves.
+
+    Quantization = store each weight as a small integer code
+    plus one shared scale:  w ~= scale * q.  Dequantizing is
+    one multiply. Fewer bits per weight means fewer bytes to
+    store AND fewer bytes to drag through memory on every
+    generated token - and Day 48 showed decode is a memory
+    problem, not a math problem.
+
+The scheme used here is symmetric per-row quantization:
+for each row, scale = max|w| / qmax (127 for int8, 7 for
+int4), q = round(w / scale). One honest paragraph each on
+the two standard refinements lives in the lesson: asymmetric
+grids add a zero-point for skewed ranges, and per-group
+scales (a fresh scale every 64-128 weights, the GPTQ/AWQ
+style) shrink the rounding error further.
+
+  Part 1  One row, snapped to the grid. Row 0&#x27;s first six
+          weights become int8 codes and int4 codes, then
+          come back - int4&#x27;s coarser steps are visible to
+          the naked eye (+0.3500 returns as +0.3003).
+  Part 2  The error bill. Max and RMS error of the round
+          trip over all 128 weights: fp16 cast vs int8 vs
+          int4. Then the outlier tax: one planted +3.25
+          weight stretches its own row&#x27;s int4 scale to
+          0.464286, so that row&#x27;s small weights land on
+          +-0.4643 steps (max err 0.2186) while every other
+          row stays &lt;= 0.0804 - per-row scales quarantine
+          the damage to the row that caused it.
+  Part 3  The payoff. Byte counts for the toy matrix and
+          for a 7B model, then the decode consequence: at
+          batch 1 every weight is read once per token, so
+          at 2000 GB/s of memory bandwidth the fp16-&gt;int4
+          cut lifts the theoretical ceiling from 142.9 to
+          571.4 tokens/sec. Same FLOPs, a quarter of the
+          bytes - that is the whole trade.
+
+Runs on the ~/ai-lab venv: torch only (free), CPU on
+purpose (tiny matrix), no CUDA, no paid APIs, no downloads.
+The weight matrix is built from a sine/cosine formula -
+deterministic, no RNG anywhere, every number exact.
+
+Expected output:
+
+  Part 1 - one row, snapped to the grid (symmetric, per-row scale)
+    row 0 weights: +0.3500, +0.6004, +0.7007, +0.6661, +0.5416, +0.3809
+    int8 scale 0.005517 -&gt; codes +63, +109, +127, +121, +98, +69
+      dequantized: +0.3476, +0.6014, +0.7007, +0.6676, +0.5407, +0.3807
+    int4 scale 0.100101 -&gt; codes +3, +6, +7, +7, +5, +4
+      dequantized: +0.3003, +0.6006, +0.7007, +0.7007, +0.5005, +0.4004
+  Part 2 - the error bill: round trip vs the original, all 128 weights
+    fp16 cast:  max err 0.000392  rms err 0.000120
+    int8:       max err 0.012666  rms err 0.003344
+    int4:       max err 0.218647  rms err 0.063629
+    outlier row 2 at int4: scale 0.464286, row max err 0.2186
+    every other row at int4: max err &lt;= 0.0804 - damage quarantined
+  Part 3 - the payoff: bytes, then the decode speed limit
+    toy 8x16 matrix: fp32 512 B | fp16 256 B | int8 128 B | int4 64 B
+      (+ 8 fp32 row scales = 32 B - the grid&#x27;s only overhead here)
+    a 7B model, weights only, batch-1 decode (all weights read per token):
+      fp32: 28.00 GB -&gt; 14.00 ms/token floor at 2000 GB/s -&gt; at most 71.4 tok/s
+      fp16: 14.00 GB -&gt;  7.00 ms/token floor at 2000 GB/s -&gt; at most 142.9 tok/s
+      int8:  7.00 GB -&gt;  3.50 ms/token floor at 2000 GB/s -&gt; at most 285.7 tok/s
+      int4:  3.50 GB -&gt;  1.75 ms/token floor at 2000 GB/s -&gt; at most 571.4 tok/s
+    verdict: fp16 -&gt; int4 moves 4x fewer bytes; decode is bandwidth-bound,
+    so the speed ceiling rises ~4x. You pay in rounding error, not dollars.
+&quot;&quot;&quot;
+import torch
+
+# A stand-in &quot;weight matrix&quot;: formula-built (sines/cosines), so it
+# has the bell-ish spread of real weights - most values small, a few
+# near +-1 - plus ONE planted outlier at [2, 7], the troublemaker
+# every quantization paper complains about.
+rows = torch.arange(8, dtype=torch.float64).unsqueeze(1)
+cols = torch.arange(16, dtype=torch.float64).unsqueeze(0)
+W = (0.8 * torch.sin(0.9 * rows + 0.4 * cols)
+     + 0.35 * torch.cos(0.6 * cols - 1.1 * rows)).float()
+W[2, 7] = 3.25
+
+
+def quantize_per_row(w, qmax):
+    &quot;&quot;&quot;Symmetric per-row quantization. Returns (codes, scales, dequant).
+    scale = max|w| / qmax per row; codes = round(w / scale), clipped.&quot;&quot;&quot;
+    scale = w.abs().amax(dim=1, keepdim=True) / qmax
+    codes = torch.clamp(torch.round(w / scale), -qmax, qmax)
+    return codes, scale.squeeze(1), codes * scale
+
+
+def err_stats(deq):
+    err = (deq.double() - W.double())
+    return err.abs().max().item(), err.pow(2).mean().sqrt().item()
+
+
+sfmt = lambda t: &quot;, &quot;.join(f&quot;{v:+.4f}&quot; for v in t.tolist())
+ifmt = lambda t: &quot;, &quot;.join(f&quot;{int(v):+d}&quot; for v in t.tolist())
+
+# ---------- Part 1: one row, snapped to the grid ----------
+print(&quot;Part 1 - one row, snapped to the grid (symmetric, per-row scale)&quot;)
+codes8, scales8, deq8 = quantize_per_row(W, 127)
+codes4, scales4, deq4 = quantize_per_row(W, 7)
+print(f&quot;  row 0 weights: {sfmt(W[0, :6])}&quot;)
+print(f&quot;  int8 scale {scales8[0]:.6f} -&gt; codes {ifmt(codes8[0, :6])}&quot;)
+print(f&quot;    dequantized: {sfmt(deq8[0, :6])}&quot;)
+print(f&quot;  int4 scale {scales4[0]:.6f} -&gt; codes {ifmt(codes4[0, :6])}&quot;)
+print(f&quot;    dequantized: {sfmt(deq4[0, :6])}&quot;)
+
+# ---------- Part 2: the error bill ----------
+print(&quot;Part 2 - the error bill: round trip vs the original, &quot;
+      &quot;all 128 weights&quot;)
+for label, deq in ((&quot;fp16 cast&quot;, W.half().float()),
+                   (&quot;int8&quot;, deq8), (&quot;int4&quot;, deq4)):
+    mx, rms = err_stats(deq)
+    print(f&quot;  {label + &#x27;:&#x27;:&lt;11} max err {mx:.6f}  rms err {rms:.6f}&quot;)
+row_err4 = (deq4 - W).abs().amax(dim=1)
+others_max = torch.cat([row_err4[:2], row_err4[3:]]).max().item()
+print(f&quot;  outlier row 2 at int4: scale {scales4[2]:.6f}, &quot;
+      f&quot;row max err {row_err4[2]:.4f}&quot;)
+print(f&quot;  every other row at int4: max err &lt;= {others_max:.4f} &quot;
+      &quot;- damage quarantined&quot;)
+
+# ---------- Part 3: the payoff ----------
+print(&quot;Part 3 - the payoff: bytes, then the decode speed limit&quot;)
+n = W.numel()
+print(f&quot;  toy 8x16 matrix: fp32 {n * 4} B | fp16 {n * 2} B | &quot;
+      f&quot;int8 {n} B | int4 {n // 2} B&quot;)
+print(f&quot;    (+ {W.shape[0]} fp32 row scales = {W.shape[0] * 4} B &quot;
+      &quot;- the grid&#x27;s only overhead here)&quot;)
+print(&quot;  a 7B model, weights only, batch-1 decode &quot;
+      &quot;(all weights read per token):&quot;)
+for label, bytes_per in ((&quot;fp32&quot;, 4.0), (&quot;fp16&quot;, 2.0),
+                         (&quot;int8&quot;, 1.0), (&quot;int4&quot;, 0.5)):
+    gb = 7e9 * bytes_per / 1e9
+    ms = gb / 2000 * 1000                    # at 2000 GB/s bandwidth
+    print(f&quot;    {label}: {gb:5.2f} GB -&gt; {ms:5.2f} ms/token floor &quot;
+          f&quot;at 2000 GB/s -&gt; at most {1000 / ms:.1f} tok/s&quot;)
+print(&quot;  verdict: fp16 -&gt; int4 moves 4x fewer bytes; decode is &quot;
+      &quot;bandwidth-bound,&quot;)
+print(&quot;  so the speed ceiling rises ~4x. You pay in rounding &quot;
+      &quot;error, not dollars.&quot;)</code></pre>
+  <p><strong>Expected output:</strong></p>
+  <pre class="output"><code>Part 1 - one row, snapped to the grid (symmetric, per-row scale)
+  row 0 weights: +0.3500, +0.6004, +0.7007, +0.6661, +0.5416, +0.3809
+  int8 scale 0.005517 -&gt; codes +63, +109, +127, +121, +98, +69
+    dequantized: +0.3476, +0.6014, +0.7007, +0.6676, +0.5407, +0.3807
+  int4 scale 0.100101 -&gt; codes +3, +6, +7, +7, +5, +4
+    dequantized: +0.3003, +0.6006, +0.7007, +0.7007, +0.5005, +0.4004
+Part 2 - the error bill: round trip vs the original, all 128 weights
+  fp16 cast:  max err 0.000392  rms err 0.000120
+  int8:       max err 0.012666  rms err 0.003344
+  int4:       max err 0.218647  rms err 0.063629
+  outlier row 2 at int4: scale 0.464286, row max err 0.2186
+  every other row at int4: max err &lt;= 0.0804 - damage quarantined
+Part 3 - the payoff: bytes, then the decode speed limit
+  toy 8x16 matrix: fp32 512 B | fp16 256 B | int8 128 B | int4 64 B
+    (+ 8 fp32 row scales = 32 B - the grid&#x27;s only overhead here)
+  a 7B model, weights only, batch-1 decode (all weights read per token):
+    fp32: 28.00 GB -&gt; 14.00 ms/token floor at 2000 GB/s -&gt; at most 71.4 tok/s
+    fp16: 14.00 GB -&gt;  7.00 ms/token floor at 2000 GB/s -&gt; at most 142.9 tok/s
+    int8:  7.00 GB -&gt;  3.50 ms/token floor at 2000 GB/s -&gt; at most 285.7 tok/s
+    int4:  3.50 GB -&gt;  1.75 ms/token floor at 2000 GB/s -&gt; at most 571.4 tok/s
+  verdict: fp16 -&gt; int4 moves 4x fewer bytes; decode is bandwidth-bound,
+  so the speed ceiling rises ~4x. You pay in rounding error, not dollars.</code></pre>
+
+  <div class="callout win">
+    <div class="label">Today's win</div>
+    <p>Done when your run matches the lesson&rsquo;s digits: row 0&rsquo;s int4 codes are <code>+3, +6, +7, +7, +5, +4</code> and <code>+0.3500</code> comes back as <code>+0.3003</code>; the error table reads fp16 <code>0.000392</code> / int8 <code>0.012666</code> / int4 <code>0.218647</code> max error; and the 7B table lands on <code>3.50 GB</code> and <code>571.4 tok/s</code> for int4. The keeper test, no notes: given any model size and precision, you can produce its weight bytes, its batch-1 decode floor at a stated bandwidth, and one sentence on what the outliers will do to it.</p>
+  </div>
+
+  <div class="callout mvw">
+    <div class="label">Short on time? 20-minute version</div>
+    <p>Read &ldquo;The one idea&rdquo; and study the diagram until you can sketch the grid and the scale arrow from memory, then run only Parts 1 and 2 of the code. If you can say out loud why the step size <em>is</em> the error budget &mdash; and why the +3.25 weight only ruins its own row &mdash; you have the concept; Part 3 is arithmetic you can redo any time.</p>
+  </div>
+
+  <div class="callout teaser">
+    <div class="label">Tomorrow's teaser</div>
+    <p>Tomorrow: two serving systems can both advertise &ldquo;fast&rdquo; and mean opposite things by it &mdash; you&rsquo;ll learn which clock a serving number is actually quoting before you trust it.</p>
+  </div>
+
+  <div class="footer">Streak: 65 day(s) &middot; Never miss twice.</div>
+
+</div>
+</body>
+</html>

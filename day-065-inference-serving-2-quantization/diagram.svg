@@ -1,0 +1,67 @@
+<svg viewBox="0 0 680 462" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="680" height="462" rx="0" fill="#ffffff" stroke="none" stroke-width="1.0"/>
+<text x="340" y="24" text-anchor="middle" font-size="13.5" fill="#1c1c1e" font-weight="bold">Quantization: snap every float to a small integer grid</text>
+<text x="340" y="41" text-anchor="middle" font-size="9.5" fill="#666666">one scale per row sets the step size - fewer bits, fewer bytes, a little rounding error</text>
+<rect x="12" y="56" width="656" height="216" rx="8" fill="#ffffff" stroke="#0a7aff" stroke-width="1.2"/>
+<text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">A - THE GRID: a float weight distribution, snapped to 8 bins</text>
+<text x="70" y="92" text-anchor="start" font-size="9.0" fill="#555555">the float weights (bulk within +/-1.14)</text>
+<path d="M 82.9,157.6 89.3,157.5 L 95.7,157.2 L 102.1,156.9 L 108.6,156.5 L 115.0,155.9 L 121.4,155.1 L 127.9,154.2 L 134.3,153.0 L 140.7,151.5 L 147.1,149.6 L 153.6,147.5 L 160.0,145.0 L 166.4,142.1 L 172.9,138.8 L 179.3,135.2 L 185.7,131.4 L 192.1,127.3 L 198.6,123.2 L 205.0,119.1 L 211.4,115.1 L 217.9,111.5 L 224.3,108.3 L 230.7,105.6 L 237.1,103.6 L 243.6,102.4 L 250.0,102.0 L 256.4,102.4 L 262.9,103.6 L 269.3,105.6 L 275.7,108.3 L 282.1,111.5 L 288.6,115.1 L 295.0,119.1 L 301.4,123.2 L 307.9,127.3 L 314.3,131.4 L 320.7,135.2 L 327.1,138.8 L 333.6,142.1 L 340.0,145.0 L 346.4,147.5 L 352.9,149.6 L 359.3,151.5 L 365.7,153.0 L 372.1,154.2 L 378.6,155.1 L 385.0,155.9 L 391.4,156.5 L 397.9,156.9 L 404.3,157.2 L 410.7,157.5 L 417.1,157.6 L 417.1,158 L 82.9,158 Z" fill="#eef4ff" stroke="#0a7aff" stroke-width="1.4"/>
+<line x1="60" y1="158" x2="445" y2="158" stroke="#888888" stroke-width="1.2"/>
+<line x1="121.43" y1="158" x2="121.43" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="121.43" y="175" text-anchor="middle" font-size="8.5" fill="#666666">-1</text>
+<line x1="250.0" y1="158" x2="250.0" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="250.0" y="175" text-anchor="middle" font-size="8.5" fill="#666666">0</text>
+<line x1="378.57" y1="158" x2="378.57" y2="163" stroke="#888888" stroke-width="1.0"/>
+<text x="378.57" y="175" text-anchor="middle" font-size="8.5" fill="#666666">+1</text>
+<circle cx="294.9995" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="327.142" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="339.999" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="336.1419" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="319.4278" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="298.8566" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="194.7149" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="175.42940000000002" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="161.2867" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="233.2859" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<circle cx="262.85699999999997" cy="158" r="3" fill="#0a54c2" stroke="none"/>
+<text x="468" y="152" text-anchor="middle" font-size="11" fill="#999999">//</text>
+<circle cx="585" cy="158" r="4.5" fill="#d43a2f" stroke="none"/>
+<text x="585" y="144" text-anchor="middle" font-size="9.0" fill="#d43a2f" font-weight="bold">+3.25 outlier</text>
+<text x="585" y="175" text-anchor="middle" font-size="8.5" fill="#666666">1 weight in 128</text>
+<text x="70" y="192" text-anchor="start" font-size="9.0" fill="#555555">the grid: 8 bins - every weight snaps to the nearest line (code = line number)</text>
+<line x1="121.43" y1="204" x2="121.43" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="153.5725" y1="204" x2="153.5725" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="185.715" y1="204" x2="185.715" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="217.85750000000002" y1="204" x2="217.85750000000002" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="250.0" y1="204" x2="250.0" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="282.1425" y1="204" x2="282.1425" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="314.28499999999997" y1="204" x2="314.28499999999997" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="346.4275" y1="204" x2="346.4275" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="378.57" y1="204" x2="378.57" y2="226" stroke="#22a355" stroke-width="1.4"/>
+<line x1="121.43" y1="218" x2="378.57" y2="218" stroke="#22a355" stroke-width="1.2"/>
+<circle cx="282.1425" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="314.28499999999997" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="346.4275" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="185.715" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<circle cx="153.5725" cy="218" r="3.5" fill="#177245" stroke="none"/>
+<line x1="314.28499999999997" y1="244" x2="346.4275" y2="244" stroke="#177245" stroke-width="1.6"/>
+<polygon points="346.4275,244 339.4275,240 339.4275,248" fill="#177245"/>
+<polygon points="314.28499999999997,244 321.28499999999997,240 321.28499999999997,248" fill="#177245"/>
+<text x="392.35625" y="248" text-anchor="middle" font-size="9.0" fill="#177245">one step = the scale</text>
+<text x="340" y="262" text-anchor="middle" font-size="9.0" fill="#1c1c1e">scale = max|w| / qmax:  int8 divides by 127 (fine steps, tiny error)  -  int4 divides by 7 (coarse steps, 4x fewer bits than fp16)</text>
+<rect x="12" y="286" width="656" height="162" rx="8" fill="#ffffff" stroke="#22a355" stroke-width="1.2"/>
+<text x="340" y="306" text-anchor="middle" font-size="10.5" fill="#1c1c1e" font-weight="bold">B - THE PAYOFF: one 7B model, weights only - and the batch-1 decode floor at 2000 GB/s</text>
+<text x="30" y="336" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">fp32</text>
+<rect x="84" y="322" width="294.0" height="19" rx="3" fill="#999999" stroke="none" stroke-width="0"/>
+<text x="388.0" y="336" text-anchor="start" font-size="9.5" fill="#1c1c1e">28.00 GB  -  14.00 ms/token  -  at most 71 tok/s</text>
+<text x="30" y="363" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">fp16</text>
+<rect x="84" y="349" width="147.0" height="19" rx="3" fill="#0a7aff" stroke="none" stroke-width="0"/>
+<text x="241.0" y="363" text-anchor="start" font-size="9.5" fill="#1c1c1e">14.00 GB  -  7.00 ms/token  -  at most 143 tok/s</text>
+<text x="30" y="390" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">int8</text>
+<rect x="84" y="376" width="73.5" height="19" rx="3" fill="#22a355" stroke="none" stroke-width="0"/>
+<text x="167.5" y="390" text-anchor="start" font-size="9.5" fill="#1c1c1e">7.00 GB  -  3.50 ms/token  -  at most 286 tok/s</text>
+<text x="30" y="417" text-anchor="start" font-size="10" fill="#1c1c1e" font-weight="bold">int4</text>
+<rect x="84" y="403" width="36.75" height="19" rx="3" fill="#d99a00" stroke="none" stroke-width="0"/>
+<text x="130.75" y="417" text-anchor="start" font-size="9.5" fill="#1c1c1e">3.50 GB  -  1.75 ms/token  -  at most 571 tok/s</text>
+<text x="340" y="438" text-anchor="middle" font-size="9.0" fill="#177245">decode reads every weight once per token (Day 48): half the bytes is half the wait - fp16 to int4 is a ~4x faster ceiling</text>
+</svg>
